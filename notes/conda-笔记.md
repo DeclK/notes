@@ -1,0 +1,115 @@
+---
+title: Conda 笔记
+tags:
+  - Conda
+categories:
+  - 编程
+  - Tools
+abbrlink: c8895fc
+date: 2021-08-08 21:26:07
+---
+
+# Conda Cheat Sheet
+
+记录一些常用的 conda 命令帮助快速管理环境，整理自官方 [CONDA CHEAT SHEET](https://docs.conda.io/projects/conda/en/4.6.0/_downloads/52a95608c49671267e40c689e0bc00ca/conda-cheatsheet.pdf)
+
+## Basic
+
+### conda info
+
+这个命令非常管用，基本上能够看到所有的 conda 配置信息
+
+### conda install
+
+`conda install PACKAGENAME` 下载指定包
+
+### conda update
+
+`conda update PACKAGENAME` 更新指定包 
+
+## Environment
+
+### conda create -n
+
+`conda create -n py36 python=3.6` 创造一个 python 3.6 的环境 py36
+
+注意：一般都要加上 `python=x.x` 否则使用的是 base 环境的 python 解释器
+
+### conda env list
+
+列出目前有的环境
+
+### conda env remove 
+
+`conda env remove -n env_name ` 移除环境
+
+###  conda activate/deactivate
+
+`conda activate/deactivate env_name` 激活/退出环境
+
+## Package
+
+### conda install
+
+`conda install PACKAGENAME` 下载包
+
+`conda install --file requirements.txt` 通过 requirements 文件下载包
+
+### conda remove
+
+`conda remove PACKAGENAME` 移除包
+
+### conda list
+
+`conda list PACKAGENAME` 查看环境的某个包，如果不加 PACKAGENAME 则列出所有环境
+
+### conda clean
+
+如果不清理的话，anaconda 还是很吃存储的，会逐渐积累很多下载包
+
+`conda clean --all`  Remove index cache, lock files, unused cache packages, and tarballs.
+
+## 其他
+
+### 禁用自动启动 base 环境
+
+每次打开新的 shell 都会自动进入 base 环境，用下面的命令行禁用
+
+`conda config --set auto_activate_base false`
+
+### 镜像源设置
+
+编辑 `~/.condarc` 文件，设置镜像源，如没有该文件可使用 `conda config` 创建
+
+[南京大学镜像源官方帮助文档](https://mirror.nju.edu.cn/help/anaconda)
+
+```.condarc
+channels:
+  - defaults
+show_channel_urls: true
+default_channels:
+  - https://mirror.nju.edu.cn/anaconda/pkgs/main
+  - https://mirror.nju.edu.cn/anaconda/pkgs/r
+  - https://mirror.nju.edu.cn/anaconda/pkgs/msys2
+custom_channels:
+  conda-forge: https://mirror.nju.edu.cn/anaconda/cloud
+  msys2: https://mirror.nju.edu.cn/anaconda/cloud
+  bioconda: https://mirror.nju.edu.cn/anaconda/cloud
+  menpo: https://mirror.nju.edu.cn/anaconda/cloud
+  pytorch: https://mirror.nju.edu.cn/anaconda/cloud
+  simpleitk: https://mirror.nju.edu.cn/anaconda/cloud
+```
+
+使用 `conda config --show` 进行查看当前配置。当然也可以使用其他镜像源，例如：[北京外国语大学镜像源](https://mirrors.bfsu.edu.cn/help/anaconda/) 速度也很快
+
+同时也更新一下 pypi 源
+
+```shell
+# 可能需要先更新 pip，一般不用
+pip install pip -U	# Linux
+pip install pip -U --user	# Windows
+
+# 设置镜像
+pip config set global.index-url https://mirrors.bfsu.edu.cn/pypi/web/simple
+```
+
