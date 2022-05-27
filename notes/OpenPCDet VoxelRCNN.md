@@ -432,7 +432,11 @@ class RoIHeadTemplate(nn.Module):
         """
 ```
 
-以上是初始化函数，`box_coder` 和之前的是一样的 ` ResidualCoder`；比较重要的是 `proposal_target_layer`，这部分对应的配置是 `TARGET_CONFIG`，其功能是对 NMS 筛选过后的 proposal（此时应该叫 rois）进行采样并制作其标签；`forward_ret_dict` 用于存储向前传播中的预测结果及其标签，用于之后计算 loss
+以上是初始化函数：
+
+1. `box_coder` 和之前的是一样的 ` ResidualCoder`
+2. 比较重要的是 `proposal_target_layer`，这部分对应的配置是 `TARGET_CONFIG`，其功能是对 NMS 筛选过后的 proposal（此时应该叫 rois）进行采样并制作其标签
+3. `forward_ret_dict` 用于存储向前传播中的预测结果及其标签，用于之后计算 loss
 
 下面进行进一步介绍 `RoIHeadTemplate` 的相关方法：
 

@@ -1,3 +1,14 @@
+---
+title: Mean Teacher & MoCo
+tags:
+  - Mean Teacher
+  - MoCo
+categories:
+  - papers
+mathjax: true
+date: 2022-04-14 18:10:00
+---
+
 # Mean Teacher & MoCo
 
 ---
@@ -26,11 +37,11 @@ Mean teacher 可以用以下步骤概括，[github](https://github.com/CuriousAI
 
 <img src="Mean Teacher & MoCo/image-20220411170829079.png" alt="image-20220411170829079" style="zoom: 25%;" />
 
-(a) 表示了监督学习可能得到的模型预测结果
+(a) 表示了监督学习可能得到的模型预测结果，**这可以看作是一个 overfitting 的结果**
 
-(b) 表示了使用 noisy labeled data 后（soft target?），监督学习可能得到的模型预测结果
+(b) 表示了使用 noisy labeled data 后（consistency between noisy data），过拟合被减缓
 
-(c) 表示使用了 unlabeled data 后，半监督学习将让模型的预测结果更加平滑
+(c) 表示使用了 unlabeled data with consistency 后，半监督学习将让模型的预测结果更加平滑
 
 (d) 表示对 unlabeled data 得到的预测结果加入 noise，能够进一步减少偏差，让结果更好
 

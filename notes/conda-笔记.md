@@ -13,6 +13,14 @@ date: 2021-08-08 21:26:07
 
 记录一些常用的 conda 命令帮助快速管理环境，整理自官方 [CONDA CHEAT SHEET](https://docs.conda.io/projects/conda/en/4.6.0/_downloads/52a95608c49671267e40c689e0bc00ca/conda-cheatsheet.pdf)
 
+## Install in Linux
+
+安装 [miniconda](https://conda.io/projects/conda/en/latest/user-guide/install/linux.html)，可以不 care 第二步 Verify，下载好 .sh 文件后直接运行，然后还要将其加入 PATH 中
+
+```python
+export PATH=$PATH:/home/.../miniconda3/bin
+```
+
 ## Basic
 
 ### conda info

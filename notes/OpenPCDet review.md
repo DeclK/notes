@@ -18,23 +18,17 @@ date: 2021-12-19 22:20:38
 
 ### 库
 
-之前在看代码的时候遇到了一些有用的第三方库，总结如下：
+之前在看代码的时候遇到了一些有用的第三方库，简单列举如下（之后慢慢填坑总结）：
 
-1. pathlib， [知乎](https://zhuanlan.zhihu.com/p/33524938)
+1. logging， [知乎](https://zhuanlan.zhihu.com/p/360306588)
 
-2. logging， [知乎](https://zhuanlan.zhihu.com/p/360306588)
+3. tensorboard，[bilibili](https://www.bilibili.com/video/BV1Qf4y1C7kz) [pytorch](https://pytorch.org/docs/stable/tensorboard.html)
 
-3. tqdm，[知乎](https://zhuanlan.zhihu.com/p/163613814)
+4. pdb，[知乎](https://zhuanlan.zhihu.com/p/37294138)
 
-4. tensorboard，[bilibili](https://www.bilibili.com/video/BV1Qf4y1C7kz) [pytorch](https://pytorch.org/docs/stable/tensorboard.html)
+5. collections
 
-5. pdb（推荐 ipdb，相当于是 pdb + ipython），[知乎](https://zhuanlan.zhihu.com/p/37294138)
-
-6. 分布式训练，[知乎](https://zhuanlan.zhihu.com/p/113694038) [bilibili](https://www.bilibili.com/video/BV1xZ4y1S7dG/?spm_id_from=333.788)，关于指定 GPU, CUDA_VISIBLE_DEVICES [CSDN](https://blog.csdn.net/alip39/article/details/87913543) 
-
-7. collections, pickle
-
-8. screen，用于新建窗口，让命令在后台运行，即使退出会话程序也不会停止
+6. screen，用于新建窗口，让命令在后台运行，即使退出会话程序也不会停止
 
    ```shell
    screen -ls              # 查看所有screen
@@ -45,6 +39,21 @@ date: 2021-12-19 22:20:38
    screen -X -S [session you want to kill] quit #删除screen，指定会话
    screen -wipe            # 清除dead screens
    ```
+   
+   tmux 有更强大的功能
+   
+   ```shell
+   tmux new -s <name>
+   tmux detach				# or ctrl + B + D, or crtl + B + :detach
+   tmux attach -t <name>
+   tmux ls
+   tmux kill-session -t <name>	# or enter session & exit
+   
+   # 打开鼠标滚动功能
+   ctrl + B + :set -g mouse on
+   ```
+   
+   有点类似于 vim，按下 ctrl + B + : 过后可以输入一些命令
 
 ### 重要的参数
 

@@ -28,7 +28,7 @@ Zhang, Yifan, Qingyong Hu, Guoquan Xu, Yanxin Ma, Jianwei Wan, and Yulan Guo. �
 
 ### Class-aware sampling
 
-简单来说论文使用了两个 MLP，将每个点的特征用于预测每个点的类别。损失函数为交叉熵损失
+简单来说论文使用 MLP，将每个点的特征用于预测每个点的类别。损失函数为交叉熵损失
 $$
 L_{c l s-a w a r e}=-\sum_{c=1}^{C}\left(s_{i} \log \left(\hat{s_{i}}\right)+\left(1-s_{i}\right) \log \left(1-{\hat{s_{i}}}\right)\right)
 $$
@@ -44,7 +44,7 @@ M a s k_{i}=\sqrt[3]{\frac{\min \left(f^{*}, b^{*}\right)}{\max \left(f^{*}, b^{
 $$
 其中 $f^*,b^*,l^*,r^*,u^*,d^*$ 代表的是这个点到 ground truth bbox 前后左右上下表面的距离
 
-在推理/训练?时，直接下采样得分最高的 top k 个点以及它们的特征继续进行选框预测
+在推理/训练时，直接下采样得分最高的 top k 个点以及它们的特征继续进行选框预测
 
 ### Centroid Prediction
 
@@ -59,7 +59,7 @@ $$
 先介绍一下公式中标记的含义：
 
 1. F 代表 ground truth boxes 个数
-2. S   代表（某 gt box 内）进行预测的点
+2. S 代表（某 gt box 内）进行预测的点
 3. c 代表 center offset，i 代表第 i 个 gt box，j 代表在对应 gt box 中第 j 个点
 4. I 为示性函数，代表这个点有没有在某个 gt 中，也就是是否为前景点
 
@@ -78,3 +78,29 @@ $$
 $$
 L_{\text {corner }}=\sum_{m=1}^{8}\left\|P_{m}-G_{m}\right\|
 $$
+
+### Structure
+
+整体看一下网络结构
+
+<img src="IA-SSD/image-20220519164546481.png" alt="image-20220519164546481" style="zoom: 50%;" />
+
+之前没提到的点：虽然论文的下采样核心是 centroid-aware sampling，但是在最开始依然采用的原始的 distance-based grouping & downsampling 用于提取特征，上图的 `...` 就代表多层的原始 SA 模块
+
+## Experiment
+
+### Effectiveness of downsampling
+
+论文提出的 centroid-aware sampling 能够更好地保存前景点
+
+<img src="IA-SSD/image-20220519165428941.png" alt="image-20220519165428941" style="zoom:67%;" />
+
+### Waymo & ONCE Results
+
+<img src="IA-SSD/image-20220519165729325.png" alt="image-20220519165729325" style="zoom: 67%;" />
+
+检测效果还是可以的，虽然不是最好的的，但 IA-SSD 胜在轻巧，在 KITTI 上能够通过高度并行达到 **80 fps** 的推理速度
+
+## TODO
+
+代码解读，感觉这篇论文用到了很多 point-based 方法，也许以后会用到

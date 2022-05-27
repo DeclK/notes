@@ -2,43 +2,47 @@
 
 ## Experiment
 
-1. 整理工具库 ~~pathlib~~ tensorboard tqdm pdb logging yaml
-2. 整理 OpenPCDet ~~loss~~ & 工具库
-3. **Pytorch 分布式训练**
-4. 辅助任务：~~点云对 bbox 的偏移量~~，~~使用多余的 channel 进行预测~~。使用两阶段提供 soft target 给单阶段。~~PointPillars 是不是能够也使用辅助网络，并且达到非常快的速度~~
-5. **一些可以了解的研究方向**
-   1. **stable variance 与知识蒸馏**
-   2. 稀疏信息与完整信息的转换（MAE 自监督学习/对比学习）
-   3. **工程上的实现：将 mask & 点生成结合起来**
-6. 完整实现 SE-SSD 的训练
-7. 阅读 CenterPoint 的代码，需要其中处理 center heatmap & regression 的代码理解。将完全放弃 SA-SSD 中的辅助网络结构，无法复现里面的效果，但是 CIA-SSD 里面的 Attention 结构是确实有效果的，我能够在 ONCE 数据集上体现出来。接下来尝试复现一个类似 CG-SSD 中的 corner guided 辅助模块，应该会有不错的结果
-8. **Transformer!!!!!!!!!**
+1. 整理工具库 **tensorboard logging yaml**
+
+2. 整理 OpenPCDet 工具库
+
+3. > >CG-SSD 目前已经跑起来了，最后看看效果，**现在基本超越了 baseline，行人还是差：**
+   > >
+   > >1. 使用了多个 channel 对每个 corner offset 单独预测，行人的结果更差了...但其他结果还是好的，我怀疑是特征融合出了问题，明天再问问作者 plug-in 的具体细节，CNN 用了几个？
+   > >3. 最后使用 centerpoint + CGAM 有无 SOTA
+   
+4. > > 已经基本跑通 consistency loss，记录如下：
+   > >
+   > > 1. 使用 centerpoint 作为 student 无法提升行人点，但是 second 可以提升（是否说明输出已经很一致了？）
+   > > 2. 尝试了两种匹配策略（iou & dist based），之后可以哪种好用哪个，从定性来看都能提升
+   > > 5. **new idea**：给 teacher 加入 augmentation！！
+   
+7. **阅读 SST & Lidar-RCNN 代码**
+
+8. 尝试增加 IoU prediction head，据说效果不错
+
+8. 阅读 faster rcnn 代码，便于之后实现自己的兴趣小项目
 
 ## Deep learning
 
-1. 百面机器学习， ~~矩阵求导整理案例~~，~~transformer & bert~~ ~~pytorch & numpy 常用方法 & NMS 实现方法~~，[完整矩阵求导体系](https://zhuanlan.zhihu.com/p/24709748)，信息论基础整理
-2. 论文整理：
-   1. ~~**SPG BtC Lidar R-CNN**~~
-   2. **CG-SSD** （已阅读，待整理）
-   3. **SST, RangeDet**
-   4. ~~**Dynamic voxel**~~
-   5. ICCV 2021 Pyramid CNN, VoTr
-   3. ~~Not all points are equal (ultra speed)~~
-3. 图像目标检测前沿：~~ViT Moco MAE~~ ~~Swin~~
-4. **白板推导机器学习：~~SVM~~，决策树，逻辑回归，PCA，朴素贝叶斯**，凸优化基础，kernel method，图论算法（最大流之类的），卡尔曼滤波，四元数与旋转
-5. 强化学习基础
-
-## Autowise
-
-构建物体的分类网络
-
-1. 构建 target & target assinger
-2. 获得场景下的 object 表示
-3. 使用简单的线性网络进行分类
-4. 训练网络，获得结果
+1. 论文整理：
+   1. **SST，Lidar R-CNN** （已阅读，待整理）
+   2. FCOS 也是一篇经典的目标检测，很多地方都在用
+   3. RangeDet，Pyramid R-CNN，VoTr，PillarNet
+   4. lidar + rgb: SFD，代码未开源
+2. 图像目标检测前沿：ConvNext，CAE，DETR，**GFL**，**Localization Distillation for Dense Object Detection**
+3. **胡思乱想**
+   1. mean teacher 半监督以及 MoCo 自监督的本质是什么（似乎可以从防止过拟合的角度看）？为什么有效？似乎知识蒸馏只是一个华丽的表面现象
+   2. 能不能将自监督和半监督结合起来？（MAE + MoCo）
+   3. **工程上的实现：将 mask & 点生成结合起来**
+4. **机器学习理论：决策树，逻辑回归，PCA，朴素贝叶斯**，凸优化基础，kernel method，图论算法（最大流之类），卡尔曼滤波，四元数与旋转，信息论基础整理，强化学习基础
+5. 优化器 AdamW, cosine learning schedule 整理
+6. 百面机器学习
+7. [完整矩阵求导体系](https://zhuanlan.zhihu.com/p/24709748)
 
 ## Basic theory
 
+1. 线性代数 & 概率论与数理统计 & 凸优化 & 运筹学
 1. 计算机网络
 2. 操作系统
 3. 数据库
@@ -48,6 +52,5 @@
 1. 网球 tracking 优化，姿态识别
 2. OpenCV projects，opencv-基础整理
 3. 经济学原理、固定收益证券
-3. Vscode 搜索原理，建立自己的数据库
-3. misc
+4. Vscode 搜索原理，建立方便的可搜索数据库
 

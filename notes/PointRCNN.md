@@ -62,7 +62,7 @@ $$
 \\
 \text{where }p_{t}=\left\{\begin{array}{ll}p & \text { for forground point } \\ 1-p & \text { otherwise }\end{array}\right.
 $$
-focal loss 在三维目标检测中是一个很常见的损失函数，下图可以清楚地看到，在 γ 比较大时，大部分的loss值都是比较低的，除非网络的预测非常的离谱，惩罚才会急剧增加。可以说 focal loss 能够减轻惩罚，对于正负样本不均匀的数据来说会很有用
+可以看到在 γ 比较大时，大部分的loss值都是比较低的，除非网络的预测非常的离谱，惩罚才会急剧增加。可以说 focal loss 能够减轻惩罚，把 loss 的权重 focus 在比较难的样本上
 
 <img src="PointRCNN/a8c1f242-8cf0-4310-bd10-a488658a3463-16335112903811.png" style="zoom: 80%;" />
 

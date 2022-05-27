@@ -14,7 +14,14 @@ date: 2022-03-13 12:20:38
 
 ## SigmoidFocalClassificationLoss
 
-这个类实现了 focal loss，关于 focal loss 可以看这篇 [知乎](https://zhuanlan.zhihu.com/p/122542747)，白话来说：focal loss 对于 p 趋近于 0 或 1 的预测是与 cross entropy 一样的，但对于 p 处于中间值的时候对于损失函数有着减小的作用，就是这样的减缓作用对于负样本远多于正样本的数据集很有帮助
+这个类实现了 focal loss，关于 focal loss 可以看这篇 [知乎](https://zhuanlan.zhihu.com/p/80594704)，白话来说：focal loss 使用了两个技巧改变 loss function 的分布：
+
+1. alpha 可以调节正负样本 loss 分布 
+2. gamma 可以条件难易样本 loss 分布
+
+上面知乎中的有一条评论也解决了我的疑惑，为什么正样本远小于负样本时 alpha 还取得较小：因为 gamma 的效应太大了，反而需要提升一点负样本的比重。总之就是实践出来的！
+
+>重新去查了下focal loss论文，在gamma=0时，alpha=0.75效果更好，但当gamma=2时，alpha=0.25效果更好，个人的解释为负样本(IOU<=0.5)虽然远比正样本(IOU>0.5)要多，但大部分为IOU很小（如<0.1）以至于在gamma作用后某种程度上贡献较大损失的负样本甚至比正样本还要少，所以alpha=0.25要反过来重新平衡负正样本
 
 先来看 forward 函数的输入输出
 

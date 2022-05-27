@@ -70,7 +70,7 @@ CenterPoint 是一个 2-Stage 三维目标检测网络，是 center-based 系列
 3. **选框大小** the 3D size $s \in R^3$ 
 4. **选框方向** and a yaw rotation angle $(sin(α), cos(α)) \in R^2$ 
 
-损失函数对于中心 center 使用的一般 L1 loss，对于选框大小 size 实际预测的是对数大小 logarithmic size，然后再计算 L1 loss。使用对数大小，对于不同形状的选框更可能更有优势，损失函数的曲线会更平滑一些
+损失函数对于中心 center 使用的一般 L1 loss，对于选框大小 size 实际预测的是**对数大小** logarithmic size，然后再计算 L1 loss。使用对数大小，对于不同形状的选框更可能更有优势，损失函数的曲线会更平滑一些
 
 还有一点需要注意的是，在第一阶段，所有的损失函数仅在标签位置 keypoint location 进行，这个思想和 PointRCNN, SECOND 等一致，仅对 positive proposals 做回归损失计算（以上为根据 CenterNet 的推测，原文似乎并未提及）
 

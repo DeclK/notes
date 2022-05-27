@@ -1,3 +1,13 @@
+---
+title: ViT & MAE & Swin Transformer
+tags:
+  - ViT
+categories:
+  - papers
+mathjax: true
+date: 2022-04-14 18:09:00
+---
+
 ## ViT & MAE & Swin Transformer
 
 ---

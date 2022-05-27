@@ -1,7 +1,7 @@
 ---
-title: Pathlib
+title: Python Useful Packages
 tag:
-  - Pathlib
+  - Python
 categories:
   - 编程
   - Python
@@ -10,9 +10,11 @@ abbrlink: d99f910b
 date: 2022-03-21 00:00:00
 ---
 
-# Pathlib
+# Python Useful Packages
 
-## 取路径
+## pathlib
+
+### 取路径
 
 ```python
 from pathlib import Path
@@ -30,7 +32,7 @@ Path('abc/file.py')
 Path('abc/file.py').resolve()
 ```
 
-## 获取路径组成部分
+### 获取路径组成部分
 
 ```python
 file = Path('abc/file.py')
@@ -55,7 +57,7 @@ file.parents[1]	# 上上级 .
 
 对 `file` 获得父级目录时，仅对所输入的字符串进行操作 `abc/file.py`，如果想要获得绝对路径下的父级目录，请先使用 `.resolve()` 获得绝对目录
 
-## 子路径扫描
+### 子路径扫描
 
 ```python
 path = Path('.')
@@ -69,7 +71,7 @@ files = [f for f in path.glob('*.txt')]
 files = [f for f in path.rglob('*.txt')]
 ```
 
-## 路径拼接
+### 路径拼接
 
 重载除法算符，非常好用👍
 
@@ -80,7 +82,7 @@ print(new_file)
 # ./dir/file.txt
 ```
 
-## 路径判断
+### 路径判断
 
 ```python
 file = Path(any_str)
@@ -95,7 +97,7 @@ file.is_dir()
 file.exists()
 ```
 
-## 文件操作
+### 文件操作
 
 ```python
 file = Path('hello.txt')
@@ -127,12 +129,81 @@ path.mkdir(parents=True, exist_ok=True)
 path.rmdir()
 
 # 其实 pathlib 的功能并不是为了删除文件
-# 可以使用下面的方法删除目录和文件
+# 可以使用下面的方法删除文件和目录
 import shutil
 import os
 os.remove(file_path)
 shutil.rmtree(dir_path)
 ```
 
+下面写一个简单的代码，因为有时候想要删除 pycache & gnu.so 文件，把这个文件放在 root dir 就可以了
 
+```python
+# clean pycache & gnu.so
+from pathlib import Path
+import shutil, os
+delete_file = ['__pycache__', '*gnu.so']
+root_dir = Path(__file__).parent
+print(f'root dir: {root_dir}')
 
+for file in delete_file:
+    for item in root_dir.rglob(file):
+        if item.is_dir():
+            shutil.rmtree(item)
+        else:
+            os.remove(item)
+        print(f'deleting {item}')
+```
+
+## tqdm
+
+参考 [zhihu](https://zhuanlan.zhihu.com/p/163613814)
+
+tqdm 主要有两种使用方式：
+
+1. 基于迭代对象，你可以把 tqdm 当成是一个装饰器，不影响原来迭代对象的使用
+
+   ```python
+   from tqdm import tqdm
+   import time
+   dic = ['a', 'b', 'c', 'd', 'e']
+   for item in tqdm(dic):
+       time.sleep(0.1)
+   ```
+
+2. 手动进行更新
+
+   ```python
+   pbar = tqdm(dic)
+   for item in dic:
+       time.sleep(0.1)
+       pbar.update(n=1)
+   ```
+
+   手动更新还能有更多的功能
+
+   1. `pbar.set_description(desc)`
+   2. `pbat.set_postfix(dict)`
+   3. `pbar.refresh()` 强制更新
+
+除此之外还经常使用 trange 来快速创建
+
+```python
+from tqdm import trange
+pbar = trange(10)
+tbar = tqdm(total=10)	# 不可迭代，仅支持手动更新
+```
+
+同时如果有嵌套进度条的话需要指定 `leave` 参数，这样在循环完成后进度条不会留在 shell 输出
+
+```python
+with trange(10, leave=False) as tbar:
+    for i in tbar:
+        pbar = trange(20, leave=False)
+        for t in pbar:
+            time.sleep(0.1)
+```
+
+## tensorboard
+
+TODO

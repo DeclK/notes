@@ -1,3 +1,13 @@
+---
+title: Offboard 3D Object Detection from Point Cloud Sequences
+tags:
+  - Auto Label
+categories:
+  - papers
+mathjax: true
+date: 2022-04-24 18:09:00
+---
+
 # Offboard 3D Object Detection from Point Cloud Sequences
 
 ---

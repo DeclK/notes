@@ -51,6 +51,16 @@ nuScenes 官方有一个库用于管理整个数据集，需要进一步了解�
 1. 以模块化的形式进行工作，先完成各个模块，并对各个模块进行评估，最后再穿起来
 1. 路径：detection -> tracking -> classification -> static auto labeling -> dynamic labeling
 
+## Training classification
+
+问题：训练时无法收敛
+
+初步思路，使用一个小的数据集，看能不能 Overfit
+
+检查 label 是否正确
+
+使用 gt 检查了一下，基本上正确，不管是 label 还是 one hot
+
 ## TODO
 
 1. nuscenes-devkit 整理
