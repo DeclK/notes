@@ -167,6 +167,24 @@
    |Cyclist     |60.23       |71.76       |54.77       |37.58       |
    |mAP         |53.08       |61.24       |48.78       |35.37       |
    ```
+   
+6. 之后将 database 保存下来，训练速度快了很多，不过这也让我 debug 很久...
+
+   ```txt
+   adjust input channel, single head, multi channel 5*3 + 2*3, right corner
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |73.18       |83.64       |67.47       |51.90       |
+   |Pedestrian  |29.30       |32.51       |26.34       |19.19       |
+   |Cyclist     |59.05       |71.09       |52.27       |36.86       |
+   |mAP         |53.85       |62.41       |48.69       |35.98       |
+   
+   use conv to fuse feature, single head, simple channel 3 + 2, wrong corner
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |75.27       |86.23       |69.47       |54.29       |
+   |Pedestrian  |31.23       |35.98       |27.14       |15.40       |
+   |Cyclist     |59.66       |71.15       |54.53       |38.04       |
+   |mAP         |55.39       |64.45       |50.38       |35.91       |
+   ```
 
 ## CenterPoint
 
@@ -307,5 +325,53 @@
    |mAP         |64.68       |73.74       |58.26       |43.23       |
    ```
 
+6. 使用了数据增强，获得了最好的 teacher model，nms score = 0.1，nms thresh = 0.01
+
+   ```txt
+   teacher
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |78.60       |88.55       |73.01       |61.57       |
+   |Pedestrian  |49.92       |57.44       |41.79       |25.24       |
+   |Cyclist     |68.32       |78.32       |63.06       |46.88       |
+   |mAP         |65.61       |74.77       |59.28       |44.57       |
    
+   student
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |78.37       |86.87       |72.77       |61.11       |
+   |Pedestrian  |48.71       |57.03       |40.44       |24.82       |
+   |Cyclist     |68.30       |78.35       |62.87       |46.99       |
+   |mAP         |65.13       |74.08       |58.69       |44.31       |
+   ```
+
+7. 使用了更大的学习率 learning rate 0.003，似乎没有想想中的效果
+
+   ```txt
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |78.14       |86.52       |72.84       |60.65       |
+   |Pedestrian  |48.78       |57.35       |40.00       |23.22       |
+   |Cyclist     |67.08       |77.37       |62.13       |45.79       |
+   |mAP         |64.67       |73.75       |58.33       |43.22       |
+   ```
+
+8. 使用 epoch 40 & warm up 12 epoch，依然是 teacher model 表现更好，但是没有出现之前的最好的情况
+
+   ```txt
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |78.38       |88.36       |72.67       |61.42       |
+   |Pedestrian  |49.37       |57.82       |41.08       |22.82       |
+   |Cyclist     |67.67       |77.84       |62.39       |46.14       |
+   |mAP         |65.14       |74.67       |58.71       |43.46       |
+   ```
+
+9. 使用 longer  epoch 60 & learning rate 0.003 & warm up 8 epoch，终于出现和之前最好差不多的模型
+
+   ```txt
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |78.67       |86.90       |73.21       |63.14       |
+   |Pedestrian  |49.45       |56.68       |41.76       |24.19       |
+   |Cyclist     |68.43       |79.26       |62.84       |46.30       |
+   |mAP         |65.52       |74.28       |59.27       |44.54       |
+   ```
+
+10. 在 9 的基础上尝试加入其他损失，先试一试 center loss
 

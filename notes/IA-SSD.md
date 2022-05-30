@@ -5,7 +5,8 @@ tags:
 categories:
   - papers
 mathjax: true
-date: 2022-4-10 22:20:38
+abbrlink: 2083e7ea
+date: 2022-04-10 22:20:38
 ---
 
 # IA-SSD

@@ -6,16 +6,17 @@
 
 2. 整理 OpenPCDet 工具库
 
-3. > >CG-SSD 目前已经跑起来了，最后看看效果，**现在基本超越了 baseline，行人还是差：**
+3. > >CG-SSD 试验：
    > >
-   > >1. 使用了多个 channel 对每个 corner offset 单独预测，行人的结果更差了...但其他结果还是好的，我怀疑是特征融合出了问题，明天再问问作者 plug-in 的具体细节，CNN 用了几个？
-   > >3. 最后使用 centerpoint + CGAM 有无 SOTA
+   > >1. 经过不断排查，database 还是除了问题：由于 data augmentation 改变了 gt boxes 的位置，所以 corner index 会随之改变。修复了这个 bug 过后，再加入 multi channel 依然没有提升，确实用单个头去做这么多的任务还是很困难的，最后尝试一波 multi head 看看结果
+   > >3. 使用 centerpoint + CGAM 有无 SOTA
+   > >3. **考虑使用 CGAM 的结果，进一步提升检测表现，就像 GFLv2.0 一样思考**
    
-4. > > 已经基本跑通 consistency loss，记录如下：
+4. > > Mean Teacher 试验：
    > >
    > > 1. 使用 centerpoint 作为 student 无法提升行人点，但是 second 可以提升（是否说明输出已经很一致了？）
    > > 2. 尝试了两种匹配策略（iou & dist based），之后可以哪种好用哪个，从定性来看都能提升
-   > > 5. **new idea**：给 teacher 加入 augmentation！！
+   > > 5. **给 teacher 加入 augmentation！！**这个 idea 目前来看是有效的，在更长 epoch，更大 lr 下能提升了 0.8 个点。我再尝试对 regression 加入 consistency loss，不知道会不会有提升。同时我也认为 ONCE 论文里提到的 regression consistency loss 没用是不太准确的，因为论文里完全没有对 teacher 使用任何的 augmentation，这样 noise 的效果就变差了
    
 7. **阅读 SST & Lidar-RCNN 代码**
 
@@ -53,4 +54,4 @@
 2. OpenCV projects，opencv-基础整理
 3. 经济学原理、固定收益证券
 4. Vscode 搜索原理，建立方便的可搜索数据库
-
+4. 升级 hexo mattery mermaid 功能
