@@ -26,7 +26,7 @@ docker run --gpus all --shm-size=8g -it -v {DATA_DIR}:/mmdetection3d/data mmdete
 由于每次启动 docker 都要传入很多参数，所以在这里记录启动容器的命令，以后直接复制粘贴
 
 ```shell
-docker run --gpus all --shm-size=8g -it -v /home/chk/data:/shared -v /home/chk/.Xauthority:/root/.Xauthority -e DISPLAY --net=host --name
+docker run --gpus all --shm-size=8g -it -v /home/chk/data:/shared -v /home/chk/.Xauthority:/root/.Xauthority -e DISPLAY --net=host --name [name] [image_id]
 # 其中 -e 和 --net 是为了设置图形化操作，在之后详细介绍
 ```
 
