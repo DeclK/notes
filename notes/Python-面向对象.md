@@ -237,9 +237,9 @@ test(name, age)
 # My name is Declan, and I'm 23.
 ```
 
-这样就实现了一个简单的装饰器，该装饰器的功能就是在原函数之前打印一句话 `This is my introduction`
+这样就实现了一个装饰器，该装饰器的功能就是在原函数之前打印一句话 `This is my introduction`
 
-python 使用 `@` 关键字来实现装饰器，具体来说 `@` 关键字实现的是上面代码中的注释“将原函数包装，并将原函数指向装饰后的函数”。将之前的装饰器，用 `@` 重新实现
+python 使用 `@` 语法糖来实现装饰器，具体来说 `@` 实现的是这句话**“将原函数名作为参数，输入到装饰函数中，其返回值指向原函数名”**。将之前的装饰器，用 `@` 重新实现
 
 ```python
 # 定义一个装饰器来包装原函数
@@ -305,7 +305,7 @@ test(name, age)
 
 #### @property
 
-参考 [菜鸟教程](https://www.runoob.com/python/python-func-property.html) [廖雪峰教程 ](https://www.liaoxuefeng.com/wiki/897692888725344/923030547069856)进行整理。`@property` 能够用于管理类的私有属性，方便读取属性、修改属性。下面看看如何使用该装饰器
+参考 [菜鸟教程](https://www.runoob.com/python/python-func-property.html) [廖雪峰教程 ](https://www.liaoxuefeng.com/wiki/897692888725344/923030547069856)进行整理。`@property` 能够用于管理类的**私有属性**，方便读取属性、修改属性。下面看看如何使用该装饰器
 
 ```python
 class Student:

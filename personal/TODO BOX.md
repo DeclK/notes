@@ -6,8 +6,8 @@
 
 3. CG-SSD 试验：
    
-   1. > > > > **CGAM 在 centerpoint 上的提升很小，对比一下 anchor based，实在不行就放先弃掉**
-   2. 考虑使用 CGAM 的结果，进一步提升检测表现，就像 GFLv2.0 一样思考
+   1. > > > > **CGAM 在 centerpoint 上提升较小 ~0.8，下面有三个考虑：1. 使用底层特征；2. 使用 conv 3x3 扩大感受野，让特征对齐；3. 使用 attention fusion。实在调不出来就弃掉**
+   2. 考虑使用 CGAM 的结果，进一步提升检测表现，像 GFLv2.0 一样思考
    
 4. Mean Teacher 试验：
 
@@ -24,10 +24,8 @@
 ## Deep learning
 
 1. 论文整理：
-   1. **SST，Lidar R-CNN** （已阅读，待整理）
-   2. FCOS 也是一篇经典的目标检测，很多地方都在用
-   3. RangeDet，Pyramid R-CNN，VoTr，PillarNet，Dynamic ViT (efficient transformer)，BEVFusion，RPVNet
-   4. lidar + rgb: SFD，代码未开源
+   1. RangeDet，Pyramid R-CNN，VoTr，PillarNet，Dynamic ViT (efficient transformer)，RPVNet
+   2. lidar + rgb: SFD，代码未开源
 2. 图像目标检测前沿：ConvNext，CAE，DETR，**GFL**，**Localization Distillation for Dense Object Detection**
 3. **胡思乱想**
    1. mean teacher 半监督以及 MoCo 自监督的本质是什么（似乎可以从防止过拟合的角度看）？为什么有效？似乎知识蒸馏只是一个华丽的表面现象
