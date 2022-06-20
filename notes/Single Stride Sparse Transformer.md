@@ -71,7 +71,7 @@ Fan, Lue, et al. “Embracing Single Stride 3D Object Detector with Sparse Trans
 
 ### Comparison with SOTA
 
-![image-20220531214821962](Single Stride Sparse Transformer/image-20220531214821962.png)
+<img src="Single Stride Sparse Transformer/image-20220531214821962.png" alt="image-20220531214821962"  />
 
 SST 在 Vehicle 上的表现和其他 SOTA 相当，而在行人表现上，SST 是一骑绝尘，使用 3-frame + 2-stage 表现就能够远远甩掉目前的 SOTA
 

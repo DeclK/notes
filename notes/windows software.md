@@ -21,7 +21,7 @@ date: 2021-08-17 11:32:56
 
 6. 滴答清单
 
-7. chrome，油猴插件：Bilibili Evolved，zotero，google translate，youtube 双语字幕, translatesubtitles.co/
+7. chrome，油猴插件：Bilibili Evolved，zotero，google translate，youtube 双语字幕, translatesubtitles.co/，github-增强
 
 8. 印象笔记
 

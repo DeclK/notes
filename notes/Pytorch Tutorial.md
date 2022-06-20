@@ -704,12 +704,25 @@ torch.norm(input, dim=None)
 
 # x is a tensor
 x.repeat(*sizes)	# repeat times
-x.expand(*sizes)	# expand to sizes
+x.expand(*sizes)	# expand to sizes, shared memory
 x.contigous()		# 连续空间
 x.repeat_interleave(tensor)	# numpy.repeat()
 
 import torch.nn.functional as F
 F.interpolate(input, size, mode=)
 F.one_hot(LongTensor, num_classes=-1)
+```
+
+当梯度出现 nan 的时候，可以是用 `set_detect_anomaly` 来进行检查，追溯出现 nan 的代码路径
+
+```python
+import torch
+
+# 正向传播时：开启自动求导的异常侦测
+torch.autograd.set_detect_anomaly(True)
+
+# 反向传播时：在求导时开启侦测
+with torch.autograd.detect_anomaly():
+    loss.backward()
 ```
 

@@ -43,7 +43,7 @@
 
 ```python
 def nms(data, thresh):
-    """Pure Python NMS baseline."""
+    """Pure Python NMS baseline. TODO: update with more concise codes"""
     x1 = data[:, 0]
     y1 = data[:, 1]
     x2 = data[:, 2]

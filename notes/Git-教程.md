@@ -86,6 +86,8 @@ git config --global url."https://gitclone.com/".insteadOf https://
 
 可以使用 `git config --list` 查看当前的配置，如果需要重新配置的话，可以编辑 `~/.gitconfig`
 
+下载 release 时可以使用 [github proxy](https://ghproxy.com/)，或者使用油猴插件 [github 增强](https://greasyfork.org/zh-CN/scripts/412245-github-%E5%A2%9E%E5%BC%BA-%E9%AB%98%E9%80%9F%E4%B8%8B%E8%BD%BD) 非常好用👍
+
 ## Git 文件基本操作
 
 ### git status

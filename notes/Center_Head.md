@@ -303,7 +303,7 @@ $$
            } for k in range(batch_size)]
    ```
 
-   这和 assign_targets 的输出有点相似，但后者是 list of dict of list，比前者还多一个 batch 套娃
+   这和 assign_targets 的输出有点相似，但这里是 list of dict，而不是 dict of list
 
 3. used functions：
 
