@@ -54,6 +54,10 @@ launch 实际上主要完成的工作：
 
 1. 使用 `torch.distributed.launch` 调用多进程
 
+   ```shell
+   python -m torch.python -m torch.distributed.launch --nproc_per_node={NUM_GPUS} ./train.py
+   ```
+
 2. 初始化进程组，并设置 cuda device
 
    ```python

@@ -3,32 +3,23 @@
 ## Experiment
 
 1. 整理工具库 **tensorboard logging yaml**
-
 2. CG-SSD 试验：
 
-   1. **CGAM 在 centerpoint 上提升较小 \~0.8，考虑使用 RepPoints v2 里面的方法进一步提升**
-   2. **CGAM + IoU** rectify
-
+   1. **CGAM + IoU** rectify
 3. Mean Teacher 试验：
 
    1. 利用 GFL 实现更好的 location consistency loss，bring background loss into attention
-
-4. 阅读 SST/IA-SSD 代码
-
-5. > > **PillarNet spconv 2D**
-
-6. 阅读 GFL/FCOS/Faster R-CNN 代码，总结 mmdetection 运行逻辑
-
-7. **如何把握学习方向？？理论和实现需要相互指导**
-
+4. **PillarNet iou regression rebuild**
+5. 阅读 GFL/FCOS/Faster R-CNN 代码，总结 mmdetection 运行逻辑
+6. **如何把握学习方向？？理论和实现需要相互指导**
 8. **开始写论文：anchor-based + res + mean teacher**
 
 ## Deep learning
 
 1. 论文整理：
-   1. RangeDet, Pyramid R-CNN, VoTr, PillarNet, RPVNet, RepPoints v2, Soft teacher(end to end semi-supervise), KLD, DKD
-   2. lidar + rgb: **SFD, BEVFusion**
-2. 图像目标检测前沿：VitDet, ConvNext（local and long range modeling, focus is not on transformer!），CAE，DETR，**GFL**，**Localization Distillation for Dense Object Detection**
+   1. RangeDet, Pyramid R-CNN, VoTr, PillarNet, RPVNet, CFGNet, Soft teacher(end to end semi-supervise), **DKD**
+   2. lidar + rgb: **BEVFusion**
+2. 图像目标检测前沿：VitDet, ConvNext（local and long range modeling, focus is not on transformer!），CAE, DETR, **GFL**, **Localization Distillation for Dense Object Detection**
 3. **胡思乱想**
    1. mean teacher 半监督以及 MoCo 自监督的本质是什么（似乎可以从防止过拟合的角度看）？为什么有效？似乎知识蒸馏只是一个华丽的表象
    2. 能不能将自监督和半监督结合起来？（MAE + MoCo）
