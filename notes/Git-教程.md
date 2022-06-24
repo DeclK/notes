@@ -33,7 +33,7 @@ ubuntu 直接使用 `apt install git` 使用阿里云镜像
 配置用户名和邮箱
 
 ```shell
-git config --global user.name 'your_name'
+git config --global user.name 'DeclK'
 git config --global user.email '***@qq.com'
 ```
 

@@ -48,7 +48,7 @@ date: 2021-07-12 14:36:42
 
 ## Install Ubuntu
 
-（如果仍需要）安装双系统：移步 [bilibili](https://www.bilibili.com/video/BV18W41137XB)（建议安装最新版，美观且体验更友好）或者阅读 [ubuntu 官方教程](https://ubuntu.com/tutorials/install-ubuntu-desktop#1-overview)
+（如果仍需要）安装双系统：移步 [bilibili](https://www.bilibili.com/video/BV11k4y1k7Li/?spm_id_from=333.788&vd_source=65e80258e57b5ae307bd30541465a0be)（建议安装最新版，美观且体验更友好）或者阅读 [ubuntu 官方教程](https://ubuntu.com/tutorials/install-ubuntu-desktop#1-overview)
 
 ## Common Settings
 
@@ -60,19 +60,23 @@ date: 2021-07-12 14:36:42
 
 2. 修改 /etc/hostname，reboot 后永久更改主机名
 
-3. 可能出现启动 windows 的时候有 bitlocker，禁用 bitlocker 安全协议
+3. （如果没有中文输入法）下载中文输入法，并重启。之后按照 [zhihu](https://zhuanlan.zhihu.com/p/399805081) 添加中文输入法
+
+   ```shell
+   sudo apt install ibus-pinyin && reboot
+   ```
 
 4. 配置代理 clash，从 youtube 上学的（迷途小书童），要点就是将配置文件 config.yaml 和 Country.mmdb 移动到 ~/.config/clash 文件夹下面，配置文件通过 clash for windows 生成，文件目录为 User/.config/clash(/profiles) 。通过 clash dashboard 切换节点 http://clash.razord.top/
 
    让Terminal走代理的方法(desktop上的settings中设定会改写terminal端，使用export改写则不会影响desktop)，参考 [知乎链接](https://zhuanlan.zhihu.com/p/46973701)
 
-5. 官网下载git anaconda chrome typora chrome baiduyun vscode软件并安装
+5. 重要需求 miniconda chrome typora chrome vscode 软件
 
    conda install, pip install 下载速度慢时，请使用国内镜像源，例如：
 
    1. [北京外国语大学镜像源]( https://mirrors.bfsu.edu.cn/help/anaconda/)（截至2021/6/15下载速度很快）
    2. [清华大学镜像源](https://mirror.tuna.tsinghua.edu.cn/help/anaconda/)
-   3. [南京大学镜像源](https://mirror.nju.edu.cn/help/anaconda)（南大本家推荐）
+   3. [南京大学镜像源](https://mirror.nju.edu.cn/help/anaconda)（南大本家，但不推荐🤣）
 
 6. 配置 nvidia driver: 根据 [知乎链接](https://zhuanlan.zhihu.com/p/59618999) ，在命令行里下载推荐的driver。如果在配置 nvidia driver 的过程中出现连接不上显卡，可能需要关闭 security boot。参考 [稚晖君](https://zhuanlan.zhihu.com/p/336429888) 的教程，下载安装 CUDA，选择 runfile。
 
@@ -92,17 +96,29 @@ date: 2021-07-12 14:36:42
 
    (2022/1/31 更新) 尝试使用命令行在 ubuntu 16.04 上更新驱动，不太顺利，因为 ppa 中好像没有对这 16.04 进行支持，最新仅支持到 430，通过其他方法可能成功，但我就不进行过多尝试了。最终使用 `sudo apt install nvidia-418` 恢复了之前的驱动版本，其中遇到的报错 `NVIDIA NVML Driver/library version mismatch`，参考了 [StackOverflow ](https://stackoverflow.com/questions/43022843/nvidia-nvml-driver-library-version-mismatch) 中的第二个回答解决
 
-   教程里还教了如何更新 apt source 为阿里云镜像源，镜像中的软件会持续而且下载速度很快，这里我选择更换为 [南京大学镜像源](https://mirror.nju.edu.cn/help/ubuntu) 如下所示
+   教程里还教了如何更新 apt source 为阿里云镜像源，镜像中的软件会持续而且下载速度很快（但现在好像默认的源速度也不错了）。这里我选择更换为 [北外镜像源](https://mirrors.bfsu.edu.cn/help/ubuntu/)，20.04 版本如下所示
 
      ```source.list
-   sudo cp /etc/apt/sources.list /etc/apt/sources.list.back
-   sudo sed -i 's/archive.ubuntu.com/mirrors.nju.edu.cn/g' /etc/apt/sources.list
-   sudo sed -i 's/security.ubuntu.com/mirrors.nju.edu.cn/g' /etc/apt/sources.list
+   # 默认注释了源码镜像以提高 apt update 速度，如有需要可自行取消注释
+   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal main restricted universe multiverse
+   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal main restricted universe multiverse
+   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-updates main restricted universe multiverse
+   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-updates main restricted universe multiverse
+   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-backports main restricted universe multiverse
+   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-backports main restricted universe multiverse
+   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-security main restricted universe multiverse
+   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-security main restricted universe multiverse
+   
+   # 预发布软件源，不建议启用
+   # deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-proposed main restricted universe multiverse
+   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-proposed main restricted universe multiverse
      ```
+
+   如果是新的系统，一定要记得 `sudo apt update && apt upgrade` 这样在安装其他环境的时候会避免一些莫名其妙的错误
 
    同时教程里也设置了 sudo，让每一次 sudo 都不需要输入密码
 
-8. pip install 遇到问题 enter your password to unlock your login keyring
+7. pip install 遇到问题 enter your password to unlock your login keyring
 
    解决方法，直接cancel，或者在passwd and key中更改密码
 
@@ -110,7 +126,7 @@ date: 2021-07-12 14:36:42
 
 实验室有一个空的主机，比较老，想要重新清理一下自己用。我并没有选择重装整个系统，而是选择重置，即恢复出厂设置
 
-资源下载：[MSDN](https://msdn.itellyou.cn/) [rufus](https://rufus.ie/zh/) MSDN 提供了需要的各个 Windows 版本的 iso，使用 rufus 将 iso 烧入到U盘里
+资源下载：[MSDN](https://msdn.itellyou.cn/) [rufus](https://rufus.ie/zh/)  [balena](https://www.balena.io/etcher/) MSDN 提供了需要的各个 Windows 版本的 iso，使用 rufus or balena 将 iso 烧入到U盘里
 
 Win10 安装教程：[bilibili](https://www.bilibili.com/video/BV1DJ411D79y/?spm_id_from=333.788.recommend_more_video.-1)
 
