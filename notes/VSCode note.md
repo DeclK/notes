@@ -110,3 +110,116 @@ Host random_name
 
 参考 [CSDN](https://blog.csdn.net/ibless/article/details/118610776) 解决问题
 
+## 其他技巧
+
+### VSCode with container
+
+想要 vscode 编辑 docker 容器中的文件，可以按照以下方法 
+
+1. 下载 docker 和 remote-container 插件
+
+2. 在 side bar 中可以看到 docker 工具栏，可以轻松启动容器
+
+   <img src="VSCode note/image-20211028115235998.png"  />
+
+3. 启动容器后，选择 `Attach Visual Studio Code` 就可以打开新的窗口，新窗口的界面就像 vscode 在容器中运行一样
+
+   <img src="VSCode note/image-20211028115404905.png"  />
+
+如果在 Linux 上遇到连接问题 `error "connect EACCES /var/run/docker.sock"` 这是由于 docker 权限造成，可以按照 [官方提示](https://github.com/microsoft/vscode-docker/wiki/Troubleshooting)  可以尝试解决。如果还不能解决，直接通过修改 `docker.sock` 文件的权限一步到位
+
+```shell
+sudo chmod 666 /var/run/docker.sock
+```
+
+### VSCode 免密登录
+
+完成以下步骤即可：
+
+1. 生成本地 ssh-key，和 git 操作是一样的
+
+   ```shell
+   ssh-keygen -t rsa
+   ```
+
+2. 将 `id_rsa.pub` 复制到服务器主机 `~/.ssh` 文件夹下，将 `id_rsa.pub` 的内容加入到 `authorized_keys` 中
+
+   ```shell
+   cat id_rsa.pub >> authorized_keys
+   ```
+
+3. 重启 ssh 服务 `service sshd restart`
+
+其他操作和一般 remote-ssh 是一样的，按默认填写配置文件即可，不需要配置 `IdentityFile` 关键字
+
+```config
+Host Arbitrary_Nane
+  HostName Host_ip
+  User User_Name
+```
+
+### VSCode X11 forward
+
+使用 X server 解决无法可视化图形界面的问题。一般来讲使用 ssh 连接到服务器后是不能使用图形化界面服务的，例如使用  firefox 浏览器。一些软件自带 X server，例如 MobaXterm，当连接上服务器后，可以直接在命令行输入 `firefox`，然后就能弹出浏览器窗口。如果电脑上没有 X server 则需要自行安装，或者直接把 MobaXterm 挂在旁边即可。更多科普内容参考 [博客](https://www.jianshu.com/p/1a296191a122)
+
+现在在 VSCode Remote-SSH 上也支持了 X11 forwarding，可以通过以下步骤完成
+
+首先修改配置 vscode `settings.json` 中 `terminal.integrated.env.windows` 字段，添加本地显示变量
+
+```json
+    "terminal.integrated.env.windows": {
+        "DISPLAY": "127.0.0.1:0.0"
+ }
+```
+
+然后在 ssh 配置文件中加入相关字段
+
+```config
+Host Arbitrary_Nane
+  HostName Host_ip
+  User User_Name
+  ForwardAgent yes
+  ForwardX11 yes
+  ForwardX11Trusted yes
+```
+
+最后在服务器上指定 `DISPLAY` 环境变量
+
+```shell
+export DISPLAY="localhost:10.0"
+```
+
+注意，10.0 这个数字是根据 .Xauthority 文件确定，可以通过 xauth list 命令查看。得到列表可能会比较长，我对这一块不是很了解...经验来看，关注的是最后一行，或者 unix:index 最小的那一行
+
+```shell
+user@linux xauth list
+linux/unix:12  MIT-MAGIC-COOKIE-1  78cbc********************c64
+```
+
+这里看到 `unix:12` 所以我们配置 `DISPLAY` 变量时应该为 `export DISPLAY="localhost:12.0"`
+
+使用 `xeyes` 测试一下，如果看到一个眼睛窗口就成功了😎
+
+### Docker with GUI
+
+如果能够在 Docker 中使用 GUI app 岂不是美滋滋？既然能够在 VSCode 中通过 X11 forward 协议运行图形界面，那么理论上 Docker 也是可以的！根据这两个博客：[Link-1](https://www.cnblogs.com/larva-zhh/p/10531824.html) [Link-2](https://medium.com/@SaravSun/running-gui-applications-inside-docker-containers-83d65c0db110) 进行配置，意想不到地成功了，说明博客中的原理是正确的，只要将 Host 中的 X11 服务器分享给 Docker 就可以，具体步骤如下：
+
+1. Share the Host’s XServer with the Container by creating a volume
+
+   ```shell
+   --volume="$HOME/.Xauthority:/root/.Xauthority:rw"
+   ```
+
+   需要注意的是，每次登录的时 Host `.Xauthority` 是不一样的，如果直接复制该文件的话，要每次更新
+
+2. share the Host’s **DISPLAY** environment variable to the Container
+
+   ```shell
+   --env="DISPLAY"
+   ```
+
+3. Run container with **host** network driver with
+
+   ```shell
+   --net=host
+   ```

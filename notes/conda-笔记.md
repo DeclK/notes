@@ -87,30 +87,9 @@ export PATH=$PATH:/home/.../miniconda3/bin
 
 ### 镜像源设置
 
-编辑 `~/.condarc` 文件，设置镜像源，如没有该文件可使用 `conda config` 创建
+编辑 `~/.condarc` 文件，设置镜像源，例如 [北京外国语大学镜像源](https://mirrors.bfsu.edu.cn/help/anaconda/)，如没有该文件可使用 `conda config` 创建。使用 `conda config --show` 进行查看当前配置
 
-[南京大学镜像源官方帮助文档](https://mirror.nju.edu.cn/help/anaconda)
-
-```.condarc
-channels:
-  - defaults
-show_channel_urls: true
-default_channels:
-  - https://mirror.nju.edu.cn/anaconda/pkgs/main
-  - https://mirror.nju.edu.cn/anaconda/pkgs/r
-  - https://mirror.nju.edu.cn/anaconda/pkgs/msys2
-custom_channels:
-  conda-forge: https://mirror.nju.edu.cn/anaconda/cloud
-  msys2: https://mirror.nju.edu.cn/anaconda/cloud
-  bioconda: https://mirror.nju.edu.cn/anaconda/cloud
-  menpo: https://mirror.nju.edu.cn/anaconda/cloud
-  pytorch: https://mirror.nju.edu.cn/anaconda/cloud
-  simpleitk: https://mirror.nju.edu.cn/anaconda/cloud
-```
-
-使用 `conda config --show` 进行查看当前配置。当然也可以使用其他镜像源，例如：[北京外国语大学镜像源](https://mirrors.bfsu.edu.cn/help/anaconda/) 速度也很快
-
-同时也更新一下 pypi 源
+**建议使用 pip 下载包，而不用 conda，仅使用 conda 管理环境**，更换 pypi 源脚本如下
 
 ```shell
 # 可能需要先更新 pip，一般不用
