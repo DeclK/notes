@@ -57,6 +57,7 @@ clone MMDetection3D 时网络出了问题，clone 失败了，网络真的很重
    # 也可以下载指定版本
    pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu111/torch1.10.0/index.html
    
+   # 安装时最好看一下项目对于两个版本的要求，mmdet 更新很快，尽量使用和项目相同的版本
    pip install mmdet
    pip install mmsegmentation
    ```

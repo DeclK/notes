@@ -48,7 +48,7 @@ date: 2021-08-17 11:32:56
 
 18. SpaceSniffer，查看存储空间
 
-19. utorrent
+19. utorrent，迅雷（迅雷下载起来确实还挺快，但不够轻便）
 
 20. LinuxReader，方便双系统在 Win 中获取 Linux 系统的文件
 

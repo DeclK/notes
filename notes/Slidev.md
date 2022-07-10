@@ -1,3 +1,14 @@
+---
+title: Slidev
+tags:
+  - Slidev
+categories:
+  - 编程
+  - Tools
+mathjax: true
+date: 2022-07-10 15:00:00
+---
+
 # Slidev
 
 偶然看到这个视频 [Markdown也能做精美PPT? Slidev不容错过!](https://www.bilibili.com/video/BV1w94y1U73y)，赶紧来梭哈一把试一试

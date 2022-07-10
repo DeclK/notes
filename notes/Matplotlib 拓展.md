@@ -139,3 +139,18 @@ plt.show()
 
 除了绘制函数，一般的几何图形也能够绘制，一般使用 patches 对象，具体操作可参考 [简书](https://www.jianshu.com/p/8d14238d402a)
 
+## With Jupyter Notebook
+
+在 notebook 中绘画矢量图，并且保存。参考 [zhihu](https://www.zhihu.com/question/59392251/answer/403124614)
+
+```python
+import matplotlib
+import matplotlib.pyplot as plt
+%matplotlib inline
+%config InlineBackend.figure_format = 'svg'
+
+# 输出为 pdf 可以轻松放入 latex 中
+plt.savefig('tmp.pdf', bbox_inches='tight')
+plt.show()
+```
+

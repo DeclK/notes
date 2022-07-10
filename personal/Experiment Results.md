@@ -249,13 +249,23 @@
 
 10. 仅使用 corner 2 center 的信息也能行，不整体还是要差一些，还是不要搞些花里胡哨了，搞完这一波就该上路了
 
-   ```txt
-   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
-   |Vehicle     |72.82       |84.19       |64.89       |49.57       |
-   |Pedestrian  |39.78       |45.99       |33.63       |21.62       |
-   |Cyclist     |61.84       |73.52       |55.80       |39.93       |
-   |mAP         |58.15       |67.90       |51.44       |37.04       |
-   ```
+    ```txt
+    |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+    |Vehicle     |72.82       |84.19       |64.89       |49.57       |
+    |Pedestrian  |39.78       |45.99       |33.63       |21.62       |
+    |Cyclist     |61.84       |73.52       |55.80       |39.93       |
+    |mAP         |58.15       |67.90       |51.44       |37.04       |
+    ```
+
+11. 使用更好的 fusion 方法，SENet 又提升了 0.5 个点，而且是在加入了残差的情况下
+
+    ```txt
+    |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+    |Vehicle     |75.88       |86.35       |70.02       |55.24       |
+    |Pedestrian  |41.79       |49.04       |32.70       |21.85       |
+    |Cyclist     |65.88       |76.07       |60.44       |45.12       |
+    |mAP         |61.19       |70.48       |54.39       |40.73       |
+    ```
 
 ### Supervised Anchor-free
 
@@ -336,9 +346,9 @@
    |Cyclist     |68.25       |78.16       |63.33       |46.09       |
    |mAP         |65.74       |74.50       |59.85       |43.54       |
    ```
-   
+
    在此基础上使用 class specific nms，再提一点点
-   
+
    ```txt
    |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
    |Vehicle     |78.30       |86.61       |74.63       |60.25       |
@@ -346,8 +356,30 @@
    |Cyclist     |68.27       |78.01       |64.05       |46.45       |
    |mAP         |66.00       |74.75       |60.45       |43.72       |
    ```
+
+6. 重大更新，也算是又回到了最初的起点，使用 RepPoints v2 架构获得最佳结果。这还是没有 joint inference 的结果，之后还可以尝试 detach & senet fusion 可能效果更好
+
+   ```txt
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |78.27       |88.18       |74.43       |61.83       |
+   |Pedestrian  |51.63       |59.62       |43.78       |25.14       |
+   |Cyclist     |69.06       |78.93       |64.36       |47.77       |
+   |mAP         |66.32       |75.58       |60.86       |44.91       |
+   ```
+
+### Joint Inference
+
+1. 尝试 RepPoints v2 里面的 joint inference，经过一些尝试都没办法提点。但是使用 IoU 类似的修正策略能够提点，看来是之前的姿势不对哇，下面是 anchor-free 结果，非常高了，已经比较接近 iou rectify 的结果
+
+   ```txt
+   RECTIFIER 0.3
    
-6. With Better fusion mechanism
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |78.34       |87.85       |74.82       |60.63       |
+   |Pedestrian  |51.66       |59.69       |43.03       |24.80       |
+   |Cyclist     |69.04       |79.53       |65.01       |47.45       |
+   |mAP         |66.34       |75.69       |60.95       |44.30       |
+   ```
 
 ### SSL
 
@@ -380,10 +412,6 @@
    |mAP         |62.65       |71.11       |56.61       |41.60       |
    ```
 
-### Joint Inference
-
-尝试 RepPoints v2 里面的 joint inference，经过一些尝试都没办法提点，放弃
-
 ## CenterPoint
 
 ### Supervised
@@ -404,6 +432,14 @@
    |Pedestrian  |49.41       |58.11       |40.44       |24.06       |
    |Cyclist     |67.71       |77.95       |62.80       |46.19       |
    |mAP         |64.94       |74.13       |58.55       |43.65       |
+   
+   class specific nms (maybe)
+   RECTIFIER: [0.0, 0.0, 0.0, 0.0, 0.0]
+   |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+   |Vehicle     |77.69       |87.89       |72.11       |60.05       |
+   |Pedestrian  |51.09       |59.20       |42.52       |25.07       |
+   |Cyclist     |67.25       |77.26       |62.85       |45.56       |
+   |mAP         |65.34       |74.78       |59.16       |43.56       |
    ```
 
 2. ONCE Benchmark implementation，对于行人有更好的表现，但是其他两类都差的多
@@ -500,7 +536,7 @@
 
 ### IoU Regression
 
-
+1. 尝试 GIoU 效果如何
 
 ### SSL
 
@@ -686,6 +722,8 @@
     |Cyclist     |68.30       |78.22       |62.67       |47.62       |
     |mAP         |64.81       |74.15       |58.27       |44.19       |
     ```
+    
+13. 尝试使用更大的 consistency weight，并且尝试更短 epoch 的蒸馏快速实验
 
 
 ## PillarNet

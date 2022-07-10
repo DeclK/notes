@@ -690,7 +690,9 @@ Pytorch 支持将模型转为 ONNX 格式，更多信息就不打算整理了 [E
 
 ## 补充
 
-根据自己在实践中遇到的 torch 常用操作总结，torch 里面习惯使用 `dim=` 而不是 `axis=`
+根据自己在实践中遇到的 torch 常用操作总结
+
+### 1 common functions
 
 ```python
 import torch
@@ -701,7 +703,7 @@ torch.where(condition, x, y)
 torch.clamp(input, min=None, max=None)
 torch.max(input, sum)	# return a tuple (tensor, LongTensor)
 torch.norm(input, dim=None)
-
+# torch 里面习惯使用 dim= 而不是 axis=
 # x is a tensor
 x.repeat(*sizes)	# repeat times
 x.expand(*sizes)	# expand to sizes, shared memory
@@ -712,6 +714,8 @@ import torch.nn.functional as F
 F.interpolate(input, size, mode=)
 F.one_hot(LongTensor, num_classes=-1)
 ```
+
+### 2 set_detect_anomaly
 
 当梯度出现 nan 的时候，可以是用 `set_detect_anomaly` 来进行检查，追溯出现 nan 的代码路径
 
@@ -726,3 +730,44 @@ with torch.autograd.detect_anomaly():
     loss.backward()
 ```
 
+### 3 grid_sample
+
+想要使用插值获得特征可以使用 `grid_sample(input, grid, mode='bilinear', padding_mode='zeros',...)`，这个函数有一些注意点：
+
+1. `input` 和 `grid` 的维度顺序不一样
+2. `grid` 中每一个元素的值域在 `-1~1` 之间，要注意好归一化。归一化通过下面步骤即可完成：
+   1. 明确坐标系，获得原点（feature map 中心点）坐标，获得长宽大小
+   2. 当前坐标减去原点，并除以长宽
+
+```python
+# input: 4-D (N,C,H,W) and 5-D (N,C,D,H,W) input are supported
+# grid: 4-D (N,H,W,2) and 5-D (N,D,H,W,3)
+# 		Usually we use shape like (B, 1, N, 2) grid
+
+# output: (N,C,H,W) or (N,C,D,H,W) where D, H, W is the same as grid
+
+import torch.nn.functional as F
+import torch
+
+input = torch.arange(4).view(1,1,2,2).float()
+print(input.squeeze())
+
+grid = torch.tensor((0., 0.)).view(1, 1, 1, 2)
+out = F.grid_sample(input, grid)
+print(out.squeeze())
+
+grid = torch.tensor((0.5, 0.5)).float().view(1, 1, 1, 2)
+out = F.grid_sample(input, grid)
+print(out.squeeze())
+```
+
+输出为
+
+```python
+tensor([[0., 1.],
+        [2., 3.]])
+tensor(1.5000)
+tensor(3.)
+```
+
+可以看到，格点的值是默认在格点的中间位置的

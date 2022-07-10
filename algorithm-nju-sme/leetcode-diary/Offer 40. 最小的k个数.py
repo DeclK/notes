@@ -1,6 +1,5 @@
 from typing import List
 
-from importlib_metadata import re
 
 
 class Solution:

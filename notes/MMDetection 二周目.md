@@ -1,3 +1,13 @@
+---
+title: MMDetection 二周目
+tags:
+  - MMDetection
+categories:
+  - 编程
+  - OpenMMLab
+date: 2022-07-10 15:40:03
+---
+
 # MMDetection 二周目
 
 MMDetection 其实是一个非常庞大的项目，如果想要掌握每一个细节确实太难了...现在想要快速地上手一些模型，想要了解模型的运行机制，并且在以后方便地运行自己的模型，又感觉之前整理的还是比较零零散散，没有更精炼的章法，现在重新总结尽量把逻辑讲清楚
@@ -93,9 +103,9 @@ python tools/train.py configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712.py
 
 在此之前一句话总结一下 config：config 包含着数据集，模型，训练的所有信息和参数。使用什么数据集，使用什么模型，使用什么样的训练流程，都是由 config 文件决定。很多时候“调参”，大多就是直接调整 config 文件完成
 
-## Training flow & Loss calculation & runner
+## Training flow
 
-下面来读一读 `train.py`，必须看看代码才知道整个流程，这里就总结一些重点流程怎么搭建的
+下面来读一读 `train.py`，必须看看代码才知道整个流程，这里就总结一些重点流程
 
 1. Build config，把配置文件转化成 `Config` 类，类似于 `EasyDict`，可以把 key 当成属性用
 
@@ -162,7 +172,7 @@ python tools/train.py configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712.py
       `cfg` 字典中必须包含 `type` 关键字，通过 `type` 的值，在 `self._module_dict` 中找到对应的对象，然后使用其余的 `cfg` 参数创建对象。这里只举例了建造检测器，实际上任何类都可以通过注册器进行创建
 
 4. Build dataset，原理和 builde detector 一样，都是通过 Registry 来创建 dataset 类
-5. Train detector，这里就是最核心的函数了，单独开一节继续整理
+5. **Train detector**，这里就是最核心的函数了，单独开一节继续整理
 
 ## Train detector
 
@@ -174,7 +184,9 @@ python tools/train.py configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712.py
 
 1. Build dataloader
 2. Build distributed model
-3. Build optimizer
+3. Build optimizer，这里 optimizer 是作为 hook 形式存在，默认使用 `OptimizerHook`
+
+上面的这些对象，都会被送到 runner 里运行
 
 ### Build runner
 
@@ -236,7 +248,7 @@ class CheckInvalidLossHook(Hook):
 
 #### BaseRunner
 
-基类 `BaseRunner` 用于创建相关属性：model, dataloader, optimizer, epoch, iter, **hooks**, ...其中较多的代码都是在创建 `self._hook` 属性。其功能正如上面所说，该属性是一个列表，存储实例化的 hook 对象，并根据 priority 进行排序。通过 `call_hook` 方法，在指定步骤把所有注册的 hook 都遍历一遍，而注册的 hooks 都有自己在特定步骤的功能
+基类 `BaseRunner` 用于初始化相关属性：model, dataloader, optimizer, epoch, iter, **hooks**, ...其中较多的代码都是在创建 `self._hook` 属性。其功能正如上面所说，该属性是一个列表，存储实例化的 hook 对象，并根据 priority 进行排序。通过 `call_hook` 方法，在指定步骤把所有注册的 hook 都遍历一遍，而注册的 hooks 都有自己在特定步骤的功能
 
 ```python
     def call_hook(self, fn_name):
@@ -364,4 +376,4 @@ runner.run(data_loaders, cfg.workflow)
 
 ## TODO
 
-这里就基本把 mmdetection 的逻辑整理完毕，实际上真正使用的时候更加方便，之后再进行整理如何快速实战吧
+这里就基本把 mmdetection 的逻辑整理完毕，实际上真正使用的时候更加方便，之后再进行整理一下如何实战，最好做一些好玩的项目

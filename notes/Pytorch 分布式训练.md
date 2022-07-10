@@ -1,6 +1,18 @@
+---
+title: Pytorch 分布式训练
+tags:
+  - Pytorch
+  - 分布式
+categories:
+  - 编程
+  - Python
+  - Pytorch
+date: 2022-7-10 22:20:38
+---
+
 # Pytorch 分布式训练
 
-对于分布式训练的原理实在是很不清晰！可能计算整理了也不太能完全明白，但是做了总比没做好😭
+对于分布式训练的原理实在是很不清晰！可能就算整理了也不太能完全明白，但是做了总比没做好😭
 
 参考：[zhihu](https://zhuanlan.zhihu.com/p/113694038) [zhihu](https://zhuanlan.zhihu.com/p/358974461) [zhihu](https://zhuanlan.zhihu.com/p/393648544) [bilibili](https://www.bilibili.com/video/BV1xZ4y1S7dG/?spm_id_from=333.788)
 
