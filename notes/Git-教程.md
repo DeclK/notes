@@ -148,6 +148,8 @@ git config --global core.quotepath false
 
 `--hard` 参数其实代表回退到某个 commit 后，该 commit 之后的记录都会被丢弃。但 git 永远都有后悔药吃，如果回退到以前的版本想要再回来，使用 git reflog 查看所有命令
 
+`git reset --soft commit_id` 回退到之前的版本，并不改变工作区和暂存区
+
 ### git checkout
 
 `git checkout filename` 能够让文件回到最近一次 add 或者 commit 时的状态

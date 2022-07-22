@@ -534,9 +534,7 @@
    |mAP         |65.34       |74.78       |59.16       |43.56       |
    ```
 
-### IoU Regression
-
-1. 尝试 GIoU 效果如何
+7. 尝试 GIoU 效果，不太行...
 
 ### SSL
 
@@ -694,7 +692,7 @@
     ```
 
     确实是效果更低了，在大量的 unlabeled sample 下 center loss 都没有作用，现在少量的 augmentation 可能作用也不大
-    
+
 11. 尝试了 se-ssd augmentaion 效果不大好，并且又出现了 teacher 更好的情况
 
     ```txt
@@ -722,8 +720,31 @@
     |Cyclist     |68.30       |78.22       |62.67       |47.62       |
     |mAP         |64.81       |74.15       |58.27       |44.19       |
     ```
+
+13. 使用更大的 consistency weight，得到更好的结果
+
+    ```txt
+    # weight = 4
+    |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+    |Vehicle     |79.11       |89.04       |73.54       |63.25       |
+    |Pedestrian  |49.35       |58.01       |40.90       |23.19       |
+    |Cyclist     |68.94       |78.65       |64.21       |48.21       |
+    |mAP         |65.80       |75.23       |59.55       |44.88       |
     
-13. 尝试使用更大的 consistency weight，并且尝试更短 epoch 的蒸馏快速实验
+    # weight = 8 best
+    |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+    |Vehicle     |79.28       |89.40       |75.06       |62.78       |
+    |Pedestrian  |49.35       |57.57       |42.25       |23.40       |
+    |Cyclist     |69.11       |79.65       |64.17       |47.89       |
+    |mAP         |65.91       |75.54       |60.49       |44.69       |
+    
+    # weight = 16
+    |AP@50       |overall     |0-30m       |30-50m      |50m-inf     |
+    |Vehicle     |78.61       |87.27       |73.27       |61.08       |
+    |Pedestrian  |50.18       |58.40       |43.29       |25.45       |
+    |Cyclist     |68.03       |78.40       |62.30       |44.96       |
+    |mAP         |65.61       |74.69       |59.62       |43.83       |
+    ```
 
 
 ## PillarNet
@@ -747,5 +768,3 @@
    |Cyclist     |59.29       |71.11       |53.07       |36.76       |
    |mAP         |53.75       |63.03       |47.98       |35.06       |
    ```
-
-3. with deeper PillarVFE

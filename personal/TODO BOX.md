@@ -2,22 +2,22 @@
 
 ## Current
 
-1. **秋招岗位投递，Leetcode 算法整理，NMS 重写**
-2. **语义分割实践学习**
+1. **秋招岗位投递，Leetcode 算法整理**
 3. **GFL/Faster R-CNN 代码，总结 mmdetection 运行逻辑**
-4. **论文：Loss & Experiment writing**
-5. 重构 SSL 代码，通过更改 `raw` 的 info 为 labeled info 就可以简单使用。实现 Soft Teacher cls branch，利用 GFL 实现更好的 location consistency loss，bring background loss into attention
-6. CG-SSD 试验：
+4. **C++ 基础学习**
+5. **论文：Loss & Experiment writing**
+6. 重构 SSL 代码，通过更改 `raw` 的 info 为 labeled info 就可以简单使用。实现 Soft Teacher cls branch，利用 GFL 实现更好的 location consistency loss，bring background loss into attention
+7. CG-SSD 试验：
    1. CGAM max pooling corner predictions
    1. IoU + CGAM + GFL
-7. 整理工具库 tensorboard logging yaml
+8. 整理工具库 tensorboard logging yaml
 
 ## Deep Learning Theory
 
 1. 论文整理：
-   1. RPVNet, **Soft teacher(end to end semi-supervise), Dense Teacher**, DKD, **LargeKernel3D & FocalConv**
+   1. RPVNet, **Soft teacher(end to end semi-supervise), Dense Teacher**, DKD, **LargeKernel3D & FocalConv & RDIoU**, FSD
    2. lidar + rgb: **BEVDet** & BEVFusion
-2. 图像目标检测前沿：VitDet, ConvNext（local and long range modeling, focus is not on transformer!）CAE, DETR, GFL, KLD, Localization Distillation for Dense Object Detection
+2. 图像目标检测前沿：VitDet, ConvNext（local and long range modeling, focus is not on transformer!）CAE, **DETR**, GFL, KLD, Localization Distillation for Dense Object Detection，diffusion model, generative model
 3. 胡思乱想
    1. 能不能将自监督和半监督结合起来？（MAE + MoCo）
    2. 工程上的实现：IA-SSD 中的采样策略可能可以用于加速。将 下采样 & 点生成结合起来

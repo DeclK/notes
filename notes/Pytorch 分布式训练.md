@@ -89,7 +89,7 @@ launch 实际上主要完成的工作：
    sampler = torch.utils.data.distributed.DistributedSampler(dataset)
    ```
 
-5. 设置 sampler 的 epoch 数，以确定随机种子?，保证切割数据不重叠
+5. 设置 sampler 的 epoch 数，以确定随机种子，保证切割数据不重叠
 
    ```python
    sampler.set_epoch(epoch)

@@ -5,9 +5,6 @@ class Solution:
         dp = [[False] * (m + 1) for _ in range(n + 1)]
 
         def match(index_j, index_i):
-            """ 考虑空串的比较 """
-            if index_i < 0 and index_j < 0: return True
-            if index_i < 0: return False
             if p[index_j] == s[index_i]: return True
             if p[index_j] == '.': return True
 

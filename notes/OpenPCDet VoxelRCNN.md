@@ -257,7 +257,7 @@ class AnchorHeadTemplate(nn.Module):
         """
 ```
 
-1. `anchors`：一个列表，每个成员对一个类别，一般成员的张量形状都是一样的，`anchors[0].shape = (z, y, x, num_anchor_size, num_anchor_rotation, 7)`，anchors 的生成就不过多介绍了
+1. `anchors`：一个列表，每个成员对一个类别，一般成员的张量形状都是一样的，`anchors[0].shape = (z=1, y, x, num_anchor_size, num_anchor_rotation, 7)`，anchors 的生成就不过多介绍了
 
 2. `box_encoder`：可以看作生成回归目标的类，有两个主要功能：输入 anchors 和 gt_boxes，将返回二者的残差；输入残差和 anchors 返回真实的 boxes
 
@@ -273,7 +273,7 @@ class AnchorHeadTemplate(nn.Module):
            }
    ```
 
-   发现这里没有使用 $sin(\Delta \theta)$ 对 target 进行编码，而是直接使用 $\Delta \theta$ 表示方向残差，之后单独用 `add_sin_difference` 处理。assign targets 是**分批分类**进行处理的，这里贴一下其中的核心代码，了解处理一个 sample 一个类该怎么做，因为制作 targets 的过程比较细，不好好看一下真的不清晰
+   返回的 `bbox_targets` 就是 boxes 和 anchor 之间的残差，具体可以参考之前 SECOND 笔记。对于角度残差不直接使用 smooth L1 loss，而是用 `add_sin_difference` 进行正弦编码处理。assign targets 是**分批分类**进行处理的，这里贴一下其中的核心代码
 
    ```python
    labels = torch.ones((num_anchors,), dtype=torch.int32, device=anchors.device) * -1
@@ -491,8 +491,8 @@ def forward(self, batch_dict):
       ```
 
    2. 将 gt 转换到对应的 roi 坐标系当中（平移+旋转），需要注意的是还对方向相反的 gt 进行了 flip orientation 处理，以减少错误预测的损失。虽然这不是真实的标签，但损失太大可能不利于维护 R-CNN 训练的稳定
-   
-   2. 这里提一下，所有获得的 target 都使用 detach 从计算图中分离，也就是不希望更新用于预测 roi 部分的网络参数，仅关注用于预测残差以及 backbone 中的网络参数。建议画一下计算图
+
+   这里提一下，所有获得的 target 都使用 detach 从计算图中分离，也就是不希望更新用于预测 roi 部分的网络参数，仅关注用于预测残差以及 backbone 中的网络参数。建议画一下计算图
 
 #### Loss 相关
 

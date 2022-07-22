@@ -63,4 +63,32 @@ def nms(data, thresh):
         ovr = inter / (areas[i] + areas[index] - inter)
         index = index[ovr < thresh]
     return np.stack(keep, axis=0)
+
+
+def nms(boxes, score, thresh):
+    """
+    NMS scripts based on numpy.
+    Params:
+        - data: (N, 5)
+        - thresh: float
+        - score: (N,)
+    """
+    lt = boxes[:, :2]
+    rb = boxes[:, 2:]
+    area = np.prod(rb - lt, axis=1)
+    index = np.argsort(score)
+    keep = []
+    while len(index) > 0:
+        cur_i = index[0]
+        cur_box = boxes[cur_i]
+        keep.append(cur_box)
+
+        lt_inter = np.maximum(cur_box[:2], boxes[index, :2])
+        rb_inter = np.minimum(cur_box[2:], boxes[index, 2:])
+        wh_inter = np.clip(rb_inter - lt_inter, a_min=0)
+        inter_area = np.prod(wh_inter, axis=1)
+
+        iou = inter_area / (area[cur_i] + area[index] - inter_area)
+        index = index[iou < thresh]
+    return np.stack(keep, axis=0)
 ```

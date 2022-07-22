@@ -9,54 +9,52 @@ date: 2021-08-17 11:32:56
 ---
 ## Windows 的软件
 
-1. Listary，搜索神器
+1. potplayer + 简洁皮肤定制，该播放强比你想象中更强大，对各种格式都有很好的兼容性，还能实时翻译字幕以及录制视频
 
-2. potplayer + 简洁皮肤定制，该播放强比你想象中更强大，对各种格式都有很好的兼容性，还能实时翻译字幕以及录制视频
+2. bandzip
 
-3. bandzip
+3. bilibili 直播姬，OBS，对于 OBS 的简要教程放在后面
 
-4. bilibili 直播姬，OBS，对于 OBS 的简要教程放在后面
+4. clash
 
-5. clash
+5. 滴答清单
 
-6. 滴答清单
+6. chrome，油猴插件：Bilibili Evolved，zotero，google translate，youtube 双语字幕, translatesubtitles.co/，github-增强
 
-7. chrome，油猴插件：Bilibili Evolved，zotero，google translate，youtube 双语字幕, translatesubtitles.co/，github-增强
+7. 印象笔记
 
-8. 印象笔记
+8. typora
 
-9. typora
+9. latex
 
-10. latex
+10. vscode
 
-11. vscode
-
-12. zotero
+11. zotero
 
     - 推荐 plugin: zotero citation counts manager 用于爬取文献引用。想要将 zotero 的文献进行转移时，只需要转移 storage 及其 zotero.split 文件即可
 
     - zotero 也有很方便的 word 插件，在需要的文献后面 add/edit citation 就可进行插入，然后在文末 add/edit bibliography 即可
     - 为了保障 zotero 云端的空间，我选择了在拉取数据时不下载 pdf，这样空间就完全够用了。将 pdf 文档单独存放到其他文件夹中，并使用自己的脚本进行重新命名，解决。脚本代码放在后面
 
-13. git，当 github 下载文件慢时请搜索 github 镜像资源
+12. git，当 github 下载文件慢时请搜索 github 镜像资源
 
-14. 百度网盘 阿里云盘
+13. 百度网盘 阿里云盘
 
-15. ps pr
+14. ps pr
 
-17. WinSCP，Xshell，MobaXterm（强烈推荐，可以替代 WinSCP & XShell）
+15. WinSCP，Xshell，MobaXterm（强烈推荐，可以替代 WinSCP & XShell）
 
-18. SpaceSniffer，查看存储空间
+16. SpaceSniffer，查看存储空间
 
-19. utorrent，迅雷（迅雷下载起来确实还挺快，但不够轻便）
+17. utorrent，迅雷（迅雷下载起来确实还挺快，但不够轻便）
 
-20. LinuxReader，方便双系统在 Win 中获取 Linux 系统的文件
+18. LinuxReader，方便双系统在 Win 中获取 Linux 系统的文件
 
-21. Snipaste，好用的截图工具，以后再也不用打开 QQ 再截图了😎
+19. Snipaste，好用的截图工具，以后再也不用打开 QQ 再截图了😎
 
-22. Drawio & Excalidrao，用于画流程图/网络架构
+20. Drawio & Excalidrao，用于画流程图/网络架构
 
-24. Utools，介绍自己常用的功能：中键快速用 cmd/vscode 打开文件夹；剪切板查看历史剪切记录；网页快开能够实现迅速搜索；中键显示翻译；OCR 图片转文字；Linux 命令查询插件；图片压缩插件；
+21. Utools，介绍自己常用的功能：中键快速用 cmd/vscode 打开文件夹；剪切板查看历史剪切记录；网页快开能够实现迅速搜索；中键显示翻译；OCR 图片转文字；Linux 命令查询插件；图片压缩插件；
 
 ## OBS 简要教程
 

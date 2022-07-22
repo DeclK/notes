@@ -96,28 +96,12 @@ date: 2021-07-12 14:36:42
 
    (2022/1/31 更新) 尝试使用命令行在 ubuntu 16.04 上更新驱动，不太顺利，因为 ppa 中好像没有对这 16.04 进行支持，最新仅支持到 430，通过其他方法可能成功，但我就不进行过多尝试了。最终使用 `sudo apt install nvidia-418` 恢复了之前的驱动版本，其中遇到的报错 `NVIDIA NVML Driver/library version mismatch`，参考了 [StackOverflow ](https://stackoverflow.com/questions/43022843/nvidia-nvml-driver-library-version-mismatch) 中的第二个回答解决
 
-   教程里还教了如何更新 apt source 为阿里云镜像源，镜像中的软件会持续而且下载速度很快（但现在好像默认的源速度也不错了）。这里我选择更换为 [北外镜像源](https://mirrors.bfsu.edu.cn/help/ubuntu/)，20.04 版本如下所示
-
-     ```source.list
-   # 默认注释了源码镜像以提高 apt update 速度，如有需要可自行取消注释
-   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal main restricted universe multiverse
-   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal main restricted universe multiverse
-   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-updates main restricted universe multiverse
-   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-updates main restricted universe multiverse
-   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-backports main restricted universe multiverse
-   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-backports main restricted universe multiverse
-   deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-security main restricted universe multiverse
-   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-security main restricted universe multiverse
-   
-   # 预发布软件源，不建议启用
-   # deb https://mirrors.bfsu.edu.cn/ubuntu/ focal-proposed main restricted universe multiverse
-   # deb-src https://mirrors.bfsu.edu.cn/ubuntu/ focal-proposed main restricted universe multiverse
-     ```
+   教程里还教了如何更新 apt source 为阿里云镜像源，镜像中的软件会持续而且下载速度很快（但现在好像默认的源速度也不错了）。这里我选择更换为 [北外镜像源](https://mirrors.bfsu.edu.cn/help/ubuntu/)
 
    如果是新的系统，一定要记得 `sudo apt update && apt upgrade` 这样在安装其他环境的时候会避免一些莫名其妙的错误
-
+   
    同时教程里也设置了 sudo，让每一次 sudo 都不需要输入密码
-
+   
 7. pip install 遇到问题 enter your password to unlock your login keyring
 
    解决方法，直接cancel，或者在passwd and key中更改密码

@@ -374,6 +374,10 @@ class BaseRunner(metaclass=ABCMeta):
 runner.run(data_loaders, cfg.workflow)
 ```
 
+## Test
+
+
+
 ## TODO
 
 这里就基本把 mmdetection 的逻辑整理完毕，实际上真正使用的时候更加方便，之后再进行整理一下如何实战，最好做一些好玩的项目
