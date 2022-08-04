@@ -7,7 +7,8 @@ categories:
   - 编程
   - Python
   - Pytorch
-date: 2022-7-10 22:20:38
+abbrlink: b45af34d
+date: 2022-07-10 22:20:38
 ---
 
 # Pytorch 分布式训练

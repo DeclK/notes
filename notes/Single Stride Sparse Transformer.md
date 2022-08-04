@@ -5,6 +5,7 @@ tags:
 categories:
   - papers
 mathjax: true
+abbrlink: 64d79955
 ---
 
 # Single Stride Sparse Transformer
