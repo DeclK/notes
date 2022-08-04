@@ -730,6 +730,8 @@ with torch.autograd.detect_anomaly():
     loss.backward()
 ```
 
+出现 nan 一个可能是梯度爆炸，还有可能是不可导例如对非正数开根号 `pow(x, 0.5)`，实际上如果是小数乘方就需要多加注意了
+
 ### 3 grid_sample
 
 想要使用插值获得特征可以使用 `grid_sample(input, grid, mode='bilinear', padding_mode='zeros',...)`，这个函数有一些注意点：

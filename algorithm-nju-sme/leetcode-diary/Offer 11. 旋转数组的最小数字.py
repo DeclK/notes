@@ -28,9 +28,9 @@ class Solution:
                 return numbers[left]
             mid = (left + right) // 2
             if numbers[mid] < numbers[left]:
-                right = mid # 保证右侧指针不会越界
+                right = mid
             elif numbers[mid] > numbers[left]:
                 left = mid + 1
             else:
                 left += 1
-        return numbers[right]
+        return numbers[left]

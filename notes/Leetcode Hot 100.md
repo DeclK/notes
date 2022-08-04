@@ -257,4 +257,38 @@ TODO
 
 #### [416. 分割等和子集](https://leetcode.cn/problems/partition-equal-subset-sum/)
 
-这个和很容易找到，用深度搜索
+这个和很容易找到，一开始想用深度搜素去做，应该马上反应过来会超时。于是思路就集中到动态规划上面，状态为 `dp[i][j]` 表示使用前 i 个数，和为 j 的可能性
+
+#### [438. 找到字符串中所有字母异位词](https://leetcode.cn/problems/find-all-anagrams-in-a-string/)
+
+首先是判断两个字符串是不是异位词，这个是常数时间复杂度，知道这个了过后就可以滑动窗口顺序遍历了
+
+#### [448. 找到所有数组中消失的数字](https://leetcode.cn/problems/find-all-numbers-disappeared-in-an-array/)
+
+常规做法很简单，要使用 O(1) 空间复杂度无非就几个选择：1. 双指针；2. 原地运算；3. 把数组当作字典来用
+
+这一题就恰好可以使用 3 这个方法。不断地去把数字放到它该去的地方
+
+#### [461. 汉明距离](https://leetcode.cn/problems/hamming-distance/)
+
+标准的位运算题目，`&1` 就可以得到尾数，然后不断平移 `>>` 即可
+
+#### [494. 目标和](https://leetcode.cn/problems/target-sum/)
+
+动态规划其实思路很简单，但是要做一些坐标系转换。明明使用深度搜索不会超时的...
+
+#### [538. 把二叉搜索树转换为累加树](https://leetcode.cn/problems/convert-bst-to-greater-tree/)
+
+使用的比较粗糙的方法
+
+#### [617. 合并二叉树](https://leetcode.cn/problems/merge-two-binary-trees/)
+
+递归合并
+
+#### [621. 任务调度器](https://leetcode.cn/problems/task-scheduler/)
+
+我觉得这一题应该是个困难题，比较考察对于问题本质分析，不能使用递归完成。这一题要用一种“桶”的模拟思想会比较好理解。这个桶能够保证我们的任务在规则之内比较好放置任务，如果遇到矛盾也有统一的方法能够方便解决
+
+#### [739. 每日温度](https://leetcode.cn/problems/daily-temperatures/)
+
+单调栈解决

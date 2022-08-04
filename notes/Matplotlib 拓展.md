@@ -14,6 +14,10 @@ date: 2021-11-16 00:00:00
 
 [pyplot api doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.html#module-matplotlib.pyplot) 放一个 api 链接，便于查找 api
 
+## Figure settings
+
+TODO
+
 ## Axis limit
 
 有两个推荐的方法

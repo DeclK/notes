@@ -1,3 +1,12 @@
+---
+title: MMDetection Dataset & Model & Runner
+tags:
+  - MMDetection
+categories:
+  - 编程
+  - OpenMMLab
+---
+
 ## MMDetection Dataset & Model & Runner
 
 之前的**二周目**整理主要关注 training flow，除了 training 外，还需要进一步了解 Dataset & Model。现在要进一步对其中的**核心类**进行整理，包括他们的构建逻辑、前向方程等

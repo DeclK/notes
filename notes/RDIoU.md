@@ -1,3 +1,12 @@
+---
+title: RDIoU
+tags:
+  - RDIoU
+categories:
+  - papers
+mathjax: true
+---
+
 # RDIoU
 
 ---
@@ -18,7 +27,9 @@ Sheng, Hualian, et al. *Rethinking IoU-Based Optimization for Single-Stage 3D Ob
 
 <img src="RDIoU/image-20220722135712534.png" alt="image-20220722135712534" style="zoom:80%;" />
 
-在 PillarNet 中也应用了类似的思想，我实验下来效果并不是特别好。我估计单独使用这个 IoU loss 的提升也是相对有限的，在论文里也没有提到这个消融实验
+需要注意的是 RDIoU 的计算是在 regression target 和 box pred 之间的，计算的是残差 RDIoU。这里应该是为了节省计算，而没有把其复原回原始的 boxes
+
+在 PillarNet 中也应用了类似的解耦思想，我实验下来效果并不是特别好。我估计单独使用这个 IoU loss 的提升也是相对有限的，在论文里也没有提到这个消融实验
 
 ## GIoU & DIoU
 
@@ -49,8 +60,9 @@ $$
 \rho_{c}=\frac{\delta\left(\boldsymbol{c}_{o}, \boldsymbol{c}_{t}\right)}{\operatorname{Diag}} \\
 \text { Diag }=\mathcal{G}\left(x_{o}, x_{t}, l_{o}, l_{t}\right)+\mathcal{G}\left(y_{o}, y_{t}, w_{o}, w_{t}\right)+\mathcal{G}\left(z_{o}, z_{t}, h_{o}, h_{t}\right)+\mathcal{G}\left(\theta_{o^{\prime}}, \theta_{t^{\prime}}, k, k\right) \text {, } \\
 \mathcal{G}\left(a_{o}, a_{t}, b_{o}, b_{t}\right)=\left(\max \left(a_{o}+\frac{b_{o}}{2}, a_{t}+\frac{b_{t}}{2}\right)-\min \left(a_{o}-\frac{b_{o}}{2}, a_{t}-\frac{b_{t}}{2}\right)\right)^{2}
-
 $$
+
+把角度编码为三角函数 $\theta_o' = sin\theta_ocos\theta_t ,\ \  \theta_t' = cos\theta_osin\theta_t$
 
 ## RDIoU + GFL
 
@@ -77,4 +89,4 @@ $$
 
 在 KITTI 上效果爆炸
 
-<img src="RDIoU/image-20220722152727155.png" alt="image-20220722152727155" style="zoom:67%;" />
+<img src="RDIoU/image-20220722152727155.png" alt="image-20220722152727155" style="zoom: 67%;" />

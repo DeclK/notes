@@ -14,7 +14,14 @@ date: 2022-03-13 12:20:38
 
 ## SigmoidFocalClassificationLoss
 
-这个类实现了 focal loss，关于 focal loss 可以看这篇 [知乎](https://zhuanlan.zhihu.com/p/80594704)，白话来说：focal loss 使用了两个技巧改变 loss function 的分布：
+这个类实现了 focal loss，关于 focal loss 可以看这篇 [知乎](https://zhuanlan.zhihu.com/p/80594704)，公式如下：
+$$
+F L=\left\{\begin{array}{rll}
+-\alpha(1-p)^{\gamma} \log (p), & \text { if } & y=1 \\
+-(1-\alpha) p^{\gamma} \log (1-p), & \text { if } & y=0
+\end{array}\right.
+$$
+白话来说：focal loss 使用了两个技巧改变 loss function 的分布：
 
 1. alpha 可以调节正负样本 loss 分布 
 2. gamma 可以条件难易样本 loss 分布

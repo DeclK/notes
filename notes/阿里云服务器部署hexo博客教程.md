@@ -242,35 +242,25 @@ https://tinypng.com/
 
 <img src="阿里云服务器部署hexo博客教程/image-20210802105224250.png" style="zoom: 50%;" />
 
-这可不能忍，于是我根据 [CSDN 教程](https://blog.csdn.net/qq_33505555/article/details/106046616) 给阿里云服务器配置 SSL 证书，使用的是 FreeSSL 一个提供免费 https 证书申请的网站
+我使用的是 [FreeSSL](https://freessl.cn/) 一个提供免费 https 证书申请的网站
 
 ### 使用 FreeSSL 申请证书
 
-老规矩，先看看 [官网教程](https://blog.freessl.cn/tag/ssl-apply/)
+可以先看看 [官网教程](https://blog.freessl.cn/freessl-apply-cert-and-install-with-one-click/) 了解一下流程，由于教程比较老，所以多半不会成功
 
-1. 生成 CSR [什么是 CSR ? 腾讯云文档](https://cloud.tencent.com/document/product/400/5367)
+自己的方法如下：
 
-   教程中推荐使用 Keymanager 生成
+1. 生成 CSR，这一步需要下载 Keymanager，生成方式选择**离线生成**即可
 
-2. 在阿里云服务器中配置 DNS 解析，并对配置进行检测和验证
+2. 在阿里云服务器中配置 DNS 解析（在阿里云中搜索 **云解析DNS**），可参考 [bilibili](https://www.bilibili.com/video/BV1i7411T71N)
 
-   验证成功后可以在 FreeSSL 控制台中查看证书
+   注意在添加解析记录时，**记录类型**有的是 txt，有的是 CNAME 等，可以直接问 FreeSSL 的客服，回复非常快。解析完成过后继续在 FreeSSL 中进行验证，这样就会自动生成证书并导入到 keymanager 当中
 
-   <img src="阿里云服务器部署hexo博客教程/image-20210802141326078.png" style="zoom:33%;" />
-
-   在“更多操作”中可以下载证书，一个 pem 文件，一个 private.key
-
-   <img src="阿里云服务器部署hexo博客教程/image-20210802141919162.png"  style="zoom:33%;" />
-
-3. 然后将证书 .pem 文件导入到 keymanager 中
+3. 通过 keymanager 导出证书
 
    <img src="阿里云服务器部署hexo博客教程/image-20210802170924734.png" style="zoom: 25%;" />
 
-4. 进行一键部署。基于你自己的框架，选择不同的部署方法，我选择部署到 Nginx 上。这里的“一键部署”实质上就是上传你的证书到服务器上
-
-   <img src="阿里云服务器部署hexo博客教程/image-20210802171457165.png" style="zoom: 33%;" />
-
-   部署成功过后，使用 [myssl.com ](https://myssl.com/) 检查网站的安全性。但是如果你的 Nginx 配置不对的话，
+4. 部署 ssl 证书到服务器上。基于自己的框架，选择不同的[部署方法](https://blog.freessl.cn/how-do-i-install-an-ssl-certificate-collection/)，Nginx 参考 [教程](https://blog.freessl.cn/how-to-install-cert-in-nginx/)
 
 5. 配置 Nginx
 
@@ -295,7 +285,7 @@ https://tinypng.com/
        }
    ```
 
-   配置好过后重启 `nginx -s reload`
+   配置好过后重启 `sudo nginx -s reload`
 
 6. 现在访问网站，旁边就有高贵的:lock:
 

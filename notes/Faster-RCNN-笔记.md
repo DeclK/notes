@@ -130,3 +130,14 @@ Faster R-CNN的训练，是在已经训练好的model（如VGG，ZF）的基础�
 6. 重复3
 
 可以看出这是一种类似迭代的过程，但只循环了2次，文章提出更多的循环并不会带来相应的提升
+
+## Codes
+
+[Faster R-CNN](https://www.bilibili.com/video/BV1af4y1m7iL) [FPN](https://www.bilibili.com/video/BV1dh411U7D9)
+
+实际上现在的 Faster R-CNN 的结构已经和最初提出来的结构不太一样了，下面逐点介绍：
+
+1. 加入了 FPN 结构，需要对每一个尺度的特征层做单独的处理。这也是增加整个模型复杂度的一个步骤，在不同分辨率上的特征图谱生成对应的 anchors，获得 proposals，这些 proposals 将统一生成 rois。不同大小的 rois 将分配到不同本编率的特征图谱进行 refine，即第二阶段的预测
+2. 训练的方式不再是分开训练，而是使用端到端训练
+3. 使用 [RoI Align](https://paperswithcode.com/method/roi-align) 去替代 RoI Pooling。简单来讲利用了 bilinear interpolation 更方便获得采样点特征
+

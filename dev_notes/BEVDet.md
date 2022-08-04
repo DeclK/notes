@@ -92,6 +92,7 @@ $$
 
 1. frustum 转移到 lidar 坐标系过后是近处稠密远处稀疏的，可以更针对地进行采样
 2. 可以加入一些中间监督来对 view transformer 进行训练
-3. 做 `voxel_pooling` 的时候可以使用更好的 pooling 策略，而不是简单的 sum
-4. 一定要使用更大的感受野去处理（deformable convolution, big kernel, transformer）
-5. 可以加入时序信息
+3. 对经过 view transformer 过后的点云再次进行 BEV 增广（这在 BEVDet 中已经提出）
+4. 做 `voxel_pooling` 的时候可以使用更好的 pooling 策略，而不是简单的 sum
+5. 一定要使用更大的感受野去处理（deformable convolution, big kernel, transformer）
+6. 可以加入时序信息
