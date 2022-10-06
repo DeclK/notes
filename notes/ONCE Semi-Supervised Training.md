@@ -8,6 +8,7 @@ categories:
   - OpenMMLab
 mathjax: true
 abbrlink: 313cd849
+date: 2022-06-30
 ---
 
 # ONCE Semi-Supervised Training
