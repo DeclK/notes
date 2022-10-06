@@ -572,6 +572,45 @@ print(f'x_grad:\n{x.grad}','\n')
 
 这是为什么呢？我的理解是计算图在构建完成之后，仅进行 detach 不会对已经生成的计算图进行修改，且 tensor 本身的值没有发生改，计算图就可以使用该值进行梯度计算。而之前的 for 循环每一次循环都重新创建了计算图
 
+### Function
+
+参考 [zhihu](https://zhuanlan.zhihu.com/p/344802526) 
+
+可以通过使用 `Function` 自己定义梯度的计算方式。这里以一个指数函数为例，计算其前向和后向方程
+
+```python
+import torch
+from torch.autograd import Function
+
+class Exp(Function):
+
+    @staticmethod
+    def forward(ctx, i):
+        result = i.exp()
+        ctx.save_for_backward(result)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        result, = ctx.saved_tensors
+        return grad_output * result
+
+#Use it by calling the apply method:
+input = torch.ones(1) * 2
+input.requires_grad = True
+output = Exp.apply(input)
+output.backward()
+
+print(input.grad)
+```
+
+几个要点：
+
+1. 继承 `Function`，实现 `forward & backward` 方法
+2. 使用装饰器 `@statcimethod` 修饰 `forward & backward` 方法
+3. `forward & backward` 方法的第一个参数 `ctx` 可用于存储和获取需要的变量，通过 `ctx.save_for_backward & ctx.saved_tensors` 实现，并且这两个方法只能调用一次
+4. 使用 `apply` 就可调用该方程
+
 ## Optimization
 
 这里将是整个深度学习耗时最长的部分，需要将之前的数据集送入到模型之中，使用优化算法改进模型。这一部分沿用之前的 `Fashion-MNIST` 数据集和神经网络，完整代码参考 [prerequisite code](https://pytorch.org/tutorials/beginner/basics/optimization_tutorial.html#prerequisite-codehttps://pytorch.org/tutorials/beginner/basics/optimization_tutorial.html#prerequisite-code)
@@ -703,6 +742,7 @@ torch.where(condition, x, y)
 torch.clamp(input, min=None, max=None)
 torch.max(input, sum)	# return a tuple (tensor, LongTensor)
 torch.norm(input, dim=None)
+torch.randperm(n)		# return a random permutation of 0~n-1
 # torch 里面习惯使用 dim= 而不是 axis=
 # x is a tensor
 x.repeat(*sizes)	# repeat times
@@ -713,6 +753,8 @@ x.repeat_interleave(tensor)	# numpy.repeat()
 import torch.nn.functional as F
 F.interpolate(input, size, mode=)
 F.one_hot(LongTensor, num_classes=-1)
+
+torch.set_printoptions(precision=2, sci_mode=False)	# 设置打印形式
 ```
 
 ### 2 set_detect_anomaly
@@ -773,3 +815,11 @@ tensor(3.)
 ```
 
 可以看到，格点的值是默认在格点的中间位置的
+
+### 4 gather
+
+把握两个原则：
+
+1. `input & index` 他们的维度数量是一样的，所以选择是 element wise 进行，`index` 的维度长度可以小于 `input`
+2. `gather` 是在某一个维度进行的，可以想象固定其他维度不懂，在某一个 axis 上面滑动选择
+3. 由于其他维度是固定的，TODO

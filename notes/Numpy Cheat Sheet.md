@@ -156,8 +156,36 @@ array[array > 5]
 array[(array>5) & (array%2==0)]
 
 # Fancy indexing
-array[[1, 2, 3],:]	# could be any iterable int array
+array[[2, 1, 3],:]	# could be any iterable int array
 ```
+
+提一些注意点：
+
+1. 在多个维度使用花式索引时，注意维度变化（下面代码写的是 pytorch，但 numpy 也是一样的）
+
+   ```python
+   import torch
+   a = torch.randn(1,3,4,5)
+   
+   b = a[:, [0, 1],:, [0, 1]]    	# (2, 1, 4)
+   # equal with concat a[:, 0, :, 0] & a[:, 1, :, 1]
+   
+   index = torch.tensor([0, 1])[None, :].expand((6, -1))
+   c = a[:, [0, 1],:, index]    	# (6, 2, 1, 4)
+   d = a[:, index, :, index]       # (6, 2, 1, 4)
+   
+   print(b.shape)
+   print(c.shape)
+   print(d.shape)
+   ```
+
+   可以看到，但多个维度都使用花式索引的时候，所有维度的花式索引的 tensor/iterable 必须形状相同，或能够广播到同一个维度上。并且花式索引的维度会被消除，移动到前方
+
+2. 通常使用的布尔索引其形状和被索引张量是一致的，最后生成一个单维度的张量。但也可以用布尔索引在某个维度上进行索引（需要保持布尔索引的形状和该维度的形状一致），此时可把布尔索引当作花式索引来看待
+
+   ```python
+   e = a[:, [True, False, True], :, [0, 1]]
+   ```
 
 ## Broadcast 广播
 
@@ -196,7 +224,17 @@ b = np.fromfile(binfile, dtype=a.dtype)
 print(b)
 ```
 
+numpy 还可以设置打印参数
 
+```python
+np.set_printoptions(precision=4, linewidth=200, suppress=True)
+```
 
+precision：控制输出结果的精度(即小数点后的位数)，默认值为8
 
+threshold：当数组元素总数过大时，设置显示的数字位数，其余用省略号代替
+
+linewidth：每行字符的数目，其余的数值会换到下一行
+
+suppress：小数是否需要以科学计数法的形式输出
 

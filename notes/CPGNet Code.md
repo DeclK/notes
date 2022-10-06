@@ -46,7 +46,7 @@ local_rank = int(os.environ["LOCAL_RANK"])
 
 ### hydra & omegaconf
 
-建议阅读 [hydra doc](https://hydra.cc/docs/intro/) 来了解如何使用 hydra
+建议阅读 [hydra doc](https://hydra.cc/docs/intro/) 来了解如何使用 hydra，其底层是 [OmegaConf](https://mybinder.org/v2/gh/omry/omegaconf/master?filepath=docs%2Fnotebook%2FTutorial.ipynb)
 
 1. [Basic Example](https://hydra.cc/docs/intro/#basic-example)
 

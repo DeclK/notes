@@ -112,7 +112,7 @@ docker stop ctn_id
 docker kill ctn_id					# 强制停止
 
 # 进入运行中的容器
-docker exec -it ctn_id				# 进入容器并开启新终端
+docker exec -it ctn_id /bin/bash	# 进入容器并开启新终端
 docker attach ctn_id				# 进入正在执行的终端
 
 # 删除容器

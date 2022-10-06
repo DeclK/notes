@@ -33,6 +33,8 @@ date: 2021-07-12 14:36:42
    sh install.sh
    ```
 
+   如果由于网络原因可以选择使用 gitee 镜像 `https://gitee.com/mirrors/oh-my-zsh/raw/master/tools/install.sh`
+
 3. 安装插件。插件推荐 [zsh-autusuggestions](https://github.com/zsh-users/zsh-autosuggestions)，把这个项目 clone 到 `~/.oh-my-zsh/custom/plugins` 中
 
    ```shell

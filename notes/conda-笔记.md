@@ -98,5 +98,8 @@ pip install pip -U --user	# Windows
 
 # 设置镜像
 pip config set global.index-url https://mirrors.bfsu.edu.cn/pypi/web/simple
+
+# 镜像源可替换，下面是豆瓣镜像源也比较稳定
+pip config set global.index-url https://pypi.doubanio.com/simple/
 ```
 

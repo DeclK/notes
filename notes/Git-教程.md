@@ -168,15 +168,15 @@ git config --global core.quotepath false
 
 <img src="Git-教程/branch_3.png" style="zoom:50%;" />
 
-`git branch` 可以查看分支情况
+`git branch` 可以查看分支情况，使用 `git branch --all` 查看所有分支，包含远程分支
 
 `git branch -d branch_name` 用于删除分支
 
 ### git switch
 
-`git switch -c branch_name` 使用 git swich 来创建分支
+`git switch -c branch_name` 使用 git switch 来创建分支
 
-`git switch branch_name` 使用 git swich 来切换分支
+`git switch branch_name` 使用 git switch 来切换分支
 
 `git switch -c branch_name origin/branch_name` 创建分支并复制远程的分支到本地
 
@@ -191,6 +191,8 @@ git config --global core.quotepath false
 先使用 `git status` 查看哪个文件发生冲突，然后使用 vim 编辑，git 会自动在文档中标明冲突的地方。怎样修改无所谓，只要你 add & commit 过后，git 就会默认冲突解决，并将你的文件作为最新的版本加入版本库中，更新 working tree
 
 如果对于 git 中 recursive 3-way merge 算法感兴趣，可以参看 [维基百科](https://en.wikipedia.org/wiki/Merge_(version_control))
+
+可以使用 `git diff HEAD` 来查看哪些文件有改变，或者有冲突，查看单个文件的话可以直接 `git diff (--staged) file`
 
 ## 远程仓库
 
@@ -249,6 +251,25 @@ gitee 为国内网站，传输速度更快。通过以下步骤将本机与远�
 > 远程仓库实际上和本地仓库没啥不同，纯粹为了7x24小时开机并交换大家的修改。GitHub就是一个免费托管开源代码的远程仓库。但是对于某些视源代码如生命的商业公司来说，既不想公开源代码，又舍不得给GitHub交保护费，那就只能自己搭建一台Git服务器作为私有仓库使用。
 
 依旧是参考 [廖雪峰教程](https://www.liaoxuefeng.com/wiki/896043488029600/899998870925664)，不过自己在实现时有一些区别。在进行 git clone 操作时，克隆的链接不应该使用绝对路径 `git clone git@server:/srv/sample.git` 应该去掉第一个斜杠 `git clone git@server:srv/sample.git`
+
+### 仅保留当前 commit
+
+随着 commit 的数量越来越多，可能我们只想保留最新的代码，不想再做历史版本的管理了。可以使用如下方法
+
+```shell
+# 1. 切换分支
+git checkout --orphan latest_branch
+# 2. 添加到暂存区
+git add -A
+# 3. 提交更改
+git commit -am "commit message"
+# 4. 删除分支
+git branch -D master
+# 5. 重命名分支
+git branch -m master
+# 6. 强制提交到远程仓库
+git push -f origin master
+```
 
 ## Git + IDE
 

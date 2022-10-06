@@ -375,9 +375,23 @@ class BaseRunner(metaclass=ABCMeta):
 runner.run(data_loaders, cfg.workflow)
 ```
 
-## Test
+#### Lr schedule
 
+TODO 
 
+[MMDetection doc](https://mmdetection.readthedocs.io/en/latest/tutorials/customize_runtime.html#customize-training-schedules)
+
+## First Test
+
+可以借用 mmlab 训练好的模型进行快速测试，针对于上面提到的模型，可以通过 [Pascal VOC model zoo](https://github.com/open-mmlab/mmdetection/tree/master/configs/pascal_voc) 里面下载
+
+```python
+# single-gpu testing
+python tools/test.py \
+    configs/pascal_voc/faster_rcnn_r50_fpn_1x_voc0712.py \
+    /mmdetection/ckpt/faster_rcnn_r50_fpn_1x_voc0712_20220320_192712-54bef0f3.pth \
+    --eval mAP
+```
 
 ## TODO
 

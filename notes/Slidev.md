@@ -12,7 +12,7 @@ date: 2022-07-10 15:00:00
 
 # Slidev
 
-偶然看到这个视频 [Markdown也能做精美PPT? Slidev不容错过!](https://www.bilibili.com/video/BV1w94y1U73y)，赶紧来梭哈一把试一试
+偶然看到这个视频 [Markdown也能做精美PPT? Slidev不容错过!](https://www.bilibili.com/video/BV1w94y1U73y)，赶紧来试一试
 
 github: [slidev](https://github.com/slidevjs/slidev), [ducument](https://cn.sli.dev/guide/)
 
@@ -89,9 +89,10 @@ github: [slidev](https://github.com/slidevjs/slidev), [ducument](https://cn.sli.
 
 1. 使用 `---` 来分割页面
 
-2. 使用 frontmatter 来指定页面分布，主题等
+2. 使用 frontmatter 来指定页面分布，主题等。frontmatter 用两个分隔符 `---` 包围起来即可
 
    ```yaml
+   ---
    layout:	# 列举常用 layout
    	default
    	center
@@ -102,6 +103,7 @@ github: [slidev](https://github.com/slidevjs/slidev), [ducument](https://cn.sli.
    theme: academic	# 指定主题
    title: name
    canvasWidth: 800	# 画布大小, 通常用于整体缩放
+   ---
    ```
 
 3. 每一页最后的注释将被作为备注 <!-- content -->
