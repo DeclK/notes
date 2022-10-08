@@ -818,8 +818,64 @@ tensor(3.)
 
 ### 4 gather
 
-把握两个原则：
+gather 可以看作是一种特别的花式索引，可用于多维。可理解为：我们在原来的 tensor 中去挑选所需的元素然后组成新的 tensor
+
+使用 gather 有以下两个原则：
 
 1. `input & index` 他们的维度数量是一样的，所以选择是 element wise 进行，`index` 的维度长度可以小于 `input`
 2. `gather` 是在某一个维度进行的，可以想象固定其他维度不懂，在某一个 axis 上面滑动选择
-3. 由于其他维度是固定的，TODO
+
+在 `CenterPoint` 代码中就使用 gather 方法来对 feature 进行选择
+
+```python
+def _gather_feat(feat, ind, mask=None):
+    """ Use ind to gather K features
+    feat: (B, H*W, C)
+    ind: (B, K)
+    return: (B, K, C)
+    """
+    dim = feat.size(2)
+    # expand ind from (B, K) to shape (B, K, C)
+    ind = ind.unsqueeze(2).expand(ind.size(0), ind.size(1), dim)
+    feat = feat.gather(1, ind)  # (B, K, C)
+    if mask is not None:
+        mask = mask.unsqueeze(2).expand_as(feat)
+        feat = feat[mask]
+        feat = feat.view(-1, dim)
+    return feat
+```
+
+输入输出为 $(B, H\times W, C) \to (B, K, C)$，简单来说就是对每个 batch 而言，从 $H\times W$ 个特征向量中选择 $K$ 个，然后组成新的输出张量
+
+### 5 tensorboard
+
+[pytorch tensorboard](https://pytorch.org/docs/stable/tensorboard.html) 现在不仅是 tensorflow 的特权了！在 pytorch 中也可以使用 tensorboard 进行可视化。通常用 tensorboard 来画一些简单的曲线，使用 `add_scalar` 方法，简单例子
+
+```python
+from torch.utils.tensorboard import SummaryWriter
+import numpy as np
+
+writer = SummaryWriter(log_dir='output/tensorboard')	# Writer will output to ./runs/ directory by default
+
+for n_iter in range(100):
+    writer.add_scalar('Loss/train', np.random.random(), n_iter)
+    writer.add_scalar('Loss/test', np.random.random(), n_iter)
+    writer.add_scalar('Accuracy/train', np.random.random(), n_iter)
+    writer.add_scalar('Accuracy/test', np.random.random(), n_iter)
+```
+
+`add_scalar` 的参数如下
+
+- **tag** (*string*) – Data identifier
+- **scalar_value** (*float*) – Value to save
+- **global_step** (*int*) – Global step value to record
+
+对于 tag 可以使用上面例子中的层级命名的方法来避免 tensorboard 画出的图很杂乱，tensorboard 会把相同层级的图像放在一个板块
+
+打开 tensorboard 面板使用如下命令
+
+```shell
+tensorboard --logdir PATH --port PORT 	# port is not necessary
+```
+
+现在 vscode 对 tensorboard 也支持了，可以直接 `launch tensorboard`

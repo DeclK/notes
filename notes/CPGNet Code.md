@@ -47,7 +47,7 @@ local_rank = int(os.environ["LOCAL_RANK"])
 
 ### hydra & omegaconf
 
-建议阅读 [hydra doc](https://hydra.cc/docs/intro/) 来了解如何使用 hydra，其底层是 [OmegaConf](https://mybinder.org/v2/gh/omry/omegaconf/master?filepath=docs%2Fnotebook%2FTutorial.ipynb)
+建议阅读 [hydra doc](https://hydra.cc/docs/intro/) 来了解如何使用 hydra，其底层是 [OmegaConf](https://nbviewer.org/github/omry/omegaconf/blob/master/docs/notebook/Tutorial.ipynb#)
 
 1. [Basic Example](https://hydra.cc/docs/intro/#basic-example)
 
@@ -132,7 +132,7 @@ local_rank = int(os.environ["LOCAL_RANK"])
          schema: warehouse,support,school
    ```
 
-4. [resolver](https://hydra.cc/docs/configure_hydra/intro/#resolvers-provided-by-hydra) provided by hydra 可以在 yaml 中生成一些常用的变量，最常用的是 **now** resolver `${now:%H-%M-%S}` 能够提供 `strftime` 格式时间，也可以直接调用 yaml 文件里的变量 `${CONFIG_KEY}` 进行引用，引用成员也是非常方便的，不论是字典还是序列
+4. [resolver](https://hydra.cc/docs/configure_hydra/intro/#resolvers-provided-by-hydra) provided by hydra 可以在 yaml 中生成一些常用的变量，最常用的是 **now** resolver `${now:%H-%M-%S}` 能够提供 `strftime` 格式时间，也可以直接调用 yaml 文件里的变量 `${CONFIG_KEY}` 进行引用，引用成员也是非常方便的，不论是字典还是序列，都可以通过 `.` 来获得子成员
 
 5. 一般 hydra 会自动创建一个 output dir 用于存放输出，可以自定义输出路径
 
@@ -142,7 +142,9 @@ local_rank = int(os.environ["LOCAL_RANK"])
        dir: ./outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
    ```
 
-6. 可以使用 hydra 进行更加方便的 logging，会直接输出到 output dir
+6. 可以对 cfg 文件使用 `to_container` 将其转化为一个字典或者列表
+
+7. 可以使用 hydra 进行更加方便的 logging，会直接输出到 output dir
 
    ```python
    import logging
@@ -151,7 +153,56 @@ local_rank = int(os.environ["LOCAL_RANK"])
    log = logging.getLogger(__name__)
    ```
 
-7. 可以对 cfg 文件使用 `to_container` 将其转化为一个字典或者列表
+   这里整理一个好用的 logging 库 **loguru**，[doc](https://loguru.readthedocs.io/en/stable/api/logger.html#)
+
+   1. 创建 logger
+
+      ```python
+      from loguru import logger
+      
+      logger.add(sink='log.txt', format="{time} {level} {message}", level="INFO")
+      ```
+
+      其中 `sink` 就是存放日志的文件路径；`format` 代表日志记录格式为一个字符串，使用 `{xxx}` 表示需要记录的信息；`level` 表示记录的最低等级
+
+      `format` 可以有如下选择
+
+      | Key      | Description                                         | Attributes                                                   |
+      | -------- | --------------------------------------------------- | ------------------------------------------------------------ |
+      | file     | The file where the logging call was made            | `name` (default), `path`                                     |
+      | function | The function from which the logging call was made   | None                                                         |
+      | level    | The severity used to log the message                | `name` (default), `no`, `icon`                               |
+      | line     | The line number in the source code                  | None                                                         |
+      | message  | The logged message (not yet formatted)              | None                                                         |
+      | module   | The module where the logging call was made          | None                                                         |
+      | name     | The `__name__` where the logging call was made      | None                                                         |
+      | process  | The process in which the logging call was made      | `name`, `id` (default)                                       |
+      | thread   | The thread in which the logging call was made       | `name`, `id` (default)                                       |
+      | time     | The aware local time when the logging call was made | See [`datetime.datetime`](https://docs.python.org/3/library/datetime.html#datetime.datetime) |
+
+      其中 `time` 还可以进一步格式化，具体可以参考文档，常用 `{time:YYYY-HH:mm:ss}` 来表示时间
+
+   2. 记录方法
+
+      | Level name | Severity value | Logger method                                                |
+      | ---------- | -------------- | ------------------------------------------------------------ |
+      | `TRACE`    | 5              | [`logger.trace()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.trace) |
+      | `DEBUG`    | 10             | [`logger.debug()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.debug) |
+      | `INFO`     | 20             | [`logger.info()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.info) |
+      | `SUCCESS`  | 25             | [`logger.success()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.success) |
+      | `WARNING`  | 30             | [`logger.warning()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.warning) |
+      | `ERROR`    | 40             | [`logger.error()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.error) |
+      | `CRITICAL` | 50             | [`logger.critical()`](https://loguru.readthedocs.io/en/stable/api/logger.html#loguru._logger.Logger.critical) |
+
+   简单代码样例
+
+   ```python
+   from loguru import logger
+   
+   logger.add('test.log', format='{time:YYYY-HH:mm:ss,SS} {level}\t{message}')
+   logger.info('this is info')
+   logger.error('this is error')
+   ```
 
 ## CPGNet
 
