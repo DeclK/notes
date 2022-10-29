@@ -159,6 +159,10 @@ vgroup.shift(UP)
 vg.arrange(DOWN, aligned_edge=LEFT)
 ```
 
+### AnimationGroup
+
+TODO
+
 ## 第三讲 颜色的表示、运算与设置
 
 ### 颜色的表示
@@ -318,3 +322,9 @@ ManimCE 文档有一个 [reference manual](https://docs.manim.community/en/stabl
 > This reference manual details modules, functions, and variables included in Manim, describing what they are and what they do. 
 
 里面包含了各种模块和函数，更多的 `VMobject` 和更多的动画操作，文档中还有 [Example Gallery](https://docs.manim.community/en/stable/examples.html) 提供参考
+
+物理模拟，AnimationGroup，三维场景
+
+我判断了一下，manim 更加适合用于制作数学教学视频，而我可能之后将少有机会接触。最后可能把这个文档完善一下，找一些感兴趣的视频，看一下他们的实现，然后制作一个动画放在视频开头或者自己网站吧
+
+目前可以用于制作一些非常简单的示意动画，已经够用了
