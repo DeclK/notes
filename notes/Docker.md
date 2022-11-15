@@ -315,3 +315,40 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
 
 
 
+## 补充
+
+1. Nvidia Docker。需要使用 GPU 的话必须安装 [nvidia-docker](https://github.com/NVIDIA/nvidia-docker)，安装方法参照 [install](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html#setting-up-nvidia-container-toolkit)，或者直接输入下面命令（参考 [zhihu](https://zhuanlan.zhihu.com/p/336429888)）
+
+   ```shell
+    ##首先要确保已经安装了nvidia driver
+    # 1. 添加源
+    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+    curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+    curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+    ​
+    # 2. 安装并重启
+    sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+    sudo systemctl restart docker
+   ```
+
+   如果使用了 WSL 没有 `systemctl` 命令，可以使用 `sudo service docker restart` 完成服务重启
+
+   安装完成后可以通过 `docker run --gpus all` 来让容器使用 GPU 
+
+2. Docker pull 镜像。由于 docker pull 需要保持网络的通常，所以使用好的镜像站是不错的选择，各个镜像站应该都有，比如 [南大镜像](https://mirror.nju.edu.cn/help/docker-hub)，使用 docker info 检查是否更新成功
+
+3. Docker 与权限。为了不每次都用 sudo，可以将自己的用户加入到 docker group，这个操作我记录在 vscode 笔记中
+
+4. 我个人常用的操作是：
+
+   ```shell
+   docker run -it --gpus all -v /data:/data -v /project:/project --net host --name name image_id
+   ```
+
+    做了这几个事情：
+
+   1. 打开交互终端
+   2. 配置 GPU
+   3. 挂载数据和项目
+   4. 配置网络，并给容器取名
+   5. 指定 image id

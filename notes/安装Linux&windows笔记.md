@@ -17,7 +17,7 @@ date: 2021-07-12 14:36:42
 
 安装一个双系统可能对于初学者来讲是比较友好的，随着对 Linux 的了解越来越多，更多的 Linux 使用转移到了服务器上，对双系统的需求越来越少。并且 windows 现在支持了 linux 子系统（WSL），也可以直接使用 docker，这样安装双系统就显得是一个很复杂的选项了。我之前就算安装了双系统，现在也将其删除了，释放了 100G 空间，删除参考：[bilibili](https://www.bilibili.com/video/BV1Ba411z75z/)，再贴一个 [WSL](https://docs.microsoft.com/en-us/windows/wsl/install) 官网
 
-这个 up 的系列视频都教得非常好,：[bilibili](https://www.bilibili.com/video/BV1aA411s7PJ)，教你如何安装漂亮的 WSL，配合 vscode + zsh 变为强力开发环境，下面简要总结 zsh 的安装：
+这个 up 的系列视频都教得非常好：[bilibili](https://www.bilibili.com/video/BV1aA411s7PJ)，教你如何安装漂亮的 WSL，配合 vscode + zsh 变为强力开发环境，下面简要总结 zsh 的安装：
 
 1. 安装 zsh `sudo apt install zsh`
 
@@ -33,7 +33,11 @@ date: 2021-07-12 14:36:42
    sh install.sh
    ```
 
-   如果由于网络原因可以选择使用 gitee 镜像 `https://gitee.com/mirrors/oh-my-zsh/raw/master/tools/install.sh`
+   如果由于网络原因可以选择使用 gitee 镜像，更改 REMOTE
+
+   ```install.sh
+   REMOTE=${REMOTE:-https://gitclone.com/github.com/${REPO}.git}
+   ```
 
 3. 安装插件。插件推荐 [zsh-autusuggestions](https://github.com/zsh-users/zsh-autosuggestions)，把这个项目 clone 到 `~/.oh-my-zsh/custom/plugins` 中
 
@@ -54,7 +58,7 @@ date: 2021-07-12 14:36:42
 
 ## Common Settings
 
-1. 设置 root 密码。然后创建新用户，并设置新用户密码以及 sudo 权限 `/etc/sudoers` 
+1. 设置 root 密码。然后创建新用户，并设置新用户密码以及 sudo 权限 `/etc/sudoers`，在文件最后面写入
 
    ```shell
    username ALL=(ALL) NOPASSWD: ALL

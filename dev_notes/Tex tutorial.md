@@ -254,7 +254,17 @@ We have now added a title, author and date to our first \LaTeX{} document!
 
 ## 插入表格
 
-TODO
+可以先使用 Excel 将表格的基本数据填入，然后使用 [TableGenerator](https://www.tablesgenerator.com/) 在线生成 tex 表格。
+
+Table Generator 使用技巧：
+
+1. 可以给单元加入/消除边框。通过按住 shift 可以对一行一列进行操作
+2. 可以选择使用 booktabs table style。这样能够对边框进行加粗
+3. 可以设置 centering，将表格放在中间
+4. 可以设置表格整体宽度
+5. 可以设置 caption
+
+其中如果想要双线的话可以使用两个 `\hline`，想要粗线的话先导入宏包 `booktabs`，然后使用 `\toprule, \downrule, \midrule`
 
 ## 参考文献的插入
 

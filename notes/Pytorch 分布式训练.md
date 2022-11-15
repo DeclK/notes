@@ -104,9 +104,11 @@ torchrun
 2. 初始化进程组，并设置 cuda device
 
    ```python
-   dist.init_process_group(backend='nccl')
-   torch.cuda.set_device(local_rank)
-   # 设置了当前 cuda device 过后可以直接用 model.cuda()
+   mp.set_start_method('spawn')	# mmdet use 'fork' to start, faster but might be unstable
+   								# not needed when use torch.distributed.launch or torchrun
+   dist.init_process_group(backend='nccl')	# 指定 backend，用于进程间的通信
+   torch.cuda.set_device(local_rank)		# 设置了当前 cuda device 过后可以直接用 model.cuda()
+   										# 该步骤不是必须的
    ```
 
 3. 使用 DDP 包装 model，并指定 device
@@ -129,7 +131,7 @@ torchrun
 
 ### TODO
 
-example with CUDA_VISIBLE_DEVICES, cudnn deterministic，random seed，dataloader
+example with CUDA_VISIBLE_DEVICES, cudnn deterministic，cudnn benchmark  [zhihu](https://zhuanlan.zhihu.com/p/359058486), random seed，dataloader
 
 fixed must prepare steps
 
@@ -137,7 +139,7 @@ fixed must prepare steps
 
 现在回过头来看，分布式训只要熟练运用 API 就好。这样还不如直接去官网看看教程，整理起来更清晰
 
-[Dist Overview](https://pytorch.org/tutorials/beginner/dist_overview.html)	[Writing Dist Apps](https://pytorch.org/tutorials/intermediate/dist_tuto.html)	[Getting Started with DDP](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html)
+[Dist Overview](https://pytorch.org/tutorials/beginner/dist_overview.html)	[Writing Dist Apps](https://pytorch.org/tutorials/intermediate/dist_tuto.html)	[**Getting Started with DDP**](https://pytorch.org/tutorials/intermediate/ddp_tutorial.html)
 
 分布式模块是用 `torch.distributed`，另一个使用最频繁类是 `DistributedDataParallel` （简称 DDP）。现在基本不用 `DataParallel` 因为它使用的是多线程，会受到 GIL 的限制，所以很慢
 

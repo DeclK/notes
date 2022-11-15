@@ -26,7 +26,7 @@ date: 2021-12-19 22:20:38
 
 4. pdb，[知乎](https://zhuanlan.zhihu.com/p/37294138)
 
-5. collections
+5. collections，经常使用的有 defaultdict Counter deque namedtuple abc
 
 6. screen，用于新建窗口，让命令在后台运行，即使退出会话程序也不会停止
 
