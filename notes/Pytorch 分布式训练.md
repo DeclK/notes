@@ -87,9 +87,9 @@ torchrun
    YOUR_TRAINING_SCRIPT.py (--arg1 ... train script args...)
 ```
 
-不再需要使用 `--local-rank` 参数解析，而是直接在环境变量中获取 `os.environ['LOCAL_RANK']`
+不再需要使用 `--local-rank` 参数解析，而是直接在环境变量中获取 `os.environ['LOCAL_RANK']`，目前使用 launch 也能够使用环境变量了
 
-以上两种方法都可以使用 `dist.get_rank() & dist.get_world_size()` 获得 local rank 和 world size
+不管是 torchrun 还是 launch 都可以使用 `dist.get_rank() & dist.get_world_size()` 获得 local rank 和 world size
 
 ## 完整过程
 
@@ -114,6 +114,7 @@ torchrun
 3. 使用 DDP 包装 model，并指定 device
 
    ```python
+   model.cuda()	# or model.to(local_rank)
    model = DDP(model, device_ids=[args.local_rank])
    ```
 

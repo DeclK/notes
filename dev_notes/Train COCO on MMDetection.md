@@ -1,4 +1,4 @@
-# Train COCO on MMDetection
+#  Train COCO on MMDetection
 
 目的，能够跑通 coco 数据集，了解 coco 格式
 
@@ -73,77 +73,47 @@ optimizer = dict(_delete_=True, type='SGD', lr=0.01)
 
 ### Runner
 
-光看文档完全没办法理解怎么用，这里我要根据代码来自己整理
+光看文档完全没办法理解 runner，还是得看看代码。过完一遍后总结：Runner 就是一个大工厂，所有的组件都是其中的属性，组件与组件之间能够通过 runne 进行相互配合，完成所有的流程
 
-1. runner 初始化
+#### Runner 初始化
 
-   1. deepcopy cfg，新建属性 self.cfg
+runner 的初始化采用了一个 lazy init 的策略。所谓 lazy init 就是指先把 cfg 赋值给某个组件，如 `self.dataloader = dataloader_cfg`，在之后需要用这个组件的时候，再用 cfg 构建真正的实例
 
-   2. 所谓 lazy init 就是指先用一个列表放 cfg 或者直接为 cfg 本身，在之后需要的时候用这些 cfg 真正的生成实例
+1. deepcopy cfg，新建属性 self.cfg
+2. 创建属性 `self.traininig_related, self.val_related, self.test_related`。每个 related 为 `[xxx_dataloader, xxx_cfg, xxx_evaluator]`
+3. 创建属性 `self.optim_wrapper`
+4. 创建属性 `self._launcher`，决定是否为分布式，并创建属性 `self._distributed`
+5. `self.setup_env` 初始化 dist 环境，并新建属性 `self._rank, self._world_size`
+6. `self.set_random_seed`，新建属性 `self.seed, self.deterministic`，可通过 `randomness=dict(seed=None)` 配置随机种子
+7. 创建 `work_dir`
+8. 创建属性 `self.logger`，logger 此时记录下环境信息和配置文件
+9. 创建属性 `self.load_from, self.resume`
+10. 创建属性 `self.model`，并将模型打包，打包完成的事情如下:
+    1. 把模型送到对应的设备上 `model.to(device)`
+    2. 如果为分布式训练则将 model 打包为 `MMDistributedDataParallel`，当然也可以使用 pytorch 的 `DistributedDataParallel`，不过需要单独设置。`MMDistributedDataParallel` 继承于 DDP，并新定义了三分方法 `tran_step, val_step, test_step` 来调用 model 中定义的 `tran_step, val_step, test_step` 
+11. 注册 hooks，并保存进属性 `self._hooks`
+12. 输出 config，`cfg.dump(file_path)`
 
-      使用 lazy init
+#### Runner.train()
 
-   3. 创建属性 traininig_related，val_related，test_related。每个 related list 为 `[xxx_dataloader, xxx_cfg, xxx_evaluator]`
+1. 检查 model 是否有 `train_step` 属性/方法。这里是对模型的基本要求。如果有 `val_loop`，也得检查是否有 `val_step`
+2. 创建属性 `self.train_loop`。补充知识：一个类定义时传入参数 metaclass=ABCMeta 表示该类为抽象类，不能够实例化，只能用来继承
 
-   4. optim_wrapper，无操作
+3. 创建属性 `self.optim_wrapper`，并使用 `scale_lr` 自动缩放学习率
+4. 创建属性 `self.param_schedulers`，管理学习率策略
+5. 创建属性 `self.val_loop`
+6. 运行钩子 `self.call_hook('before_run')`
+7. 初始化模型权重，如果有预训练权重则 load
+8. 运行训练循环 `self.train_loop.run()`
+9. 运行钩子 `call_hook('after_run')`
 
-   5. launcher，决定分布式与否
+### Runner 中 train_loop 逻辑
 
-   6. setup_env，初始化 dist 环境，新建属性 rank 和 world_size
+`BaseLoop` 是一个非常简单的类，只需要 runner 和 dataloader 作为初始化即可。`EpochBasedTrainLoop` 继承 `BaseLoop`，其核心逻辑在 `run` 方法
 
-   7. set_random_seed，新建属性 seed 和 deterministic，通过 randomness=dict(seed=None) 设置
+`run` 将循环运行 `run_epoch`，并在 epoch 后判断是否需要 eval
 
-   8. 创建 work_dir
-
-   9. 创建 logger，logger 此时记录下环境信息和配置文件
-
-   10. 创建属性 load_from 和 resume
-
-   11. 创建属性 model，build_model 实例化
-
-   12. 打包 model 为 MMDistributedDataParallel，当然也可以打包为 DDP。MMDDP 比 DDP 新定义了三分方法 tran_step, val_step, test_step
-
-   13. 注册钩子
-
-   14. 保存 config
-
-2. runner.train()
-
-   1. 检查 ori_model 是否有 _train_step。这里是对模型的基本要求。如果有 _val_loop，也得检查是否有 _val_step
-
-   2. build_train_loop，并创建属性 train_loop。因为之前是 lazy init train loop，所以这里要 build
-
-      一个类表明 metaclass=ABCMeta 表示该类为抽象类，不能够实例化，只能用来继承
-
-      BaseLoop，所有 loop 的基类，需要传入 runner 和 dataloader，并且由于之前的 dataloader 是 lasy init，所以要 build dataloader, dataset, dataset sampler, batch sampler, 即真正的实例化
-
-      pesudo collate 就是 default collate 但是不转换为 tensor
-
-      defaultsampler 能够同时处理分布式和非分布式采样，再包一个 batchsampler 就能够处理批采样了
-
-   3. build_optim_wrapper，创建属性 optim_wrapper，并使用 auto_scale_lr
-
-   4. build_param_scheduler，创建属性 param_schedulers，这是对学习率的策略配置
-
-   5. build_val_loop
-
-   6. call_hook('before_run')
-
-   7. 初始化模型权重，如果有预训练权重则 load
-
-   8. self.train_loop.run()
-
-   9. call_hook('after_run')
-
-### train loop 运行逻辑
-
-BaseLoop 是一个非常简单的类，只需要 runner 和 dataloader 作为初始化即可
-
-EpochBasedTrainLoop 继承 BaseLoop 核心逻辑在 run 函数
-
-run 将循环运行 run_epoch，并在 epoch 后判断是否需要 eval
-
-run_epoch 是由循环 run_iter 完成，循环以 dataloader 主导
+`run_epoch` 是由循环 `run_iter` 完成，循环以 dataloader 主导
 
 run_iter 中运行了模型的 `train_step` 步骤，在 `train_step` 中优化步已经完成了
 
@@ -171,9 +141,9 @@ run_iter 中运行了模型的 `train_step` 步骤，在 `train_step` 中优化�
         self._iter += 1
 ```
 
-自己在写个性化 Loops 的时候最好要将这些钩子都加上，以保证结果的正确！例如 DistributedSampler 的随机种子要在各个 epoch 开始前重新设置，这里需要调用一个 DistSamplerSeedHook 完成
+自己在写个性化 Loops 的时候最好要将这些钩子都加上，以保证结果的正确！例如 `DefaultSampler` 的随机种子要在各个 epoch 开始前重新设置，这需要调用 `DistSamplerSeedHook` 完成
 
-### train step 运行逻辑
+### Model 中 train_step 逻辑
 
 核心代码非常简单
 
@@ -186,10 +156,11 @@ run_iter 中运行了模型的 `train_step` 步骤，在 `train_step` 中优化�
         parsed_losses, log_vars = self.parse_losses(losses)  # type: ignore
         optim_wrapper.update_params(parsed_losses)
         return log_vars
-
 ```
 
 由于 collate_fn 使用的是一个非常简单的方法，所以**数据预处理放在了 DataPreprocessor 中**，其功能包括把数据发送到 GPU 上，数据打包，归一化，最后返回 data 字典（包含 data['inputs'] & data['data_sample']）
+
+这里说明一下 DataPreprocessor **把数据发送到 GPU 上** 这个功能，写得有点隐晦：在 `BaseModel` 里为这一个功能重写了模型的 `to & cuda & cpu` 这几个方法，就是为了额外设置 DataPreprocessor 的 `device` 属性，保证了属于与模型的 `device` 是统一的，直接使用 `model.to(device)` 即可
 
 ### 如何自己写配置文件
 
@@ -238,10 +209,10 @@ DataLoader(dataset,
 
 我把上面的参数分成了4行，其中**前两行是核心配置，控制随机性和 batch 行为**，第三行是自定义打包方法配置，第四行是加速配置
 
-1. Sampler 和 shuffle 是互斥的，有了 sampler 后 shuffle 将不再起作用。**实际上几乎可以不用 sampler 这个参数**
-2. batch_sampler 是以一个 Sampler 作为基础，再进行 group 操作。当传入 batch_sampler 后，就不用传入 sampler, batch_size, drop_last 以及 shuffle 关键字
-3. num_workers 为调用线程的数量，没有固定说法设置多少最好。pin_memory 就是锁页内存，创建DataLoader时，设置pin_memory=True，则意味着生成的Tensor数据最开始是属于内存中的锁页内存，这样将内存的Tensor转义到GPU的显存就会更快一些
-4. 为了较好的可复现，mmengine 中还是用了 worker_init_fn 来给每个线程设置随机种子，这里不总结
+1. sampler 和 shuffle 两个参数是互斥的，有了 sampler 后 shuffle 将不再起作用。**实际上几乎可以不用 sampler 这个参数**
+2. `batch_sampler` 是以一个 `Sampler` 作为基础，再进行 group 操作。当传入 batch_sampler 后，就不用传入 `sampler, batch_size, drop_last, shuffle` 关键字
+3. `num_workers` 为调用线程的数量，没有固定说法设置多少最好。`pin_memory` 就是锁页内存，创建 DataLoader 时，设置 pin_memory=True，则意味着生成的Tensor数据最开始是属于内存中的锁页内存，这样将内存的Tensor转义到GPU的显存就会更快一些
+4. 为了较好的可复现，mmengine 中还是用了 `worker_init_fn` 来给每个线程设置随机种子，这里不总结
 
 **在后两行配置不变时，仅配置前两行即可完成对单卡和多卡（分布式）的 DataLoader 创建**
 
@@ -259,16 +230,18 @@ DataLoader(dataset,
    DataLoader(dataset, batch_sampler=batch_sampler)
    ```
 
-Sampler 的核心方法是 `__iter__`，即通过迭代不断生成 index，DistributedSampler 把数据集的总 index 分成了多个不重叠的子集，每个进程对应一个子集，然后在各自的子集中迭代生成 index。而 BatchSampler 则是生成一个 batch_size 长度的 index 序列
+`Sampler` 的核心方法是 `__iter__`，即通过迭代不断生成 index，`DistributedSampler` 把数据集的总 index 分成了多个不重叠的子集，每个进程对应一个子集，然后在各自的子集中迭代生成 index。而 `BatchSampler` 则是生成一个 `batch_size` 长度的 index 序列
+
+**mmengine 中的 DefaultSampler 能够同时处理分布式和非分布式的采样，再包一个 BatchSampler 就能够处理批采样了**，使用的 `collate_fn` 为 `pesudo_collate` 就是 pytorch 默认的 collate function 但是不转换数据为 tensor
 
 ### Optimizer 接口整理
 
-Pytorch 实现的 Optimizer 的输入主要由 model.parameters() 和其他超参数（如 learning_rate, weight_decay）。如果想要对特定层设置，可参考 [StackOverflow](https://stackoverflow.com/questions/51801648/how-to-apply-layer-wise-learning-rate-in-pytorch)，传入一个 list of dict 即可
+Pytorch 实现的 Optimizer 的输入主要由 `model.parameters()` 和其他超参数（如 `lr, weight_decay`）。如果想要对特定层设置，可参考 [StackOverflow](https://stackoverflow.com/questions/51801648/how-to-apply-layer-wise-learning-rate-in-pytorch)，传入一个 list of dict 即可
 
 mmengine 对 pytorch 优化器的包装还是比较轻的，除了 optimizer 原有的接口外，OptimWrapper 主要多了几个接口：
 
-1. optim_wrapper.update_params(loss) 更新参数，替代 backward + step
-2. optim_wrapper.get_lr() 获得学习率，替代原来的 `optimizer.param_groups[0]['lr']`
+1. `optim_wrapper.update_params(loss)` 更新参数，替代 backward + step
+2. `optim_wrapper.get_lr()` 获得学习率，替代原来的 `optimizer.param_groups[0]['lr']`
 3. 加载优化器状态字典使用的原始接口 `state_dict & load_state_dict`
 
 mmengine 中的 scheduler 和 pytorch 中的 scheduler 使用方法完全一致，但扩展了 scheduler 的使用范围，不仅仅能够对 lr 进行管理，还能对 momentum 进行管理。scheduler 的接口名称和 optimizer 的接口名称基本一致，使用 `scheduler.step()` 即可
@@ -277,16 +250,34 @@ scheduler 原理是根据当前步（last_step）和给定参数设置学习率�
 
 ### Dataset & DataSample
 
-**BaseDataset 实现逻辑**
+#### BaseDataset 实现逻辑
 
-1. full_init() 方法
-2. **load_data_list()，需要自己写，return a list of dict**，通常仅包含样本的路径和样本的标签
+如果要自己写一个 dataset 主要考虑重写两个方法
 
-其他基本上就不需要了，接下来就是 pipline 的功能，生成完整的一个样本
+1. `full_init()` 方法
+2. **`load_data_list()`**，需要自己写，return a list of dict，通常仅包含样本的路径和样本的标签
+
+其他基本上就不需要了，接下来就是用 `__getitem__` 配合 `self.pipline`，生成完整的一个样本
+
+```python
+    def __getitem__(self, idx: int) -> dict:
+        if not self._fully_initialized: self.full_init()
+
+        data = self.prepare_data(idx)
+        return data
+    
+    def prepare_data(self, idx) -> Any:
+        data_info = self.get_data_info(idx)
+        return self.pipeline(data_info)
+    
+    def get_data_info(self, idx: int) -> dict:
+        data_info = copy.deepcopy(self.data_list[idx])
+        return data_info
+```
+
+#### PackxxxInputs
 
 通用的增强输出 PackxxInputs，需要进一步了解通用数据元素的设计
-
-https://mmengine.readthedocs.io/zh_CN/latest/advanced_tutorials/data_element.html
 
 在模型的训练/测试过程中，组件之间往往有大量的数据（images）和标签（labels）需要传递，不同的算法需要传递的数据和标签形式经常是不一样的
 
@@ -299,16 +290,16 @@ for img, img_metas, gt_bboxes, gt_masks, gt_labels in data_loader:
      loss = mask_rcnn(img, img_metas, gt_bboxes, gt_masks, gt_labels)
 ```
 
-为了统一数据接口 mmengine 就对这**数据**和**标签**分别进行打包，该功能使用 PackxxxInputs 完成，最后输出两个对象 img & data_sample
+为了统一数据接口 mmengine 就对这**数据**和**标签**分别进行打包，该功能使用 `PackxxxInputs` 完成，最后输出的 data 只有两个关键字 `inputs & data_sample`，其中 `inputs` 一般为图像，而 `data_sample` 为 gt 标签
 
 ```python
 for img, data_sample in dataloader:
     loss = model(img, data_sample)
 ```
 
-在实际实现过程中，mmengine 使用 DataSample 类来封装标签、预测结果信息，DataSample 由数据元素 xxxData 构成，数据元素为某种类型的预测或者标注 
+在实际实现过程中，mmengine 使用 `DataSample` 类来封装标签、预测结果信息，`DataSample` 由数据元素 xxxData 构成，数据元素为某种类型的预测或者标注，继承于 BaseDataElement 类。下面从下到上介绍介绍 `DataSample`
 
-#### BaseDataElement
+##### BaseDataElement
 
 为了更好的操作数据，实现了 BaseDataElement，其主要有如下功能
 
@@ -336,14 +327,14 @@ for img, data_sample in dataloader:
 
 3. 通过 print(BaseDataElement) 能够直观获得其中的 data 和 metainfo
 
-#### InstanceData
+##### InstanceData
 
 - 对 `InstanceData` 中 data 所存储的数据进行了长度校验
 - data 部分支持类字典访问和设置它的属性
 - 支持基础索引，切片以及高级索引功能
 - 支持具有**相同的 `key`** 但是不同 `InstanceData` 的拼接功能。 这些扩展功能除了支持基础的数据结构， 比如`torch.tensor`, `numpy.dnarray`, `list`, `str`, `tuple`, 也可以是自定义的数据结构，只要自定义数据结构实现了 `__len__`, `__getitem__` and `cat`.
 
-#### DataSample
+##### DataSample
 
 数据样本作为不同模块最外层的接口，提供了 xxxDataSample 用于单任务中各模块之间统一格式的传递。mmengine 对 xxxDataSample 的属性命名以及类型要进行约束和统一，保证各模块接口的统一性
 
@@ -353,11 +344,11 @@ for img, data_sample in dataloader:
 
 1. IterTimerHook
 2. LoggerHook
-3. ParamSchedulerHook
+3. **ParamSchedulerHook**
 4. CheckpointHook
-5. DistSamplerSeedHook
+5. **DistSamplerSeedHook**
 6. DetVisualizationHook，only works in test and val
-7. RuntimeInfoHook
+7. **RuntimeInfoHook**
 
 ### 日志系统 MessageHub & MMLogger
 
