@@ -91,6 +91,24 @@ date: 2021-07-25 22:52:02
    }
    ```
 
+### 将注释设置为斜体
+
+在不经意间看到了这个技巧，可以更改 user `settings.json` 文件如下
+
+```json
+    "editor.tokenColorCustomizations": {
+      "textMateRules": [
+          {
+              "scope": "comment",
+              "settings": {
+                  "fontStyle": "italic",
+                  "foreground": "#7f8c8d"
+              }
+          }
+      ]
+  }
+```
+
 ### 连接到远程服务器
 
 由于要跑一些模型，自己的电脑显卡根本跑不动，那就~~白嫖~~连接到实验室的服务器​

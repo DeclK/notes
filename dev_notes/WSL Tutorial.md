@@ -37,13 +37,19 @@ wsl -l -v
 wsl -s Ubuntu-20.04
 ```
 
-安装完成后可以直接在 cmd 中输入 `wsl` 打开你的 linux 子系统，也可以在应用列表里找到
+安装完成后可以直接在 cmd 中输入 `wsl` 打开你的 linux 子系统，也可以在应用列表里找到。如果想要删除的话需要先卸载对应的应用（一般在 Microsoft Store App 里），然后再 unregister
+
+```cmd
+wsl --unregister Ubuntu
+```
 
 可以直接在子系统里打开 vscode，在对应文件夹输入 `code .`，可以下载 WSL 插件，插件名就叫 WSL
 
 网络问题尽可能使用镜像解决，实在不行就先使用本地下载，然后再搬运到 WSL 中。文档中说明，如果文件保存在本地的话，WSL 获取的速度会比较慢
 
 参考 [博客](https://www.cnblogs.com/lepeCoder/p/wsl_dir.html) wsl 文件系统可以直接映射到 windows 中。先用 win + R 打开运行窗口，然后输入 `\\wsl$` 就能够打开 wsl 文件系统，然后右键映射网络驱动器
+
+设置 cmd 的语言可以设置 语言和区域，添加英文，并把英文置顶即可（设为首选语言）
 
 ## Docker
 

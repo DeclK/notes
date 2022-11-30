@@ -22,7 +22,11 @@ Link: [Docker Cheat Sheet](https://dockerlabs.collabnix.com/docker/cheatsheet/)
 
 ## 安装 Docker
 
-这一步就不多说了，直接上 [官网](https://www.docker.com/) 下载，也可以根据上面提到的视频教程进行下载。如果下载很慢的话依旧考虑镜像安装，这里贴一个自家镜像关于 docker 的帮助文档：[NJU Mirror](https://mirror.nju.edu.cn/help/docker-ce)，同时官方也提供了卸载 docker 的操作，可以放心下载了！现在我是在 windows 上熟悉 docker 操作，直接傻瓜式下载了 docker desktop，其中 Windows 安装可能遇到报错 `WSL 2 installation is incomplete`，根据提示下载 [WLS_update_x64.msi](https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi) 安装即可
+这一步就不多说了，直接上 [官网](https://www.docker.com/) 下载，一般可以只下载 [docker engine](https://docs.docker.com/engine/install/ubuntu/)，不需要下载 docker desktop。如果下载慢可以考虑使用镜像，这里贴个本家 [NJU Mirror docker-ce](https://mirror.nju.edu.cn/help/docker-ce)
+
+如果 docker hub 下载很慢的话依旧考虑使用镜像，[NJU Mirror docker hub](https://mirror.nju.edu.cn/help/docker-ce)
+
+其中 Windows 安装 desktop 可能遇到报错 `WSL 2 installation is incomplete`，根据提示下载 [WLS_update_x64.msi](https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi) 安装即可
 
 ## Docker 基本组成
 
