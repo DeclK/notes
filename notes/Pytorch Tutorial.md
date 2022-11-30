@@ -749,6 +749,7 @@ x.repeat(*sizes)	# repeat times
 x.expand(*sizes)	# expand to sizes, shared memory
 x.contigous()		# 连续空间
 x.repeat_interleave(tensor)	# numpy.repeat()
+x.chunk(chunks, dim)		# 把张量进行分割
 
 import torch.nn.functional as F
 F.interpolate(input, size, mode=)
