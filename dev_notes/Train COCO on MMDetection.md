@@ -1,4 +1,4 @@
-#  Train COCO on MMDetection
+#   Train COCO on MMDetection
 
 目的，能够跑通 coco 数据集，了解 coco 格式
 
@@ -36,6 +36,8 @@ mmdetection
 要做到这一点，就要先把需要的类给注册到注册器中。所谓注册，本质上就是把类放到注册器内的一个字典 `_module_dict` 里，之后需要的时候取出，使用配置文件进行实例化 `Registry.build(cfg)`，如果只想获得类本身，就用 `Registry.get('key')` 即可
 
 所有的注册器都放在了 `mmdet.registry` 当中，需要用哪个就 `import` 哪个
+
+**registry 在使用的使用需要注意一下 scope，scope 是根据模块所在的 package 的名字确定的，可用 `DefaultScope` 来完成相关操作**
 
 ### Config
 
@@ -143,9 +145,13 @@ run_iter 中运行了模型的 `train_step` 步骤，在 `train_step` 中优化�
 
 自己在写个性化 Loops 的时候最好要将这些钩子都加上，以保证结果的正确！例如 `DefaultSampler` 的随机种子要在各个 epoch 开始前重新设置，这需要调用 `DistSamplerSeedHook` 完成
 
+### TODO: Runner 中 val_loop 逻辑
+
+metric 如何计算，如何传递，如何保存
+
 ### Model 中 train_step 逻辑
 
-核心代码非常简单
+核心代码非常简单：数据预处理+前向损失+更新参数
 
 ```python
     def train_step(self, data: Union[dict, tuple, list],
@@ -158,18 +164,25 @@ run_iter 中运行了模型的 `train_step` 步骤，在 `train_step` 中优化�
         return log_vars
 ```
 
+#### DataPreprocessor
+
 由于 collate_fn 使用的是一个非常简单的方法，所以**数据预处理放在了 DataPreprocessor 中**，其功能包括把数据发送到 GPU 上，数据打包，归一化，最后返回 data 字典（包含 data['inputs'] & data['data_sample']）
 
 这里说明一下 DataPreprocessor **把数据发送到 GPU 上** 这个功能，写得有点隐晦：在 `BaseModel` 里为这一个功能重写了模型的 `to & cuda & cpu` 这几个方法，就是为了额外设置 DataPreprocessor 的 `device` 属性，保证了属于与模型的 `device` 是统一的，直接使用 `model.to(device)` 即可
 
-### 如何自己写配置文件
+#### parse_losses
 
-建议是从 `_base_` 中去继承，然后再挑选修改。总体来讲核心如下
+mmengine 期望模型在训练时的输出是一个字典，`parse_losses` 将输出字典中包含 `'loss'` 键值对全都找出来放到 `log_vars` 中，然后再求和，形成最终的 `loss`，最终返回 `loss & log_vars`，前者用于反向传播，后者用于日志记录
+
+### 如何自己写 Config 配置文件
+
+建议是从 `_base_` 中去继承 `default_runtime.py`，然后再挑选修改。总体来讲核心如下
 
 ```python
 # dataset
+dataset = dict(type='COCO')
 train_pipeline = [dict(type='LoadImageFromFile')]
-train_dataloader = dict(batch_size=, dataset=, pipline=train_pipline)
+train_dataloader = dict(batch_size=16, dataset=dataset, sampler=, pipline=train_pipline)
 
 test_pipline = ...
 val_dataloader = ...
@@ -178,6 +191,7 @@ val_evaluator = dict(type='CocoMetric', ann_file=...)
 
 # model
 model = dict(type='DETR',...)
+data_preprocessor = dict(type='BaseDataPreprocessosr')
 
 # optimizer & scheduler
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=12, val_interval=1)
@@ -194,7 +208,7 @@ default_hooks
 log_processor = dict(type='LogProcessor', window_size=50, by_epoch=True)
 log_level = 'INFO'
 
-visualizer = dict(type='DetLocalVisualizer', vis_backends='LocalVisBackend', name='visualizer')
+visualizer = dict(type='DetLocalVisualizer', vis_backends=[dict(type='LocalVisBackend')], name='visualizer')
 ```
 
 ### DataLoader 接口整理
@@ -228,11 +242,14 @@ DataLoader(dataset,
    sampler = DistributedSampler(dataset, seed=None, shuffle=False)
    batch_sampler = BatchSampler(sampler, batch_size=2, drop_last=False)
    DataLoader(dataset, batch_sampler=batch_sampler)
+   
+   # before each epoch start
+   sampler.set_epoch(epoch_number)
    ```
 
 `Sampler` 的核心方法是 `__iter__`，即通过迭代不断生成 index，`DistributedSampler` 把数据集的总 index 分成了多个不重叠的子集，每个进程对应一个子集，然后在各自的子集中迭代生成 index。而 `BatchSampler` 则是生成一个 `batch_size` 长度的 index 序列
 
-**mmengine 中的 DefaultSampler 能够同时处理分布式和非分布式的采样，再包一个 BatchSampler 就能够处理批采样了**，使用的 `collate_fn` 为 `pesudo_collate` 就是 pytorch 默认的 collate function 但是不转换数据为 tensor
+**mmengine 中的 DefaultSampler 能够同时处理分布式和非分布式的采样，再包一个 BatchSampler 就能够处理批采样了**，使用的 `collate_fn` 为 `pesudo_collate` 就是 pytorch 默认的 [collate function](https://pytorch.org/docs/stable/data.html#torch.utils.data.default_collate) 但是不转换数据为 tensor
 
 ### Optimizer 接口整理
 
@@ -255,7 +272,7 @@ scheduler 原理是根据当前步（last_step）和给定参数设置学习率�
 如果要自己写一个 dataset 主要考虑重写两个方法
 
 1. `full_init()` 方法
-2. **`load_data_list()`**，需要自己写，return a list of dict，通常仅包含样本的路径和样本的标签
+2. **`load_data_list()`**，需要自己写，return a list of dict 并赋为属性 `self.data_list`，通常仅包含样本的路径和样本的标签
 
 其他基本上就不需要了，接下来就是用 `__getitem__` 配合 `self.pipline`，生成完整的一个样本
 
@@ -290,14 +307,14 @@ for img, img_metas, gt_bboxes, gt_masks, gt_labels in data_loader:
      loss = mask_rcnn(img, img_metas, gt_bboxes, gt_masks, gt_labels)
 ```
 
-为了统一数据接口 mmengine 就对这**数据**和**标签**分别进行打包，该功能使用 `PackxxxInputs` 完成，最后输出的 data 只有两个关键字 `inputs & data_sample`，其中 `inputs` 一般为图像，而 `data_sample` 为 gt 标签
+为了统一数据接口 mmengine 就对这**数据**和**标签**分别进行打包，该功能使用 `PackxxxInputs` 完成，最后输出的 data 只有两个关键字 `inputs & data_sample`，其中 `inputs` 一般为图像本身，而 `data_sample` 为 gt 标签，由 `DataSample` 表示
 
 ```python
 for img, data_sample in dataloader:
     loss = model(img, data_sample)
 ```
 
-在实际实现过程中，mmengine 使用 `DataSample` 类来封装标签、预测结果信息，`DataSample` 由数据元素 xxxData 构成，数据元素为某种类型的预测或者标注，继承于 BaseDataElement 类。下面从下到上介绍介绍 `DataSample`
+在实际实现过程中，mmengine 使用 `DataSample` 类来封装标签、预测结果信息，`DataSample` 由数据元素 `xxxData` 构成，数据元素为某种类型的预测或者标注，继承于 BaseDataElement 类。下面从下到上介绍介绍 `DataSample`
 
 ##### BaseDataElement
 
@@ -342,13 +359,30 @@ for img, data_sample in dataloader:
 
 ### Default Hooks 功能
 
-1. IterTimerHook
-2. LoggerHook
-3. **ParamSchedulerHook**
-4. CheckpointHook
-5. **DistSamplerSeedHook**
+1. IterTimerHook，记录每一个 iteration 实用的时间
+
+2. **LoggerHook**，日志将根据 interval 进行采样，最终输出到 terminal，并保存到日志文件和 visualization backend 中，逻辑如下
+
+   ```python
+           if self.every_n_inner_iters(batch_idx, self.interval):
+               tag, log_str = runner.log_processor.get_log_after_iter(
+                   runner, batch_idx, 'train')
+           runner.logger.info(log_str)
+           runner.visualizer.add_scalars(
+               tag, step=runner.iter + 1, file_path=self.json_log_path)
+   ```
+
+   `log_processor` 是从 message hub 中获得信息，然后将信息格式化便于输出，其中 `tag` 是一个字典，`log_str` 就是将 tag 格式化后的字符串
+
+3. **ParamSchedulerHook**，在每一个 epoch or iter 过后更新学习率
+
+4. CheckpointHook，保存模型，optimizer，scheduler，以及一些 meta 信息（运行的 epoch or iteration 等）
+
+5. **DistSamplerSeedHook**，`before_train_epoch` 设置随机种子 `set_epoch`
+
 6. DetVisualizationHook，only works in test and val
-7. **RuntimeInfoHook**
+
+7. **RuntimeInfoHook**，这里会将运行时的信息放入 message hub 当中，包括 meta，lr，loss，metrics
 
 ### 日志系统 MessageHub & MMLogger
 
@@ -367,7 +401,7 @@ for img, data_sample in dataloader:
    message_hub.update_scalrs(log_dict)
    ```
 
-   update_scalar 可以自动将数据转换成 python built-in 类型。要获取数据可通过下面方法
+   `update_scalar` 可以自动将数据转换成 python built-in 类型。要获取数据可通过下面方法
 
    ```python
    buffer = message_hub.get_scalar('train/loss')	# 获取 buffer
@@ -448,10 +482,53 @@ mmengine 的 visualizer 有两个功能：
    - add_scalar 写标量到特定存储后端
    - add_scalars 一次性写多个标量到特定存储后端
 
+### Metric & Evaluator
+
+`Evaluator` 是一个 `Metric` 容器，包含多个 `Metric`，即可以进行多种指标的评估。同时 `Evaluator` 也增加了分布式的功能，能够将多个 GPU 上的推理结果合并起来，最终送到 CPU 上进行计算
+
+自定义的 `Metric` 需要实现两个方法
+
+1. `process`，这个方法的功能很简单，就是单纯的存储预测结果和标签到 `Metric` 中的 `self.results` 当中
+2. `evaluate` 这个方法就是将 `self.results` 中的结果进行整合计算，最终输出一个结果**字典**
+
+mmengine 实现了一个 `DumpResults` 的 `Metric` 类，如果需要可以将预测的结果保存，只需要指定 `out_file_path` 即可
+
+### BaseModel 设计原则
+
+之前介绍了模型的 `train_step`，实际上 `BaseModel` 有三个接口：
+
+1. `train_step`
+2. `val_step`
+3. `test_step`
+
+不直接使用模型的 `forward` 方法，因为各个 step 中还包含了对数据的预处理，以及模型参数更新。所以最好把 `BaseModel` 看作对模型的封装，而不是模型本身！
+
+mmengine 要求模型的 `forward` 方法接受的参数即为 `DataLoader` 的输出 `data_batch`。如果 `DataLoader` 返回元组类型的数据 `data`，`forward` 需要能够接受 `*data` 的解包后的参数；如果返回字典类型的数据 `data`，`forward` 需要能够接受 `**data` 解包后的参数。 `mode` 参数用于控制 `forward` 的返回结果，通常会再使用一个父类来封装一层
+
+```python
+    def forward(self,
+                inputs: torch.Tensor,
+                data_samples: OptSampleList = None,
+                mode: str = 'tensor') -> ForwardResults:
+        if mode == 'loss':
+            return self.loss(inputs, data_samples)
+        elif mode == 'predict':
+            return self.predict(inputs, data_samples)
+        elif mode == 'tensor':
+            return self._forward(inputs, data_samples)
+        else:
+            raise RuntimeError(f'Invalid mode "{mode}". '
+                               'Only supports loss, predict and tensor mode')
+```
+
 ## TODO
 
 便捷的分布式接口
 
-Metric & Evaluator
-
 coco api & coco metric
+
+einops for projects，我把 subway 项目的一些总结也放到里面来，因为这是一个完整的项目
+
+position embeddings
+
+增加一个记录 model 结构的 log

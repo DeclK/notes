@@ -571,6 +571,12 @@ server.sendmail(from_addr, [to_addr], msg.as_string())
 server.quit()
 ```
 
+## setuptools
+
+使用该包能够把本地的项目进行打包成 package，可供本地使用，也可以上传 pip
+
+使用逻辑可参考 [zhihu](https://zhuanlan.zhihu.com/p/460233022)
+
 ## TODO
 
 ### 进程、线程
