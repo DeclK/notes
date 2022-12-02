@@ -255,7 +255,7 @@ DataLoader(dataset,
 
 Pytorch 实现的 Optimizer 的输入主要由 `model.parameters()` 和其他超参数（如 `lr, weight_decay`）。如果想要对特定层设置，可参考 [StackOverflow](https://stackoverflow.com/questions/51801648/how-to-apply-layer-wise-learning-rate-in-pytorch)，传入一个 list of dict 即可
 
-mmengine 对 pytorch 优化器的包装还是比较轻的，除了 optimizer 原有的接口外，OptimWrapper 主要多了几个接口：
+mmengine 对 pytorch 优化器的包装还是比较轻的，除了 optimizer 原有的接口外，[OptimWrapper](https://mmengine.readthedocs.io/zh_CN/latest/tutorials/optim_wrapper.html) 主要多了几个接口：
 
 1. `optim_wrapper.update_params(loss)` 更新参数，替代 backward + step
 2. `optim_wrapper.get_lr()` 获得学习率，替代原来的 `optimizer.param_groups[0]['lr']`

@@ -577,6 +577,14 @@ server.quit()
 
 使用逻辑可参考 [zhihu](https://zhuanlan.zhihu.com/p/460233022)
 
+requirements.txt 可以对 pacakge 的版本进行限制
+
+```txt
+package==version
+package>=version
+package>=version1, <version2
+```
+
 ## TODO
 
 ### 进程、线程
