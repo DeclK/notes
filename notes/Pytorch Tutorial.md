@@ -880,3 +880,7 @@ tensorboard --logdir PATH --port PORT 	# port is not necessary
 ```
 
 现在 vscode 对 tensorboard 也支持了，可以直接 `launch tensorboard`
+
+### 6 torch.std
+
+区别于一般意义上的 std！和 `np.std` 的表现是不一样的，谨慎使用
