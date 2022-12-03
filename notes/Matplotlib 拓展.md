@@ -16,7 +16,11 @@ date: 2021-11-16 00:00:00
 
 ## Figure settings
 
-TODO
+`plt.figure()` 常用的参数如下
+
+1. num，可理解为该图的 id 或者序号，类型为 int or str
+2. figsize，图像的长宽，类型为 (float, float)
+3. dpi，dots-per-int，表示图像的分辨率
 
 ## Axis limit
 

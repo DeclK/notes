@@ -44,6 +44,7 @@ date: 2021-07-12 14:36:42
    ```shell
    cd ~/.oh-my-zsh/custom/plugins
    git clone https://github.com/zsh-users/zsh-autosuggestions.git
+   # git clone https://gitclone.com/github.com/zsh-users/zsh-autosuggestions.git
    ```
 
    然后在 `~/.zshrc` 里配置 plugin
@@ -51,6 +52,10 @@ date: 2021-07-12 14:36:42
    ```.zshrc
    plugins=(git zsh-autosuggestions)
    ```
+
+4. 打开个人目录下的配置文件:  `~/.zshrc` 
+
+   找到 `auto_update` 相关行，将注释去掉，则可禁用 ohmyzsh 自动检查更新。可通过命令 `upgrade_oh_my_zsh` 手动升级
 
 ## Install Ubuntu
 

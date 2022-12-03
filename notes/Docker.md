@@ -333,6 +333,7 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
     # 2. 安装并重启
     sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
     sudo systemctl restart docker
+    # sudo service docker restart
    ```
 
    如果使用了 WSL 没有 `systemctl` 命令，可以使用 `sudo service docker restart` 完成服务重启
