@@ -15,7 +15,7 @@ categories:
 
 由于 Manim-Kindergarten 的 [视频教程](https://www.bilibili.com/video/BV1p54y197cC?from=search&seid=1264961070490764259) 非常友好，所以根据他们的视频进行整理和学习。但是由于教程中使用的 manim 版本并不是社区版本，所有整理的内容和原教程有所出入
 
-## 第一讲 物体的位置与坐标变换
+## 物体的位置与坐标变换
 
 怎样确定物体的坐标？首先要理解 manim 的坐标体系。
 
@@ -88,7 +88,7 @@ mob.align_to(mob_or_point, direction)
 mob.next_to(mob_or_point, direction, aligned_edge, buff)
 ```
 
-## 第二讲 manim常用几何类
+## Manim常用几何类
 
 ### line & arrow
 
@@ -157,13 +157,10 @@ vgroup.remove(mob2)
 vgroup.shift(UP)
 # 将成员按照某一方向对齐，本质上是实现了 next_to 方法
 vg.arrange(DOWN, aligned_edge=LEFT)
+vg.arrange_in_grid(rows, cols)
 ```
 
-### AnimationGroup
-
-TODO
-
-## 第三讲 颜色的表示、运算与设置
+## 颜色的表示、运算与设置
 
 ### 颜色的表示
 
@@ -228,7 +225,7 @@ vg.set_colors_by_radial_gradient(radius, inner_color, outer_color)
 
 值得一提的是，这些操作都是 `VMobject` 的内置方法，是一种通用的方法，而且这些方法不仅仅可以设置 `stroke` 的颜色，也可以设置 `width, opacity...`
 
-## 第四讲 插入SVG、图片与文字
+## 插入SVG、图片与文字
 
 ### 图片
 
@@ -301,6 +298,8 @@ number_plane = NumberPlane(
         )
 ```
 
+TODO: draw Axes like matplotlib
+
 ### 方程
 
 使用 `ParametricFunction` 可以显示函数
@@ -315,16 +314,93 @@ def construct(self):
     self.add(func.scale(3))
 ```
 
+## 三维场景与 Camera
+
+三维场景更需要的是对 `Camera` 的理解。实际上 `ThreeDScene` 就是将 `Camera` 换成了 `ThreeDCamera`，并实现了方便的接口来控制 Camera
+
+```python
+from manim import *
+
+class ThreeDCameraIllusionRotation(ThreeDScene):
+    def construct(self):
+        axes = ThreeDAxes()
+        circle=Circle()
+        self.set_camera_orientation(phi=75 * DEGREES, theta=30 * DEGREES)
+        self.add(circle,axes)
+        self.begin_3dillusion_camera_rotation(rate=2)
+        self.wait(PI/2)
+        self.stop_3dillusion_camera_rotation()
+```
+
+[ThreeDCamera](https://docs.manim.community/en/stable/examples.html#threedcamerarotation) 是通过控制各个 ValueTracker 来操作相机的位置以及参数。可以通过这个特点实现对其灵活操作
+
+[MovingCamera](https://docs.manim.community/en/stable/examples.html#followinggraphcamera) 是通过控制 `self.frame` 来操作相机的拍摄范围
+
+ZoomedScene 复杂一些，可认为其是由一个 Camera + 一个 MovingCamera 组合而成，本质是利用了 [MultiCamera](https://docs.manim.org.cn/cairo-backend/camera/multi_camera.html) 其目前没有比较好的文档。依然可以通过调整 MovingCamera 来控制这个场景，即调整 `zoomed_camera_config`
+
+## 实用技巧
+
+### UpdateFromAlphaFunc
+
+通过这个动画能够实现自己的 Animation，其中 alpha 代某个 Animation 时间运行的进度，取值为0~1
+
+```python
+class CountingScene(Scene):
+    def construct(self):
+        # Create Decimal Number and add it to scene
+        number = DecimalNumber(mob_class=Text).set_color(WHITE).scale(5)
+        # Add an updater to keep the DecimalNumber centered as its value changes
+        def func(obj, alpha):
+            value = alpha * (10)
+            obj.set_value(value)
+        ani = UpdateFromAlphaFunc(number, func)
+
+        number.add_updater(lambda number: number.move_to(LEFT * 3))
+        # Play the Count Animation to count from 0 to 100 in 4 seconds
+        self.play(Count(number, 0, 100), run_time=4, rate_func=linear)
+```
+
+### Updater
+
+既然这里提到了 updater，那么也必须要把 updater 给将明白。每一个 mobject 都有一个 updater list，所谓的 updater 实际上是一个函数：
+
+1. 函数的第一个参数必须是 mobject 本身
+2. updater 的第二个参数可有可无，被成为 `dt`，表示动画在渲染时每隔 `dt` 时间会渲染一帧，帧率是由 config 决定的，如果是30帧的帧率，`dt=1/30`
+
+可以简单认为，在渲染的每一帧时，都会调用每个 mobject 的  updater list，对其进行更新
+
+通常可以使用 `ValueTracker` 来作为一个中间桥梁，各个 updater 可以 `ValueTracker` 中的值为基准进行自己对应的更新，[example](https://docs.manim.community/en/stable/examples.html#movingdots)
+
+### AnimationGroup
+
+将多个动画进行组合是非常使用的功能，并且实现了简单控制动画的开始时间，能够通过 `lag_ratio` 来实现延迟
+
+```python
+ag = AnimationGroup(Wait(1), circle.animate.set_fill(RED), lag_ratio=1)
+```
+
+上方就实现了先等1秒，然后再进行其他动画
+
+### 使用代码渲染
+
+通常来说会需要使用命令行来进行渲染，但当想要更灵活的使用时，直接调用代码渲染会更方便
+
+```python
+scene = DemoScene()
+scene.render()
+```
+
+同时有时候我想获得当前 camera 的拍摄结果可以通过 `pixel_array` 获得
+
+```python
+class Demo(ThreeDScene):
+    def construct(self):
+        self.renderer.update_frame(self)	# 拍摄图像
+        cur_picture = self.renderer.camera.pixel_array	# 获取图像
+```
+
 ## More
 
-ManimCE 文档有一个 [reference manual](https://docs.manim.community/en/stable/reference.html)，官方描述这个手册的功能：
+[Reference manual](https://docs.manim.community/en/stable/reference.html) [物理模拟](https://www.bilibili.com/read/cv15424290)
 
-> This reference manual details modules, functions, and variables included in Manim, describing what they are and what they do. 
-
-里面包含了各种模块和函数，更多的 `VMobject` 和更多的动画操作，文档中还有 [Example Gallery](https://docs.manim.community/en/stable/examples.html) 提供参考
-
-物理模拟，AnimationGroup，三维场景
-
-我判断了一下，manim 更加适合用于制作数学教学视频，而我可能之后将少有机会接触。最后可能把这个文档完善一下，找一些感兴趣的视频，看一下他们的实现，然后制作一个动画放在视频开头或者自己网站吧
-
-目前可以用于制作一些非常简单的示意动画，已经够用了
+总体来说，Manim 非常适合用于制作**示例**，对于三维示例也能够完成大部分的任务，但是对于长视频的制作将非常考验项目的组织能力，可以参考 [issue](https://github.com/3b1b/manim/issues/1086#issuecomment-1272617831) 来完成对多个场景的组合，建议分为多个场景分别渲染以节省不必要的时间

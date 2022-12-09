@@ -88,6 +88,14 @@ git config --global url."https://gitclone.com/".insteadOf https://
 
 下载 release 时可以使用 [github proxy](https://ghproxy.com/)，或者使用油猴插件 [github 增强](https://greasyfork.org/zh-CN/scripts/412245-github-%E5%A2%9E%E5%BC%BA-%E9%AB%98%E9%80%9F%E4%B8%8B%E8%BD%BD) 非常好用👍
 
+有时候在 clone 自己的私密仓库的时候也非常慢，出现错误 `port 22: Connection timed out`，可以使用换一个 port，在 `~/.ssh/config` 中加入下面设置，[link](https://docs.github.com/en/authentication/troubleshooting-ssh/using-ssh-over-the-https-port)
+
+```.ssh/config
+Host github.com
+Hostname ssh.github.com
+Port 443
+```
+
 ## Git 文件基本操作
 
 ### git status

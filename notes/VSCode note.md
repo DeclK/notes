@@ -134,7 +134,7 @@ Host random_name
 
 想要 vscode 编辑 docker 容器中的文件，可以按照以下方法 
 
-1. 下载 docker 和 remote-container 插件
+1. 下载 docker 和 remote-container 插件，或者直接下载 **remote development** 一步到位！
 
 2. 在 side bar 中可以看到 docker 工具栏，可以轻松启动容器
 

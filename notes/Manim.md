@@ -198,6 +198,9 @@ config.pixel_width = 1920
 config.pixel_height = 1080
 config.frame_height = 8
 config.frame_width = 14.222	# frame和pixel的比例要满足
+config.output_file = 'name.png'
+config.preview = False
+config.quality = 'high_quality'
 ```
 
 ### Text

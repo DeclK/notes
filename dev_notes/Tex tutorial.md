@@ -320,3 +320,9 @@ tex 中的环境能够对环境中的内容提供定制化的渲染，以 `\begi
 ## 补充
 
 这里整理一些零碎的 trick
+
+[Paper Writing Tips](https://github.com/MLNLP-World/Paper-Writing-Tips)
+
+[English Writing](https://github.com/yzy1996/English-Writing)
+
+[latex writing tips](https://github.com/guanyingc/latex_paper_writing_tips)

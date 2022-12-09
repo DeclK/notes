@@ -16,7 +16,7 @@ date: 2021-11-16 00:00:00
 
 ## Usage Guide
 
-### A simple example
+### 最简单的例子
 
 Matplotlib 的图都是在 [`Figure`](https://matplotlib.org/stable/api/figure_api.html##matplotlib.figure.Figure)s 上绘制的，每个 Figure 都可以包含一个或多个 [`Axes`](https://matplotlib.org/stable/api/axes_api.html##matplotlib.axes.Axes)。然后我们可以使用 [`Axes.plot`](https://matplotlib.org/stable/api/_as_gen/matplotlib.axes.Axes.plot.html##matplotlib.axes.Axes.plot) 在轴上绘制一些数据，使用 axes 创建图形的最简单方法是使用[`pyplot.subplots`](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplots.html##matplotlib.pyplot.subplots) （Axes 概念比较抽象，这里就把它们当作一个个的子图好了，subfigure）
 
@@ -42,15 +42,15 @@ plt.plot([1, 2, 3, 4], [1, 4, 2, 3])  ## Matplotlib plot.
 
 为这种方式取名叫 `pyplot-style` 目前比较流行这种方式，同时现在也不推荐使用 `pylab` 进行绘图
 
-### Matplotlib basic concept
+### 基本概念
 
 1. Figure
 
-   可以把 figure 当成一个画布，这个画布可以画任意数量的 Axes
+   可以把 figure 当成一个画布（canvas），这个画布可以画任意数量的 Axes
 
 2. Axes
 
-   把 Axes 当成一个小画布
+   把 Axes 当成一个小画布（子图），实际的绘画是在子图上完成
 
 3. Axis
 
@@ -62,7 +62,7 @@ plt.plot([1, 2, 3, 4], [1, 4, 2, 3])  ## Matplotlib plot.
 
 最好使用 numpy.array 作为函数的输入，其他类型的变量可能不能很好地处理
 
-### Interactive mode
+### 交互模式
 
 可以使用交互模式，看到每一个画图的效果，可以使用 ipython 进行交互
 
@@ -78,8 +78,6 @@ plt.xlabel("index")
 
 如果是没有指明交互模式，则需要使用 `plt.show()` 让绘制的图像显示
 
-### Performance
-
 如果感觉渲染得很慢的话，可以是使用 fast style
 
 ```python
@@ -91,13 +89,9 @@ mplstyle.use('fast')
 
 ## Pyplot tutorial
 
-`matplotlib.pyplot` 包含了各种各样的接口，能够让用户轻松地绘图，下面引用一下官方文档
+`matplotlib.pyplot` 包含了各种各样的接口，能够让用户轻松地绘图
 
-> Each `pyplot` function makes some change to a figure: e.g., creates a figure, creates a plotting area in a figure, plots some lines in a plotting area, decorates the plot with labels, etc.
->
->  It keeps track of things like the current figure and plotting area, and the plotting functions are directed to the current axes.
-
-### Intro to pyplot
+### plt.plot
 
 绘制简单映射函数 $y = f(x)$ 图像可以使用 `plt.plot`，详细内容推荐 [plot doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.plot.html#matplotlib.pyplot.plot) 
 
@@ -118,13 +112,9 @@ plt.plot(x=, y=, fmt='b-')
 # x, y 可以是二维的，这样将绘画多个函数图像
 ```
 
-#### Formatting the style of your plot
-
 实际上 `plt.plot` 可以接受任意多的参数，以绘画任意多个函数图像
 
 ```python
-import numpy as np
-
 # evenly sampled time at 200ms intervals
 t = np.arange(0., 5., 0.2)
 
@@ -135,31 +125,26 @@ plt.show()
 
 <img src="Matplotlib/sphx_glr_pyplot_004.png" style="zoom: 67%;" />
 
-### Plotting with keyword strings
-
-如果有 `data_dict` 存放着数据，则可以直接通过 `data_dict` 和其中的关键字绘图，下面使用了 `plt.scatter` 来绘制一个散点图，[scatter doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.scatter.html?highlight=scatter#matplotlib.pyplot.scatter)
+实际上 `plt.plot()` 返回的是一个 `Line2D` 对象组成的列表，可直接传入 `Line2D` 的属性进行更改 [Line2D doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.lines.Line2D.html#matplotlib.lines.Line2D)
 
 ```python
-data = {'a': np.arange(50),
-        'c': np.random.randint(0, 50, 50),
-        'd': np.random.randn(50)}
-data['b'] = data['a'] + 10 * np.random.randn(50)
-data['d'] = np.abs(data['d']) * 100
-
-plt.scatter('a', 'b', c='c', s='d', data=data)
-# [c]olor, [s]ize
-plt.xlabel('entry a')
-plt.ylabel('entry b')
-plt.show()
+Line2D(
+color,
+alpha,	# 透明度
+linewidth,
+marker,
+)
 ```
 
-图像如下，可以看到散点的颜色和大小也是由 `data` 字典中的 `c & d` 决定的
+### plt.figure & subplot
 
-<img src="Matplotlib/sphx_glr_pyplot_005.png" style="zoom:67%;" />
+`plt.figure()` 常用的参数如下
 
-### Working with multiple figures and axes
+1. num，可理解为该图的 id 或者序号，类型为 int or str
+2. figsize，图像的长宽，类型为 (float, float)
+3. dpi，dots-per-int，表示图像的分辨率
 
-`pyplot` 有一个 current figure/axes 概念，也就是当前在哪个画布上绘制哪个图像，下面就展示如何绘制两个子图
+`pyplot` 有一个 current figure/axes 概念，也就是当前在哪个画布上绘制哪个图像，`plt.gca()` 代表获得当前 axes (get current axes)。下面就展示如何绘制两个子图
 
 ```python
 def f(t):
@@ -183,30 +168,7 @@ plt.show()
 
 其中的 `211 & 212` 代表什么呢？这其实是 (2, 1, 1) 的简写，`subplot(2, 1, 1)` 也是一样的效果，三个数字分别表示：num_rows, num_cols, plot_number，其中 plot_number 是一个范围为 1~num_rows * num cols 的数字，能够定位在哪个子图上绘画
 
-下面的代码展示了绘画多个 figure & subplot
-
-```python
-import matplotlib.pyplot as plt
-plt.figure(1)                # the first figure
-plt.subplot(211)             # the first subplot in the first figure
-plt.plot([1, 2, 3])
-plt.subplot(212)             # the second subplot in the first figure
-plt.plot([4, 5, 6])
-
-
-plt.figure(2)                # a second figure
-plt.plot([4, 5, 6])          # creates a subplot() by default
-
-plt.figure(1)                # figure 1 current; subplot(212) still current
-plt.subplot(211)             # make subplot(211) in figure1 current
-plt.title('Easy as 1, 2, 3') # subplot 211 title
-```
-
-<img src="Matplotlib/image-20211114194402180.png" style="zoom:50%;" />
-
-还有一个常用的操作 `plt.gca()` 代表获得当前 axes (get current axes)
-
-### Plotting with categorical variables
+### plt.bar
 
 x 轴不仅可以是 number 还可以是字符串序列 names
 
@@ -228,23 +190,9 @@ plt.show()
 
 <img src="Matplotlib/sphx_glr_pyplot_006.png" style="zoom:67%;" />
 
-### Controlling line properties
+### words
 
-可以对 plot 出来的线条的属性进行设置，例如通过 `plt.setp()` 方法。实际上 `plt.plot()` 返回的是一个 `Line2D` 对象组成的列表，本质上是对 `Line2D` 对象的属性进行更改 [Line2D doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.lines.Line2D.html#matplotlib.lines.Line2D)
-
-```python
-# 直接在 plot 方法中进行修改
-plt.plot(x, y, linewidth=2.0)
-
-# 使用 plt.step()
-line_1, line_2 = plt.plot(x1, y1, x2, y2)
-# use keyword args
-plt.setp(lines, color='r', linewidth=2.0)
-# or MATLAB style string value pairs
-plt.setp(line_1, 'color', 'r', 'linewidth', 2.0)
-```
-
-### Working with text
+#### plt.text & labels & title
 
 通过 `text` 方法可以为 figure 添加文字，通过 `xlabel, ylable, title` 等方法可以给 figure 添加坐标轴标签以及标题，[text doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.text.html#matplotlib.pyplot.text) [xlabel doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.xlabel.html#matplotlib.pyplot.xlabel), [ylabel doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.ylabel.html#matplotlib.pyplot.ylabel) and [title doc](https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.title.html#matplotlib.pyplot.title)
 
@@ -301,22 +249,22 @@ plt.show()
 
 <img src="Matplotlib/sphx_glr_pyplot_009.png" style="zoom:67%;" />
 
-### Nonlinear axes
+### 非线性坐标轴
 
 可以对坐标轴进行缩放，例如对数缩放 `plt.xscale('log')` 更多就不再叙述了，可以直接参考 [tutorial](https://matplotlib.org/stable/tutorials/introductory/pyplot.html#logarithmic-and-other-nonlinear-axes)
 
 ### 保存图片
 
-使用 `plt.savefig('path\name')` 即可
+使用 `plt.savefig('path/name')` 即可
 
 ## 总结
 
-以上就是一些 matplotlib.pyplot 中的基础概念，掌握了基本逻辑过后，就可以通过查询文档进行更多的操作了，放两个参考链接
+以上就是一些 matplotlib.pyplot 中的基础概念，掌握了以上接口，基本上可以做很多事情了！
 
-1. [Matplotlib Cheat Sheet](https://github.com/matplotlib/cheatsheets/)，查看一些代号很方便
+这里再放两个参考链接
+
+1. [Matplotlib Cheat Sheet](https://github.com/matplotlib/cheatsheets/)，查看一些代号很方便，**强烈推荐！**
 
 2. [Example Gallery](https://matplotlib.org/stable/tutorials/introductory/sample_plots.html#sphx-glr-tutorials-introductory-sample-plots-py)
 
-## TODO
-
-整理一些常用的 api 操作
+后续把一些常用的接口单独整理，目的是为了方便查找
