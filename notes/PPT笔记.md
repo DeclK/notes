@@ -1,3 +1,11 @@
+---
+title: PPT
+categories:
+  - 软件
+  - Windows
+date: 2022-11-12
+---
+
 # PPT笔记
 
 如何做一个体面优雅的 PPT？针对个人需求，我应该要解决下面三个问题

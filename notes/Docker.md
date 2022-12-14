@@ -347,13 +347,14 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
 4. 我个人常用的操作是：
 
    ```shell
-   docker run -it --gpus all -v /data:/data -v /project:/project --net host --name name image_id
+   docker run -it --gpus all --shm-size 8g -v /data:/data -v /project:/project --net host --name name image_id
    ```
 
     做了这几个事情：
 
    1. 打开交互终端
    2. 配置 GPU
-   3. 挂载数据和项目
-   4. 配置网络，并给容器取名
-   5. 指定 image id
+   3. 配置容器内存
+   4. 挂载数据和项目
+   5. 配置网络，并给容器取名
+   6. 指定 image id

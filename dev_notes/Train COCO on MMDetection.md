@@ -1,29 +1,4 @@
-#   Train COCO on MMDetection
-
-目的，能够跑通 coco 数据集，了解 coco 格式
-
-更重要的是看看 detr 是怎么跑的
-
-## 下载 COCO
-
-虽然百度网盘极其🐶，但是这里我依然使用了百度网盘下载，需要开启一下闲置带宽优化下载。只要是热门资源下载速度都会比较快的
-
-下载完后，解压放在如下位置
-
-```txt
-mmdetection
-├── mmdet
-├── tools
-├── configs
-├── data
-│   ├── coco
-│   │   ├── annotations
-│   │   ├── train2017
-│   │   ├── val2017
-│   │   ├── test2017
-```
-
-下载完 coco 数据集然后解压
+#   MMEngine & COCO
 
 ## MMEngine
 

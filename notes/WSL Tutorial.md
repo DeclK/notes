@@ -1,3 +1,11 @@
+---
+title: WSL Tutorial
+cagegories:
+  - 编程
+  - tools
+date: 2022-12-5
+---
+
 # WSL Tutorial
 
 ## 安装
