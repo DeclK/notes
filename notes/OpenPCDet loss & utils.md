@@ -30,6 +30,8 @@ $$
 
 >重新去查了下focal loss论文，在gamma=0时，alpha=0.75效果更好，但当gamma=2时，alpha=0.25效果更好，个人的解释为负样本(IOU<=0.5)虽然远比正样本(IOU>0.5)要多，但大部分为IOU很小（如<0.1）以至于在gamma作用后某种程度上贡献较大损失的负样本甚至比正样本还要少，所以alpha=0.25要反过来重新平衡负正样本
 
+PS: 如果了解了之后的一篇 Generalized Focal Loss，则更好理解 focal 难易样本的数学动机！推荐去看自己的那篇 RDIoU 的笔记
+
 先来看 forward 函数的输入输出
 
 ```python

@@ -187,6 +187,20 @@ array[[2, 1, 3],:]	# could be any iterable int array
    e = a[:, [True, False, True], :, [0, 1]]
    ```
 
+3. 当传入 `index` 是一个元组/列表，且仅传入该 `index` 时，会自动将其分解
+
+   ```python
+   index = (index1, index2)
+   e = a[index]	# eq a[index1, index2]
+   ```
+
+   但是，当对多个维度使用花式索引时，依然按照(1)中的广播方法处理
+
+   ```python
+   index = (index1, index2)
+   f = a[[:, [0, 1], :, index]	# eq a[[:, [0, 1], :, torch.stack(index)]
+   ```
+
 ## Broadcast 广播
 
 广播数组维度需要满足以下要求任意一个：

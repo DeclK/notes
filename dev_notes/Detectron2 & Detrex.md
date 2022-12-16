@@ -97,3 +97,25 @@ evaluation
 
 TODO
 
+
+
+我个人最喜欢的 detectron2 设计就是 LazyConfig，这完全弥补了 mmengine 里 config 无法链接的问题
+
+另外，可以把模型和基本模块分离开，一个模型就是一个文件夹
+
+```txt
+- projects
+	- detr
+		- assets
+		- config
+		- model
+			- detr.py
+	- deformable_detr
+	- dino
+```
+
+具体模型的概念在 mmengine 里是比较轻的
+
+其余方面都大差不差了，所以可以快速地专注于模型
+
+数据处理都几乎成了标准化，只要准确了解一种框架的数据处理，建立好概念，就能够扩展到其他框架当中

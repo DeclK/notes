@@ -743,6 +743,7 @@ torch.clamp(input, min=None, max=None)
 torch.max(input, sum)	# return a tuple (tensor, LongTensor)
 torch.norm(input, dim=None)
 torch.randperm(n)		# return a random permutation of 0~n-1
+torch.cdist(x1, x2, p)	# p-norm distance
 # torch 里面习惯使用 dim= 而不是 axis=
 # x is a tensor
 x.repeat(*sizes)	# repeat times
@@ -782,7 +783,7 @@ with torch.autograd.detect_anomaly():
 1. `input` 和 `grid` 的维度顺序不一样
 2. `grid` 中每一个元素的值域在 `-1~1` 之间，要注意好归一化。归一化通过下面步骤即可完成：
    1. 明确坐标系，获得原点（feature map 中心点）坐标，获得长宽大小
-   2. 当前坐标减去原点，并除以长宽
+   2. 当前坐标减去原点，并除以 $\frac{H}{2}, \frac{W}2$ 进行归一化
 
 ```python
 # input: 4-D (N,C,H,W) and 5-D (N,C,D,H,W) input are supported
@@ -793,7 +794,7 @@ with torch.autograd.detect_anomaly():
 
 import torch.nn.functional as F
 import torch
-
+d
 input = torch.arange(4).view(1,1,2,2).float()
 print(input.squeeze())
 
@@ -884,3 +885,13 @@ tensorboard --logdir PATH --port PORT 	# port is not necessary
 ### 6 torch.std
 
 区别于一般意义上的 std！和 `np.std` 的表现是不一样的，谨慎使用
+
+### 7 torch.masked
+
+torch 有不少与 mask 相关的操作，其实如果熟悉索引操作会更灵活
+
+```python
+tensor.masked_fill(mask, value)		# also have inpace version
+tensor.masked_scatter(mask, source)
+```
+
