@@ -107,9 +107,11 @@ multi_level_feats = self.neck(features)
 
 <img src="C:\Data\Projects\notes\dev_notes\DETR\image-20221216190202156.png" alt="image-20221216190202156" style="zoom:50%;" />
 
-#### Multi-scale Positional Embeddings
+#### Multi-scale Positional Embedding
 
-论文里还提到了 scale-level embedding，但在 two stage 中并没有使用，感觉用处不大，这里直接忽略。而处理 multi-scale 的 positional embeddings，也没有太多改动，就是逐个 level 获得
+**Encoder 阶段**
+
+直接处理 multi-scale positional embeddings，就是逐个 level 获得
 
 ```python
 for feat in multi_level_feats:
@@ -119,9 +121,24 @@ for feat in multi_level_feats:
     multi_level_position_embeddings.append(self.position_embedding(multi_level_masks[-1]))
 ```
 
-解释一下：positional embedding 是根据一个 2D mask 直接生成的，对于不同 scale 的 mask 是直接根据 img mask 插值获得（img mask 中的非零值即表示该像素点被忽略） 
+解释：positional embedding 是根据一个 2D mask 直接生成的，对于不同 scale 的 mask 是直接根据 img mask 插值获得（img mask 中的非零值即表示该像素点被忽略） 
+
+为了对不同 scale 的 positional embedding 进行区分，再加入 scale embedding
+
+```python
+self.level_embeds = nn.Parameter(torch.Tensor(self.num_feature_levels, self.embed_dim))
+# for each scale, pos_embed (B, H*W, C)
+for lvl, pos_embed in enumerate(multi_level_pos_embeds):
+	lvl_pos_embed = pos_embed + self.level_embeds[lvl].view(1, 1, -1)
+```
+
+**Decoder 阶段**
+
+上述的 multi-scale positional embedding 是给 encoder query 使用，在 decoder 中 query 不再是复杂的多尺度特征图谱，而就是一般的 embedding，所以使用的 query positional embedding 就是 DETR 中的 object query，也是一般的 embedding（所谓一般，指的是非预设，如 sine embed）
 
 #### Reference Points
+
+**Encoder 阶段**
 
 reference points 就是每个像素点中心的**归一化坐标**。每一个 scale 的 reference points 为一个张量，形状为 (H, W, 2)，那么多个 scale 的 reference points 合起来应该是 `(B, h1w1 + h2w2 + ..., 2)` 才对，但实际上的代码并不是这么做的
 
@@ -149,9 +166,19 @@ reference points 就是每个像素点中心的**归一化坐标**。每一个 s
         return reference_points
 ```
 
-可以看到最终的输出形状是 `(bs, num_keys, num_levels, 2)`，**实际上这是为了各个 scale 之间的交互**，即某个 scale 的 reference point 可以去另一个 scale 进行采样 
+可以看到最终的输出形状是 `(bs, num_keys, num_levels, 2)`，**实际上这是为了各个 scale 之间的交互**，即某个 scale 的 reference point 可以去另一个 scale 进行采样
 
-#### MSDeformAttention
+**Decoder 阶段**
+
+由于 Decoder 中的 query 是一般的 embedding，所以不可能像上述一样生成与位置强相关的 reference points，就只能用一个简单的线性层对 embedding 进行转换
+
+```python
+self.reference_points = nn.Linear(self.embed_dim, 2)
+```
+
+然后再 sigmoid 进行归一化。但之后为了解决这个问题就使用了两个技巧：query selection & iterative box refinement
+
+#### MSDeformAttn
 
 下面正式介绍 multi-scale deformable attention 模块，先简单描述下代码干了什么事情
 
@@ -282,4 +309,88 @@ def multi_scale_deformable_attn_pytorch(
 1. query selection
 2. encode new query
 
-query -> region of interest
+#### Query Selection
+
+感觉有 beam search 的意思：不需要每次对全部的选择进行暴力搜索，而基于排名靠前的选择继续进行搜索。这个方法也被称为 DETR two stage，两阶段方法。**Query 现在不是来自于随机初始化的 embedding，而是来自于 Encoder Output + Preset Anchor（没错，anchor is EVERYWHERE!）**
+
+Query Selection 显然需要完成两件事：
+
+1. 生成 query / proposal。方法是基于预设 anchor 的 proposal 预测。每一个预设 anchor 对应一个 encoder output pixel，然后生成一个选框极其对应分类。所以说这里的 **query 就是 proposal**
+2. 排序 query / proposal。得分高 proposal 的排序靠前，并注意分类任务为二分类，即只分前景和背景，但这个二分类任务完成得很妙，和原来的 80 类直接进行了一个统一：直接把所有的 label 标签指定为0，即可完成二分类
+
+完成上述任务需要调用下方函数 `gen_encoder_output_proposals`，这里仅给出简单注释
+
+```python
+    def gen_encoder_output_proposals(self, memory, memory_padding_mask, spatial_shapes):
+        """
+        Args:
+            - memory: output of encoder, (B, S, C)
+            - memory_padding_mask: (B, S)
+            - spatial_shapes: (B, 2)
+        Return:
+            - output_memory: **MASKED** and projected new memory (B, S, C)
+            - output_proposals: reference point **UNsigmoid** anchors (B, S, 4)
+        """
+```
+
+此时还得到一个好处，既然我们的 query 已经和位置相关了，那么其 reference points 也能够直接使用该 proposal 的位置和大小
+
+另外一点，对于初始化的 anchor，网络对其值并不敏感
+
+#### Iterative Box Refinement
+
+这里感觉是残差，或者 step by step 的思想，整个 trick 非常对我的口味👍我不了解 Diffusion Model，不知道这种 step by step 是不是类似的
+
+在 DETR 中 decoder 每一层都会去预测最终的选框，每一层的预测可能差距非常大，这样的训练过程显然不够稳定。问题提出来了，改进方法也是跃然纸上：要求每一层的预测是基于上一层的预测，这样就只预测一个变化量
+
+同时，我们还可以根据这个预测去更新我们的 reference points，因为预测的框会朝着 gt 去探索，reference points 与其一起更新会收敛更快，而不是从头到尾使用同一套 reference points，并且此时 referece points 为 reference box，最后一个维度是 4
+
+注意，每个 scale/level 的 `bbox_embed or class_embed` 都是独立的
+
+```python
+for layer_idx, layer in enumerate(self.layers):
+    output = layer(q, k, v, ...)
+    
+    tmp = self.bbox_embed[layer_idx](output)
+    new_reference_points = tmp + inverse_sigmoid(reference_points)
+    new_reference_points = new_reference_points.sigmoid()
+    
+	reference_points = new_reference_points.detach()	# no detach is better!
+    
+    intermediate.append(output)
+    intermediate_reference_points.append(reference_points)
+```
+
+我觉得可以直接对 reference points 计算损失，省略计算，但原代码重新计算了
+
+```python
+        for lvl in range(inter_states.shape[0]):
+            if lvl == 0:
+                reference = init_reference
+            else:
+                reference = inter_references[lvl - 1]
+            reference = inverse_sigmoid(reference)
+            outputs_class = self.class_embed[lvl](inter_states[lvl])
+            tmp = self.bbox_embed[lvl](inter_states[lvl])
+            tmp += reference
+            
+            outputs_coord = tmp.sigmoid()
+            outputs_classes.append(outputs_class)
+            outputs_coords.append(outputs_coord)
+```
+
+## DeNoising Training
+
+TODO 可以理解为辅助任务
+
+## Q
+
+### 为什么不需要 NMS
+
+难道说 DETR 的误检率到底如何？
+
+### Encoder 中也加入监督信号
+
+不知道有没有类似的工作，感觉像中学的阅读理解，会先看一下问题，然后再去看文章，带着问题去阅读
+
+Forward-Forward

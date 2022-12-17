@@ -61,7 +61,6 @@ date: 2021-07-25 22:52:02
 3. 设置字体 JetBrains Mono，还可以顺便设置一下字号。安装字体[教程](https://blog.csdn.net/HUSTHY/article/details/104023077)
 4. 设置是否显示缩略图 minimap
 5. 设置 restore windows 是否直接恢复上一次的项目
-
 6. 设置开启 Trims final newlines 自动消除文件末尾多余的空行
 
 ## Python
@@ -90,6 +89,8 @@ date: 2021-07-25 22:52:02
      ]
    }
    ```
+   
+5. **开启 Sticky Scroll**，这对长代码非常友好，能够直接看到当前的类和函数是哪个
 
 ### 将注释设置为斜体
 
