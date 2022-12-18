@@ -337,6 +337,8 @@ Query Selection 显然需要完成两件事：
 
 另外一点，对于初始化的 anchor，网络对其值并不敏感
 
+mixed query, dynamic anchor?
+
 #### Iterative Box Refinement
 
 这里感觉是残差，或者 step by step 的思想，整个 trick 非常对我的口味👍我不了解 Diffusion Model，不知道这种 step by step 是不是类似的
@@ -381,7 +383,18 @@ for layer_idx, layer in enumerate(self.layers):
 
 ## DeNoising Training
 
-TODO 可以理解为辅助任务
+所谓的 DeNoising 就是让网路去完成一个辅助任务：给真实标签加入噪声，输入给网络，让网络去还原真实标签。这样能够加速网络的收敛
+
+这也得益于 DETR 的检测形式，只要输入一个 query，就能够输出一个预测结果。在 deformable detr 中 anchor 又直接成为了 query，事情就变得更简单了，直接把噪声标签和 query 一起 concat 连接
+
+论文提到但实际上这种 denoising 思想是可以非常广泛地运用的
+
+noise 使用的是高斯噪声，有一个超参数来控制范围
+
+学习点：
+
+1. attention mask 的使用，禁止 match query 看到 gt
+2. 灵活使用索引
 
 ## Q
 
@@ -394,3 +407,9 @@ TODO 可以理解为辅助任务
 不知道有没有类似的工作，感觉像中学的阅读理解，会先看一下问题，然后再去看文章，带着问题去阅读
 
 Forward-Forward
+
+iterative encoding？我感觉这是一种学习链条...难道需要从强化学习里找灵感
+
+dynamic denoising, for different layer use bigger denoising
+
+Encoder 直接用 Swin backbone，不用 attention 去做 multi-scale 的特征提取应该问题也不大
