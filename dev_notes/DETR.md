@@ -80,7 +80,7 @@ DC5，是 dilated convolution at resnet stage 5 的一个简称，在 DETR 中�
 
 object query 的预测结果可视化
 
-## Deformable DETR & Deformable Attention
+## Deformable DETR
 
 ### Multi-Scaele Deformable Attention
 
@@ -134,13 +134,15 @@ for lvl, pos_embed in enumerate(multi_level_pos_embeds):
 
 **Decoder 阶段**
 
-上述的 multi-scale positional embedding 是给 encoder query 使用，在 decoder 中 query 不再是复杂的多尺度特征图谱，而就是一般的 embedding，所以使用的 query positional embedding 就是 DETR 中的 object query，也是一般的 embedding（所谓一般，指的是非预设，如 sine embed）
+上述的 multi-scale positional embedding 是给 encoder query 使用，在 decoder 中 query 不再是复杂的多尺度特征图谱，而就是一般的 embedding，所以使用的 query positional embedding 就是 DETR 中的 object query，也是一般的 embedding
+
+所谓一般的 embedding，指的是非预设，如 sine embedding 即为预设好的
 
 #### Reference Points
 
 **Encoder 阶段**
 
-reference points 就是每个像素点中心的**归一化坐标**。每一个 scale 的 reference points 为一个张量，形状为 (H, W, 2)，那么多个 scale 的 reference points 合起来应该是 `(B, h1w1 + h2w2 + ..., 2)` 才对，但实际上的代码并不是这么做的
+reference points 就是每个像素点的**归一化坐标**。每一个 scale 的 reference points 为一个张量，形状为 (H, W, 2)，那么多个 scale 的 reference points 合起来应该是 `(B, h1w1 + h2w2 + ..., 2)` 才对，但实际上的代码并不是这么做的
 
 ```python
     def get_reference_points(spatial_shapes, valid_ratios, device):
@@ -151,22 +153,9 @@ reference points 就是每个像素点中心的**归一化坐标**。每一个 s
         Returns:
             Tensor: reference points used in decoder, has shape (bs, num_keys, num_levels, 2).
         """
-        reference_points_list = []
-        for lvl, (H, W) in enumerate(spatial_shapes):
-            ref_y, ref_x = torch.meshgrid(
-                torch.linspace(0.5, H - 0.5, H, dtype=torch.float32, device=device),
-                torch.linspace(0.5, W - 0.5, W, dtype=torch.float32, device=device),
-            )
-            ref_y = ref_y.reshape(-1)[None] / (valid_ratios[:, None, lvl, 1] * H)   # (1, HW) / (B, 1) -> (B, HW)
-            ref_x = ref_x.reshape(-1)[None] / (valid_ratios[:, None, lvl, 0] * W)
-            ref = torch.stack((ref_x, ref_y), -1)   # (B, HW, 2)
-            reference_points_list.append(ref)
-        reference_points = torch.cat(reference_points_list, 1)  # (B, N1+N2+..., 2)
-        reference_points = reference_points[:, :, None] * valid_ratios[:, None]
-        return reference_points
 ```
 
-可以看到最终的输出形状是 `(bs, num_keys, num_levels, 2)`，**实际上这是为了各个 scale 之间的交互**，即某个 scale 的 reference point 可以去另一个 scale 进行采样
+可以看到最终的输出形状是 `(bs, num_keys, num_levels, 2)`，**实际上这是为了各个 scale 之间的交互**，即某个像素的 reference point 存在于各个尺度当中，可以在各个 scale 中进行采样，然后做注意力加权
 
 **Decoder 阶段**
 
@@ -176,7 +165,7 @@ reference points 就是每个像素点中心的**归一化坐标**。每一个 s
 self.reference_points = nn.Linear(self.embed_dim, 2)
 ```
 
-然后再 sigmoid 进行归一化。但之后为了解决这个问题就使用了两个技巧：query selection & iterative box refinement
+然后再 sigmoid 进行归一化。但之后使用了两个技巧，这个问题也被巧妙化解了：query selection & iterative box refinement，可以直接将 proposal boxes 作为 query
 
 #### MSDeformAttn
 
@@ -184,7 +173,7 @@ self.reference_points = nn.Linear(self.embed_dim, 2)
 
 1. 判断是否为自注意力，如果没有传入 value 则使用 query 本身
 
-2. 给 query 加入 positional embedding，**注意，这里没有给 key 加入 positional embedding，更确切地说，在 deformable attetion 里没有 key 的概念，key 极其 attention 是通过其他方式获得**
+2. 给 query 加入 positional embedding，**注意，这里没有给 key 加入 positional embedding，更确切地说，在 deformable attetion 里没有 key 的概念，key 及其 attention 是通过其他方式获得**
 
 3. value 经过一个线性层，维度不变，并且 mask 掉不需要进行注意力的点。然后再 view 为多头的形式
 
@@ -204,103 +193,11 @@ self.reference_points = nn.Linear(self.embed_dim, 2)
 
 7. 获得的结果再过一个线性层，维度不变
 
-由于代码过于 mmlab 的风格🤣，我删除了一些，以方便理解
-
-```python
-    def forward(
-        self,
-        query: torch.Tensor,	# (B, N, C)
-        key = None,
-        value = None,
-        identity = None,
-        query_pos = None,
-        key_padding_mask = None,
-        reference_points = None,
-        spatial_shapes = None,
-        level_start_index = None,
-        **kwargs) -> torch.Tensor:
-        
-        if value is None:	# True, when self-attetion
-            value = query
-        if identity is None:	# True
-            identity = query
-        if query_pos is not None:	# True
-            query = query + query_pos
-        bs, num_query, _ = query.shape
-        bs, num_value, _ = value.shape
-
-        value = self.value_proj(value)
-        
-        if key_padding_mask is not None:	# True
-            value = value.masked_fill(key_padding_mask[..., None], float(0))
-        value = value.view(bs, num_value, self.num_heads, -1)
-        
-        sampling_offsets = self.sampling_offsets(query).view(
-            bs, num_query, self.num_heads, self.num_levels, self.num_points, 2
-        )
-        # bs, num_query, num_heads, num_levels, num_points, 2
-        offset_normalizer = torch.stack([spatial_shapes[..., 1], spatial_shapes[..., 0]], -1)
-        sampling_locations = (
-            reference_points[:, :, None, :, None, :]
-            + sampling_offsets / offset_normalizer[None, None, None, :, None, :]
-        )
-        
-        attention_weights = self.attention_weights(query).view(
-            bs, num_query, self.num_heads, self.num_levels * self.num_points)
-        attention_weights = attention_weights.softmax(-1)
-        attention_weights = attention_weights.view(
-            bs, num_query, self.num_heads, self.num_levels, self.num_points)
-        
-        output = multi_scale_deformable_attn_pytorch(
-                value, spatial_shapes, sampling_locations, attention_weights)
-        output = self.output_proj(output)
-
-        return self.dropout(output) + identity
-```
-
-pure pytorch 代码块如下，比较难看的是张量的形状，我都以注释给出，应该比较好理解。用简洁的语言概括为：
+`multi_scale_deformable_attn_pytorch` 用简洁的语言概括为：
 
 1. 对每一个 scale/level，计算所有 sampling points 在该 level 插值得到的特征向量
 2. 对插值得到的 multi scale + multi points 的特征向量进行注意力加权整合
 3. 合并多个 head 的特征向量
-
-```python
-def multi_scale_deformable_attn_pytorch(
-    value: torch.Tensor,
-    value_spatial_shapes: torch.Tensor,
-    sampling_locations: torch.Tensor,
-    attention_weights: torch.Tensor,
-) -> torch.Tensor:
-
-    bs, _, num_heads, embed_dims = value.shape
-    _, num_queries, num_heads, num_levels, num_points, _ = sampling_locations.shape
-    value_list = value.split([H_ * W_ for H_, W_ in value_spatial_shapes], dim=1)
-    sampling_grids = 2 * sampling_locations - 1
-    sampling_value_list = []
-    
-    for level, (H_, W_) in enumerate(value_spatial_shapes):
-        # bs, H_*W_, num_heads, embed_dims -> bs*num_heads, embed_dims, H_, W_
-        value_l_ = (
-            value_list[level].flatten(2).transpose(1, 2).reshape(bs * num_heads, embed_dims, H_, W_)
-        )
-        # bs, num_queries, num_heads, num_points, 2 -> bs*num_heads, num_queries, num_points, 2
-        sampling_grid_l_ = sampling_grids[:, :, :, level].transpose(1, 2).flatten(0, 1)
-        # bs*num_heads, embed_dims, num_queries, num_points
-        sampling_value_l_ = F.grid_sample(
-            value_l_, sampling_grid_l_, mode="bilinear", padding_mode="zeros", align_corners=False
-        )
-        sampling_value_list.append(sampling_value_l_)
-    # (bs, num_queries, num_heads, num_levels, num_points) -> (bs*num_heads, 1, num_queries, num_levels*num_points)
-    attention_weights = attention_weights.transpose(1, 2).reshape(
-        bs * num_heads, 1, num_queries, num_levels * num_points
-    )
-    output = ( # (bs*num_heads, embed_dims, num_quries, num_levels*num_points)
-        (torch.stack(sampling_value_list, dim=-2).flatten(-2) * attention_weights) 
-        .sum(-1)
-        .view(bs, num_heads * embed_dims, num_queries)
-    )
-    return output.transpose(1, 2).contiguous()
-```
 
 ### Decoder
 
@@ -337,8 +234,6 @@ Query Selection 显然需要完成两件事：
 
 另外一点，对于初始化的 anchor，网络对其值并不敏感
 
-mixed query, dynamic anchor?
-
 #### Iterative Box Refinement
 
 这里感觉是残差，或者 step by step 的思想，整个 trick 非常对我的口味👍我不了解 Diffusion Model，不知道这种 step by step 是不是类似的
@@ -347,7 +242,7 @@ mixed query, dynamic anchor?
 
 同时，我们还可以根据这个预测去更新我们的 reference points，因为预测的框会朝着 gt 去探索，reference points 与其一起更新会收敛更快，而不是从头到尾使用同一套 reference points，并且此时 referece points 为 reference box，最后一个维度是 4
 
-注意，每个 scale/level 的 `bbox_embed or class_embed` 都是独立的
+注意，每个 scale/level 的 `bbox_embed or class_embed` 都是独立的，下面是每一个 decoder block 的推理过程
 
 ```python
 for layer_idx, layer in enumerate(self.layers):
@@ -361,24 +256,6 @@ for layer_idx, layer in enumerate(self.layers):
     
     intermediate.append(output)
     intermediate_reference_points.append(reference_points)
-```
-
-我觉得可以直接对 reference points 计算损失，省略计算，但原代码重新计算了
-
-```python
-        for lvl in range(inter_states.shape[0]):
-            if lvl == 0:
-                reference = init_reference
-            else:
-                reference = inter_references[lvl - 1]
-            reference = inverse_sigmoid(reference)
-            outputs_class = self.class_embed[lvl](inter_states[lvl])
-            tmp = self.bbox_embed[lvl](inter_states[lvl])
-            tmp += reference
-            
-            outputs_coord = tmp.sigmoid()
-            outputs_classes.append(outputs_class)
-            outputs_coords.append(outputs_coord)
 ```
 
 ## DeNoising Training
@@ -395,21 +272,3 @@ noise 使用的是高斯噪声，有一个超参数来控制范围
 
 1. attention mask 的使用，禁止 match query 看到 gt
 2. 灵活使用索引
-
-## Q
-
-### 为什么不需要 NMS
-
-难道说 DETR 的误检率到底如何？
-
-### Encoder 中也加入监督信号
-
-不知道有没有类似的工作，感觉像中学的阅读理解，会先看一下问题，然后再去看文章，带着问题去阅读
-
-Forward-Forward
-
-iterative encoding？我感觉这是一种学习链条...难道需要从强化学习里找灵感
-
-dynamic denoising, for different layer use bigger denoising
-
-Encoder 直接用 Swin backbone，不用 attention 去做 multi-scale 的特征提取应该问题也不大

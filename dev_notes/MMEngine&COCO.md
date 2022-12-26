@@ -304,13 +304,14 @@ for img, data_sample in dataloader:
    base_data = BaseDataElement(metainfo=dict(h=1,w=2), size=100)
    ```
 
-   二者都以 BaseDataElement 中的属性（attr）存在，区别在于 metainfo 不能够直接通过属性设置，只有 data 可以直接通过属性设置。修改 metainfo 需要使用 set_metainfo 方法
+   二者都以 BaseDataElement 中的属性（attr）存在，区别在于 metainfo 不能够直接通过属性设置，只有 data 可以直接通过属性设置。修改 meta info 需要使用 `set_metainfo` 方法
 
    ```python
    base_data = BaseDataElement(metainfo=dict(h=1,w=2), size=100)
    base_data.h = 2		# no!!
    base_data.set_metainfo(dict(h=2))	# yes
    base_data.size = 2					# yes
+   base_data.new_attr = 1				# yes, directly add 
    ```
 
    删除属性可以直接使用 pop 方法，不管是 metainfo 还是 data 都管用
