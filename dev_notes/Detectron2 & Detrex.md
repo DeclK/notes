@@ -1,15 +1,9 @@
-# Detectron2 & Detrex
+# COCO
 
-目前最好的检测器就是基于 DETR，非常有必要进行深入了解，所以选择 [detrex](https://github.com/IDEA-Research/detrex) 进行学习，原因如下：
+目的有俩：
 
-1. 实现了许多 DETR-based 检测模型
-2. 基于 [detectron2](https://detectron2.readthedocs.io/en/latest/)
-
-我也一直想学习 detectron2 的框架，和 mmdet 比较一下，看看各自的优劣在哪里
-
-## Install
-
-使用了 pytorch 1.13 的 docker image，安装还是比较丝滑。只用了 `pip install` 就搞定了
+1. 熟悉对图像的预处理
+2. 熟悉 COCO api 以及 evaluation
 
 ## COCO
 
@@ -93,29 +87,5 @@ coco.loadAnns
 coco.loadImgs
 ```
 
-evaluation
+## COCO in MMDet
 
-TODO
-
-
-
-我个人最喜欢的 detectron2 设计就是 LazyConfig，这完全弥补了 mmengine 里 config 无法链接的问题
-
-另外，可以把模型和基本模块分离开，一个模型就是一个文件夹
-
-```txt
-- projects
-	- detr
-		- assets
-		- config
-		- model
-			- detr.py
-	- deformable_detr
-	- dino
-```
-
-具体模型的概念在 mmengine 里是比较轻的
-
-其余方面都大差不差了，所以可以快速地专注于模型
-
-数据处理都几乎成了标准化，只要准确了解一种框架的数据处理，建立好概念，就能够扩展到其他框架当中

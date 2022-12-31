@@ -9,3 +9,5 @@
 [pytorch tutorial c++ extension](https://pytorch.org/tutorials/advanced/cpp_extension.html#writing-a-mixed-c-cuda-extension)
 
 [pytorch c++ tutorial github](https://github.com/prabhuomkar/pytorch-cpp)
+
+[pytorch c++ extension 知乎](https://zhuanlan.zhihu.com/p/100459760)

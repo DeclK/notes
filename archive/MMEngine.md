@@ -1,10 +1,16 @@
-#   MMEngine & COCO
+---
+title: MMEngine
+categories:
+  - 编程
+  - OpenMMLab
+date: 2022-12-27
+---
 
-## MMEngine
+# MMEngine
 
 **这里整理 MMEngine 的核心部分**，我之前的整理都过于遵从于官方文档了，即太过于关注细节，依然没有建立起整体的架构
 
-### Registry
+## Registry
 
 **注册器的功能，就是利用配置文件构建类的实例**
 
@@ -14,7 +20,7 @@
 
 **registry 在使用的使用需要注意一下 scope，scope 是根据模块所在的 package 的名字确定的，可用 `DefaultScope` 来完成相关操作**
 
-### Config
+## Config
 
 **配置文件定义了所使用的模型、训练、数据集**
 
@@ -48,11 +54,11 @@ optimizer = dict(_delete_=True, type='SGD', lr=0.01)
 1. 可以通过 `{{_base_.attr}}` 来引用上级配置中的内容
 2. 可以通过 `cfg.dump('config.py')` 来输出配置文件，输出形式还可以是 `.yaml`
 
-### Runner
+## Runner
 
 光看文档完全没办法理解 runner，还是得看看代码。过完一遍后总结：Runner 就是一个大工厂，所有的组件都是其中的属性，组件与组件之间能够通过 runne 进行相互配合，完成所有的流程
 
-#### Runner 初始化
+### Runner 初始化
 
 runner 的初始化采用了一个 lazy init 的策略。所谓 lazy init 就是指先把 cfg 赋值给某个组件，如 `self.dataloader = dataloader_cfg`，在之后需要用这个组件的时候，再用 cfg 构建真正的实例
 
@@ -71,7 +77,7 @@ runner 的初始化采用了一个 lazy init 的策略。所谓 lazy init 就是
 11. 注册 hooks，并保存进属性 `self._hooks`
 12. 输出 config，`cfg.dump(file_path)`
 
-#### Runner.train()
+### Runner.train()
 
 1. 检查 model 是否有 `train_step` 属性/方法。这里是对模型的基本要求。如果有 `val_loop`，也得检查是否有 `val_step`
 2. 创建属性 `self.train_loop`。补充知识：一个类定义时传入参数 metaclass=ABCMeta 表示该类为抽象类，不能够实例化，只能用来继承
@@ -84,7 +90,7 @@ runner 的初始化采用了一个 lazy init 的策略。所谓 lazy init 就是
 8. 运行训练循环 `self.train_loop.run()`
 9. 运行钩子 `call_hook('after_run')`
 
-### Runner 中 train_loop 逻辑
+## Runner 中 train_loop 逻辑
 
 `BaseLoop` 是一个非常简单的类，只需要 runner 和 dataloader 作为初始化即可。`EpochBasedTrainLoop` 继承 `BaseLoop`，其核心逻辑在 `run` 方法
 
@@ -120,11 +126,33 @@ run_iter 中运行了模型的 `train_step` 步骤，在 `train_step` 中优化�
 
 自己在写个性化 Loops 的时候最好要将这些钩子都加上，以保证结果的正确！例如 `DefaultSampler` 的随机种子要在各个 epoch 开始前重新设置，这需要调用 `DistSamplerSeedHook` 完成
 
-### TODO: Runner 中 val_loop 逻辑
+## Runner 中 val_loop 逻辑
 
-metric 如何计算，如何传递，如何保存
+`val_loop` 相比 `train_loop` 有两个不同：
 
-### Model 中 train_step 逻辑
+1. 只做一个 epoch
+2. 需要计算 metric
+
+```python
+    def run(self) -> dict:
+        """Launch validation."""
+        self.runner.model.eval()
+        for idx, data_batch in enumerate(self.dataloader):
+            self.run_iter(idx, data_batch)
+        # compute metrics
+        metrics = self.evaluator.evaluate(len(self.dataloader.dataset))
+        return metrics
+
+    @torch.no_grad()
+    def run_iter(self, idx, data_batch: Sequence[dict]):
+        with autocast(enabled=self.fp16):
+            outputs = self.runner.model.val_step(data_batch)
+        self.evaluator.process(data_samples=outputs, data_batch=data_batch)
+```
+
+
+
+## Model 中 train_step 逻辑
 
 核心代码非常简单：数据预处理+前向损失+更新参数
 
@@ -133,28 +161,28 @@ metric 如何计算，如何传递，如何保存
                    optim_wrapper: OptimWrapper) -> Dict[str, torch.Tensor]:
         with optim_wrapper.optim_context(self):
             data = self.data_preprocessor(data, True)
-            losses = self._run_forward(data, mode='loss')  # type: ignore
-        parsed_losses, log_vars = self.parse_losses(losses)  # type: ignore
+            losses = self._run_forward(data, mode='loss')   type: ignore
+        parsed_losses, log_vars = self.parse_losses(losses)   type: ignore
         optim_wrapper.update_params(parsed_losses)
         return log_vars
 ```
 
-#### DataPreprocessor
+### DataPreprocessor
 
 由于 collate_fn 使用的是一个非常简单的方法，所以**数据预处理放在了 DataPreprocessor 中**，其功能包括把数据发送到 GPU 上，数据打包，归一化，最后返回 data 字典（包含 data['inputs'] & data['data_sample']）
 
 这里说明一下 DataPreprocessor **把数据发送到 GPU 上** 这个功能，写得有点隐晦：在 `BaseModel` 里为这一个功能重写了模型的 `to & cuda & cpu` 这几个方法，就是为了额外设置 DataPreprocessor 的 `device` 属性，保证了属于与模型的 `device` 是统一的，直接使用 `model.to(device)` 即可
 
-#### parse_losses
+### parse_losses
 
 mmengine 期望模型在训练时的输出是一个字典，`parse_losses` 将输出字典中包含 `'loss'` 键值对全都找出来放到 `log_vars` 中，然后再求和，形成最终的 `loss`，最终返回 `loss & log_vars`，前者用于反向传播，后者用于日志记录
 
-### 如何自己写 Config 配置文件
+## 如何自己写 Config 配置文件
 
 建议是从 `_base_` 中去继承 `default_runtime.py`，然后再挑选修改。总体来讲核心如下
 
 ```python
-# dataset
+ dataset
 dataset = dict(type='COCO')
 train_pipeline = [dict(type='LoadImageFromFile')]
 train_dataloader = dict(batch_size=16, dataset=dataset, sampler=, pipline=train_pipline)
@@ -164,11 +192,11 @@ val_dataloader = ...
 
 val_evaluator = dict(type='CocoMetric', ann_file=...)
 
-# model
+ model
 model = dict(type='DETR',...)
 data_preprocessor = dict(type='BaseDataPreprocessosr')
 
-# optimizer & scheduler
+ optimizer & scheduler
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=12, val_interval=1)
 val_cfg = dict(type='ValLoop')
 
@@ -177,7 +205,7 @@ param_scheduler = dict(type='LinearLR', start_factor=0.001, by_epoch=False, begi
 
 auto_scale_lr = dict(enable=False, base_batch_size=16)
 
-# logs & hooks
+ logs & hooks
 default_hooks
 
 log_processor = dict(type='LogProcessor', window_size=50, by_epoch=True)
@@ -186,7 +214,7 @@ log_level = 'INFO'
 visualizer = dict(type='DetLocalVisualizer', vis_backends=[dict(type='LocalVisBackend')], name='visualizer')
 ```
 
-### DataLoader 接口整理
+## DataLoader 接口整理
 
 ```python
 DataLoader(dataset, 
@@ -218,7 +246,7 @@ DataLoader(dataset,
    batch_sampler = BatchSampler(sampler, batch_size=2, drop_last=False)
    DataLoader(dataset, batch_sampler=batch_sampler)
    
-   # before each epoch start
+    before each epoch start
    sampler.set_epoch(epoch_number)
    ```
 
@@ -226,7 +254,7 @@ DataLoader(dataset,
 
 **mmengine 中的 DefaultSampler 能够同时处理分布式和非分布式的采样，再包一个 BatchSampler 就能够处理批采样了**，使用的 `collate_fn` 为 `pesudo_collate` 就是 pytorch 默认的 [collate function](https://pytorch.org/docs/stable/data.html#torch.utils.data.default_collate) 但是不转换数据为 tensor
 
-### Optimizer 接口整理
+## Optimizer 接口整理
 
 Pytorch 实现的 Optimizer 的输入主要由 `model.parameters()` 和其他超参数（如 `lr, weight_decay`）。如果想要对特定层设置，可参考 [StackOverflow](https://stackoverflow.com/questions/51801648/how-to-apply-layer-wise-learning-rate-in-pytorch)，传入一个 list of dict 即可
 
@@ -240,9 +268,9 @@ mmengine 中的 scheduler 和 pytorch 中的 scheduler 使用方法完全一致�
 
 scheduler 原理是根据当前步（last_step）和给定参数设置学习率，基本上不需要自己调整，直接参考文档 [mmengine.optim](https://mmengine.readthedocs.io/zh_CN/latest/api/optim.html) 写配置文件即可。要自己实现个性化的 scheduler 可以参考一下源码
 
-### Dataset & DataSample
+## Dataset & DataSample
 
-#### BaseDataset 实现逻辑
+### BaseDataset 实现逻辑
 
 如果要自己写一个 dataset 主要考虑重写两个方法
 
@@ -267,17 +295,17 @@ scheduler 原理是根据当前步（last_step）和给定参数设置学习率�
         return data_info
 ```
 
-#### PackxxxInputs
+### PackxxxInputs
 
 通用的增强输出 PackxxInputs，需要进一步了解通用数据元素的设计
 
 在模型的训练/测试过程中，组件之间往往有大量的数据（images）和标签（labels）需要传递，不同的算法需要传递的数据和标签形式经常是不一样的
 
 ```python
-# detection
+ detection
 for img, img_metas, gt_bboxes, gt_labels in data_loader:
     loss = retinanet(img, img_metas, gt_bboxes, gt_labels)
-# segmentation
+ segmentation
 for img, img_metas, gt_bboxes, gt_masks, gt_labels in data_loader:
      loss = mask_rcnn(img, img_metas, gt_bboxes, gt_masks, gt_labels)
 ```
@@ -291,7 +319,7 @@ for img, data_sample in dataloader:
 
 在实际实现过程中，mmengine 使用 `DataSample` 类来封装标签、预测结果信息，`DataSample` 由数据元素 `xxxData` 构成，数据元素为某种类型的预测或者标注，继承于 BaseDataElement 类。下面从下到上介绍介绍 `DataSample`
 
-##### BaseDataElement
+#### BaseDataElement
 
 为了更好的操作数据，实现了 BaseDataElement，其主要有如下功能
 
@@ -299,8 +327,8 @@ for img, data_sample in dataloader:
 
    ```python
     def __init__(self, *, metainfo: Optional[dict] = None, **kwargs) -> None:
-           # metainfo 必须为字典
-           # data 则以关键字 kwargs 直接加入
+            metainfo 必须为字典
+            data 则以关键字 kwargs 直接加入
    base_data = BaseDataElement(metainfo=dict(h=1,w=2), size=100)
    ```
 
@@ -308,10 +336,10 @@ for img, data_sample in dataloader:
 
    ```python
    base_data = BaseDataElement(metainfo=dict(h=1,w=2), size=100)
-   base_data.h = 2		# no!!
-   base_data.set_metainfo(dict(h=2))	# yes
-   base_data.size = 2					# yes
-   base_data.new_attr = 1				# yes, directly add 
+   base_data.h = 2		 no!!
+   base_data.set_metainfo(dict(h=2))	 yes
+   base_data.size = 2					 yes
+   base_data.new_attr = 1				 yes, directly add 
    ```
 
    删除属性可以直接使用 pop 方法，不管是 metainfo 还是 data 都管用
@@ -320,20 +348,20 @@ for img, data_sample in dataloader:
 
 3. 通过 print(BaseDataElement) 能够直观获得其中的 data 和 metainfo
 
-##### InstanceData
+#### InstanceData
 
 - 对 `InstanceData` 中 data 所存储的数据进行了长度校验
 - data 部分支持类字典访问和设置它的属性
 - 支持基础索引，切片以及高级索引功能
 - 支持具有**相同的 `key`** 但是不同 `InstanceData` 的拼接功能。 这些扩展功能除了支持基础的数据结构， 比如`torch.tensor`, `numpy.dnarray`, `list`, `str`, `tuple`, 也可以是自定义的数据结构，只要自定义数据结构实现了 `__len__`, `__getitem__` and `cat`.
 
-##### DataSample
+#### DataSample
 
 数据样本作为不同模块最外层的接口，提供了 xxxDataSample 用于单任务中各模块之间统一格式的传递。mmengine 对 xxxDataSample 的属性命名以及类型要进行约束和统一，保证各模块接口的统一性
 
 对命名的约束是使用 @property 装饰器完成，利用 property setter 增加对属性的更改
 
-### Default Hooks 功能
+## Default Hooks 功能
 
 1. IterTimerHook，记录每一个 iteration 实用的时间
 
@@ -360,7 +388,7 @@ for img, data_sample in dataloader:
 
 7. **RuntimeInfoHook**，这里会将运行时的信息放入 message hub 当中，包括 meta，lr，loss，metrics
 
-### 日志系统 MessageHub & MMLogger
+## 日志系统 MessageHub & MMLogger
 
 `MessageHub` 的作用是在全局收集信息。收集的信息存储在 HistoryBuffer 里，这个 buffer 相当于一个队列，其最大容量为 window size，即最多缓存多少条数据，多余这个 window size，之前的数据就会被挤出去
 
@@ -373,18 +401,18 @@ for img, data_sample in dataloader:
    
    message_hub = MessageHub(name='name_for_message_hub')
    message_hub.update_scalar('train/loss', loss)
-   # update with dict
+    update with dict
    message_hub.update_scalrs(log_dict)
    ```
 
    `update_scalar` 可以自动将数据转换成 python built-in 类型。要获取数据可通过下面方法
 
    ```python
-   buffer = message_hub.get_scalar('train/loss')	# 获取 buffer
-   # buffer.data 返回一个 tuple: (log_data, counts)
-   # counts代表对应的数据的重复次数
-   # len(log_data) == len(counts)
-   buffer.data[0]	# normally, an ndarray
+   buffer = message_hub.get_scalar('train/loss')	 获取 buffer
+    buffer.data 返回一个 tuple: (log_data, counts)
+    counts代表对应的数据的重复次数
+    len(log_data) == len(counts)
+   buffer.data[0]	 normally, an ndarray
    buffer.mean()
    buffer.max()
    buffer.min()
@@ -405,7 +433,7 @@ for img, data_sample in dataloader:
 
 MMLogger 和 MessageHub 都继承了 ManagerMixin，这个类的主要功能就是能够**全局调用实例**。举个例子，假设在某个地方创建了一个 MMLogger 实例，那么通过 `ManagerMixin.get_instance()` 能够在其他任何地方都能够获取这个 MMLogger 实例。该功能的实现需要通过**元类 meta class** 完成，我也不理解其中细节，模糊一点说，我们把创建的实例都保存在了元类的一个字典里面，而这是一个全局可获取的空间
 
-### 可视化系统 Visualizer
+## 可视化系统 Visualizer
 
 mmengine 的 visualizer 有两个功能：
 
@@ -458,7 +486,7 @@ mmengine 的 visualizer 有两个功能：
    - add_scalar 写标量到特定存储后端
    - add_scalars 一次性写多个标量到特定存储后端
 
-### Metric & Evaluator
+## Metric & Evaluator
 
 `Evaluator` 是一个 `Metric` 容器，包含多个 `Metric`，即可以进行多种指标的评估。同时 `Evaluator` 也增加了分布式的功能，能够将多个 GPU 上的推理结果合并起来，最终送到 CPU 上进行计算
 
@@ -469,7 +497,7 @@ mmengine 的 visualizer 有两个功能：
 
 mmengine 实现了一个 `DumpResults` 的 `Metric` 类，如果需要可以将预测的结果保存，只需要指定 `out_file_path` 即可
 
-### BaseModel 设计原则
+## BaseModel 设计原则
 
 之前介绍了模型的 `train_step`，实际上 `BaseModel` 有三个接口：
 
@@ -497,14 +525,8 @@ mmengine 要求模型的 `forward` 方法接受的参数即为 `DataLoader` 的�
                                'Only supports loss, predict and tensor mode')
 ```
 
-## TODO
+# TODO
 
-便捷的分布式接口
+- [ ] 分布式接口
 
-coco api & coco metric
-
-einops for projects，我把 subway 项目的一些总结也放到里面来，因为这是一个完整的项目
-
-position embeddings
-
-增加一个记录 model 结构的 log
+- [ ] 文件 io
