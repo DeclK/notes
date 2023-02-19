@@ -1,6 +1,6 @@
 # TeX Tutorial
 
-参考 [bilibili](https://www.bilibili.com/video/BV1Rd4y1X7AL) [overleaf](https://www.overleaf.com/learn)
+参考 [bilibili](https://www.bilibili.com/video/BV1Rd4y1X7AL) [overleaf](https://www.overleaf.com/learn) [latex writing tips](https://github.com/guanyingc/latex_paper_writing_tips) [Paper Writing Tips](https://github.com/MLNLP-World/Paper-Writing-Tips)
 
 ## 简介
 
@@ -168,13 +168,11 @@ We have now added a title, author and date to our first \LaTeX{} document!
 			\caption[]{fig a}
 		\end{subfigure}
 		\hfill
-		
 		\begin{subfigure}{0.3\textwidth}
 			\includegraphics[width=\textwidth]{fig1}
 			\caption[]{fig b}
 		\end{subfigure}
 		\hfill
-
 		\begin{subfigure}{0.4\textwidth}
 			\includegraphics[width=\textwidth]{fig1}
 			\caption[]{fig c}
@@ -187,6 +185,51 @@ We have now added a title, author and date to our first \LaTeX{} document!
 <img src="Tex tutorial/image-20221028200631130.png" alt="image-20221028200631130" style="zoom:50%;" />
 
 可以看到 `subfigure` 有一个必选参数需要设置图像的大小，其余的命令都与 `figure` 对应。这里 `\hfill` 代表水平对齐，放置在各个子图之间，希望图像尽量在同一横排，对应的 `\vfill` 代表垂直对齐
+
+`\centering` 是指让所有子图图片居中对齐，左对齐和右对齐分别是 `\flushleft & flushright`
+
+### 使用 minipage 打包
+
+当有多组图像的时候，可以使用 minipage 进行打包处理，参考 [bilibili](https://www.bilibili.com/video/BV1bi4y1D7Z3)，同样和 subfigure 一样需要指定 minipage 的宽度，此时再在 minipage 中设置 subfigure 宽度 `\linewidth` 就指的是 minipage 的宽度
+
+```tex
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\graphicspath{{Figures/}}
+\begin{document}
+	\begin{figure}[h]
+		\centering
+        \begin{minipage}{0.4\linewidth}
+            \flushleft
+            \begin{subfigure}{\textwidth}
+                \includegraphics[width=\textwidth]{fig1}
+                \caption[]{fig a}
+            \end{subfigure}
+        \end{minipage}
+        \begin{minipage}{0.4\linewidth}
+            \flushright
+            \begin{subfigure}{0.5\textwidth}
+                \includegraphics[width=\textwidth]{fig1}
+                \caption[]{fig b}
+            \end{subfigure}
+
+            \vspace{10pt}
+            \begin{subfigure}{0.5\textwidth}
+                \includegraphics[width=\textwidth]{fig1}
+                \caption[]{fig c}
+            \end{subfigure}
+        \end{minipage}
+		\caption{This is big figure}
+	\end{figure}
+\end{document}
+```
+
+如果两个 subfigure 之间有一个空行将会自动竖向排列，没有空行则是横向排列。并且可以使用 `\vspace, \hspace` 来进行微调
+
+<img src="Tex tutorial/image-20230219162041107.png" alt="image-20230219162041107" style="zoom:50%;" />
+
+实际上如果图片过于复杂，图片的排列还可以直接在 PPT 当中完成，许多文章也是这样做的，latex 中的排列多为简单的排列
 
 ## 创建 Lists
 
@@ -268,20 +311,20 @@ Table Generator 使用技巧：
 
 ## 参考文献的插入
 
-TODO
-
 两种方式：手动插入和自动插入
 
 手动插入需要自己定义参考文献格式
 
 ```tex
-\begin{thebibliography}{99}
-\bibitem{ref1}
-\bibitem{ref2}
+\begin{thebibliography}{99}	% 99 为最大参考文献数量
+\bibitem{ref1}auther, title
+\bibitem{ref2}auther, title
 \end{thebibliography}
 ```
 
 自动插入需要创建一个 `.bib` 文件，该文件包含 bibitem
+
+推荐使用 [zotero better bibtex](https://retorque.re/zotero-better-bibtex/) 插件生成 `.bib` 文件，然后放到 latex 项目目录下，使用 `\cite{key}` 方式完成引用。参考 [bilibili](https://www.bilibili.com/video/BV1ug411W7nY)，视频里还下载了 vscode 插件，不是必须的
 
 ## 命令与环境
 
@@ -317,12 +360,45 @@ $\water$
 
 tex 中的环境能够对环境中的内容提供定制化的渲染，以 `\begin{name}` 开始 `\end{name}` 结束，其中 `name` 为环境名。同时环境也接收参数，包括可选参数和必须参数，跟在环境名之后
 
-## 补充
+## 分章节撰写
 
-这里整理一些零碎的 trick
+就像写代码一样，我们不希望所有的函数都放在一个文件里，模块化才是更好的选择。所以用 latex 写文章也可以进行模块化，一个章节用一个 `.tex` 文件进行，然后使用 `\input{path/xxx.tex}` 即可，该命令相当于把 `xxx.tex` 中的代码复制到当前文件中。下面是一个 `main.tex` 例子
 
-[Paper Writing Tips](https://github.com/MLNLP-World/Paper-Writing-Tips)
+```tex
+\begin{document}
+%\maketitle
+\begin{abstract}
+ABSTRACT
+\end{abstract}
 
-[English Writing](https://github.com/yzy1996/English-Writing)
+%******************BODY TEXT
+\input{1_intro.tex}
+\input{2_related.tex}
+\input{3_method.tex}
+\input{4_exp.tex}
+\input{5_con.tex}
 
-[latex writing tips](https://github.com/guanyingc/latex_paper_writing_tips)
+\clearpage
+
+\section{Acknowledgements}
+
+\bibliography{ref}
+
+\end{document}
+```
+
+文件夹结构如下
+
+```txt
+- Figure
+	- fig1.pdf
+	- fig2.pdf
+- main.tex
+- 1_intro.tex
+- 2_related.tex
+- 3_method.tex
+- 4_exp.tex
+- 5_con.tex
+- ref.bib
+```
+

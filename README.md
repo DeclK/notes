@@ -35,7 +35,12 @@
 > Sat.
 
 - 完成费曼读书笔记整理
-- 完成 latex tutorial，将小论文部分转为 latex
+- 继续学习 latex tutorial，决定先凑一个 aaai23 的模板出来以学习
+
+> Sun.
+
+- 完成 tex tutorial，补充了对图片的排版，利用 zotero 引用参考文献，分章节撰写等方法
+- 撰写了 1/3 摘要
 
 ## Jan, 2023
 
