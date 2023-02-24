@@ -30,6 +30,12 @@ tex 是一个专业的排版系统，也常有人认为 tex 是一种语言。�
 
    这三个选项分别代表：1. 不自动编译，需要手动启动编译；2. 当编译失败时自动清除缓存文件
 
+3. vscode 也可以实现 latex 和 pdf 之间的跳转
+
+   1. 在 LaTeX 文件中，按 Ctrl + Alt + J 跳转到对应的 PDF 文件位置
+   2. 在 PDF 文件中，按下 Ctrl + 鼠标单机，跳转到对应的 LaTeX 文件位置
+
+
 **tex 中的很多功能需要宏包完成，我们需要在导言区实现声明。**个人认为宏包可以理解为 python 中的三方库，都需要事先安装然后才能 import 并使用。例如，显示中文需要使用 ctex 宏包
 
 ## 第一个 tex 脚本
@@ -271,7 +277,7 @@ We have now added a title, author and date to our first \LaTeX{} document!
 
 贴一个 [CSDN](https://blog.csdn.net/ViatorSun/article/details/82826664) 的总结已经非常全面了，建议按需求查找，熟能生巧。公式的选软通常需要 `amsmath` 这个宏包，下面整理一下其中的常用环境
 
-1. 使用 `align` or `split` 环境对等号对齐，环境中的语法是用 `&=` 来标记对齐的等号，使用 `\\` 换行。区别在于，`align` 不需要在 `equation` 环境中渲染，并且是对每一行都会进行自动标号
+1. 使用 `align` or `split` 环境对等号对齐，环境中的语法是用 `&` 来标记对齐的等号，使用 `\\` 换行。区别在于，`align` 不需要在 `equation` 环境中渲染，并且是对每一行都会进行自动标号
 2. 使用 `*` 取消标号。例如 `equation, align` 等环境都会自动标号，在环境名后加上 `*` 即可，如 `equation*, align*`
 3. 使用 `cases` 环境来渲染分段函数。语法为 `&` 标记条件，`\\` 分段
 4. 使用 `matrix` 环境来渲染矩阵。语法是使用 `&` 分隔元素，`\\` 换行
@@ -302,12 +308,19 @@ We have now added a title, author and date to our first \LaTeX{} document!
 Table Generator 使用技巧：
 
 1. 可以给单元加入/消除边框。通过按住 shift 可以对一行一列进行操作
-2. 可以选择使用 booktabs table style。这样能够对边框进行加粗
-3. 可以设置 centering，将表格放在中间
-4. 可以设置表格整体宽度
-5. 可以设置 caption
+2. 可以设置 centering，将表格放在中间
+3. 可以设置表格整体宽度
+4. 可以设置 caption
 
-其中如果想要双线的话可以使用两个 `\hline`，想要粗线的话先导入宏包 `booktabs`，然后使用 `\toprule, \downrule, \midrule`
+推荐的设置
+
+<img src="Tex tutorial/image-20230223112713116.png" alt="image-20230223112713116" style="zoom:50%;" />
+
+**微调技巧**
+
+其中如果想要双线的话可以使用两个 `\hline`，想要粗线的话先导入宏包 `booktabs`，然后使用 `\toprule, \downrule, \midrule` 去替换 `\hline`，并且可以使用参数调整粗细 `\toprule[pt]`
+
+更细致的调整可以使用 `\specialrule{<thickness>}{<abovespace>}{<belowspace>}`，三个都是必填参数，这种一般用不上
 
 ## 参考文献的插入
 
@@ -324,7 +337,7 @@ Table Generator 使用技巧：
 
 自动插入需要创建一个 `.bib` 文件，该文件包含 bibitem
 
-推荐使用 [zotero better bibtex](https://retorque.re/zotero-better-bibtex/) 插件生成 `.bib` 文件，然后放到 latex 项目目录下，使用 `\cite{key}` 方式完成引用。参考 [bilibili](https://www.bilibili.com/video/BV1ug411W7nY)，视频里还下载了 vscode 插件，不是必须的
+推荐使用 [zotero better bibtex](https://retorque.re/zotero-better-bibtex/) 插件生成 `refs.bib` 文件，然后放到 latex 项目目录下。一般在 `main.tex` 文件中的末尾加入 `\bibliography{refs}`，然后在正文中使用 `\cite{key}` 方式完成引用。参考 [bilibili](https://www.bilibili.com/video/BV1ug411W7nY)，视频里还下载了 vscode 插件，不是必须的
 
 ## 命令与环境
 
@@ -402,3 +415,62 @@ ABSTRACT
 - ref.bib
 ```
 
+## 实战补充
+
+### 作者
+
+撰写作者通常要注意三点：
+
+1. 是否为通讯作者 corresponding author
+2. 是否为相同贡献 equal contribute
+3. 所在机构与联系邮箱
+
+下面用一个例子来解决
+
+```tex
+\urlstyle{rm} % DO NOT CHANGE THIS
+\def\UrlFont{\rm}  % DO NOT CHANGE THIS
+
+\title{My Publication Title --- Multiple Authors}
+\author {
+    % Authors
+    First Author Name,\textsuperscript{\rm 1,\rm 2}
+    Second Author Name\thanks{Correspoingding author},
+    Third Author Name \textsuperscript{\rm 1},
+    Fourth Author Name \equalcontrib
+}
+\affiliations {
+    % Affiliations
+    \textsuperscript{\rm 1} Institution 1\\
+    \textsuperscript{\rm 2} Institution 2\\
+    firstAuthor@affiliation1.com, 
+    secondAuthor@affilation2.com,
+    thirdAuthor@affiliation1.com
+}
+```
+
+解释：
+
+1. `\textsuperscript` 代表上标，`\rm` 代表数字正体
+2. `\equalcontrib` 代表同等贡献
+3. `\thanks` 会生成脚注，并显示其中的内容，通常用于通讯作者。也会有使用信封标志表示 `$\textsuperscript{\Letter}$`
+
+在使用副标题的时候也经常使用加粗的形式表示，`\noindent \textbf{xxx}`，这里也取消了缩进
+
+`~` 可以起到限制换行的作用，例如在引用的时候期望换行则使用 `~\cite`
+
+图片最好是裁切得刚刚好，可以使用在线的 pdf 裁切工具 [pdf resizer](https://pdfresizer.com/crop) 来完成
+
+`\emph{words}` 来完成斜体强调
+
+`\&` 等特殊符号 
+
+`\begin{figure*}` 代表生成一个覆盖双栏的图片，不支持 `[h] or [b]`，一般使用 `[t]`
+
+可以使用 `\resizebox{0.4\textwidth}{!}{ formula }` 的方法调整公式宽度，`{!}` 表示自动调整高度
+
+写公式和表格前一定要检查是否使用对应的包！不然会报错，有时候还难以察觉
+
+图片表格插入到下一页了怎么办？
+
+内联公式比较长怎么办？

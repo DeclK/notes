@@ -52,6 +52,8 @@ date: 2021-07-25 22:52:02
 
 4. Formatting 规范代码，需要自己定义 format
 
+5. 使用 Alt + Z 来使得文本能够自适应窗口大小，就像 typora 一样
+
 ## 一些推荐的设置
 
 打开 settings
