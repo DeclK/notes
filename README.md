@@ -6,10 +6,23 @@
 
 ### Week 9
 
+> Sun.
+
+- 初步获得 mean teacher on kitti 的结果，在 Ped & Cyc 应该是可以获得接近 SOTA 的结果，但是 Car 依然不好，决定使用更深（x）的网络和单独类别训练
+- ChatGPT 更适合用于填充子论点，如果直接让其构思整个段落，并不会符合你的思路。人是线，ChatGPT 是点
+
+> Sat.
+
+- 完成 kitti semi dataset 搭建，开始训练 mean teacher。这个过程主要是对 kitti 的配置文件进行 debug，关键在于 kitti 和 once 使用的数据增强并不相同
+- 尝试解决 tensorbard bug，但是失败，移动到本地查看成功
+- 开始写中文论文
+
 > Fri.
 
 - 查看 ONCE Benchmark test split，发现网站已经不再运营。又回到了 KITTI 数据集上
 - 了解了 conference 和 journal 的区别，conference 是更合适的选择
+- 尝试将 OpenPCDet 的环境移动到自己的电脑上，尝试失败
+- 搭建了 kitti semi dataset 初步
 
 > Thu.
 

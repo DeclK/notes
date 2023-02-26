@@ -203,7 +203,3 @@ with trange(10, leave=False) as tbar:
         for t in pbar:
             time.sleep(0.1)
 ```
-
-## tensorboard
-
-TODO
