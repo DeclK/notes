@@ -6,6 +6,10 @@
 
 ### Week 10
 
+> Sat.
+
+- 完成 Introduction & Related Works 大修改
+
 > Fri.
 
 - 完成所有可视化图像，包括改进样本，角点热力图，角点偏移说明
