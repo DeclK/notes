@@ -6,6 +6,11 @@
 
 ### Week 10
 
+> Sun.
+
+- 将新增的图和测试集结果都放到了相应的位置，并进行了描述使得行文通畅
+- 
+
 > Sat.
 
 - 完成 Introduction & Related Works 大修改
