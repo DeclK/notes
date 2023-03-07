@@ -196,7 +196,7 @@ We have now added a title, author and date to our first \LaTeX{} document!
 
 ### 使用 minipage 打包
 
-当有多组图像的时候，可以使用 minipage 进行打包处理，参考 [bilibili](https://www.bilibili.com/video/BV1bi4y1D7Z3)，同样和 subfigure 一样需要指定 minipage 的宽度，此时再在 minipage 中设置 subfigure 宽度 `\linewidth` 就指的是 minipage 的宽度
+当有多组图像的时候，可以使用 minipage 进行打包处理，参考 [bilibili](https://www.bilibili.com/video/BV1bi4y1D7Z3)，同样和 subfigure 一样需要指定 minipage 的宽度，此时再在 minipage 中设置 subfigure 宽度 `\linewidth` 就指的是 minipage 的宽度。当然也可以使用多个 `\includegraphics` 来创造多图
 
 ```tex
 \documentclass{article}
@@ -277,7 +277,7 @@ We have now added a title, author and date to our first \LaTeX{} document!
 
 贴一个 [CSDN](https://blog.csdn.net/ViatorSun/article/details/82826664) 的总结已经非常全面了，建议按需求查找，熟能生巧。公式的选软通常需要 `amsmath` 这个宏包，下面整理一下其中的常用环境
 
-1. 使用 `align` or `split` 环境对等号对齐，环境中的语法是用 `&` 来标记对齐的等号，使用 `\\` 换行。区别在于，`align` 不需要在 `equation` 环境中渲染，并且是对每一行都会进行自动标号
+1. 使用 `align` or `split` 环境对等号对齐，环境中的语法是用 `&` 来标记对齐的地方，使用 `\\` 换行。区别在于，`align` 不需要在 `equation` 环境中渲染，并且是对每一行都会进行自动标号
 2. 使用 `*` 取消标号。例如 `equation, align` 等环境都会自动标号，在环境名后加上 `*` 即可，如 `equation*, align*`
 3. 使用 `cases` 环境来渲染分段函数。语法为 `&` 标记条件，`\\` 分段
 4. 使用 `matrix` 环境来渲染矩阵。语法是使用 `&` 分隔元素，`\\` 换行
@@ -455,22 +455,41 @@ ABSTRACT
 2. `\equalcontrib` 代表同等贡献
 3. `\thanks` 会生成脚注，并显示其中的内容，通常用于通讯作者。也会有使用信封标志表示 `$\textsuperscript{\Letter}$`
 
+### 副标题
+
 在使用副标题的时候也经常使用加粗的形式表示，`\noindent \textbf{xxx}`，这里也取消了缩进
 
-`~` 可以起到限制换行的作用，例如在引用的时候期望换行则使用 `~\cite`
+### 限制换行符 `~`
+
+`~` 可以起到限制换行的作用，例如在引用的时候期望换行则使用 `~\cite`，一般也使用在 `Figure~\ref{}` 以及 `Table~\ref{}`，注意图片和表格都是大写
 
 图片最好是裁切得刚刚好，可以使用在线的 pdf 裁切工具 [pdf resizer](https://pdfresizer.com/crop) 来完成
 
-`\emph{words}` 来完成斜体强调
+### 调整图片位置
 
-`\&` 等特殊符号 
+图片表格插入到下一页了怎么办？没什么办法，多尝试一下，放在哪里合适
+
+### 图片距离内容太远
+
+TODO
+
+### 双栏大图片
 
 `\begin{figure*}` 代表生成一个覆盖双栏的图片，不支持 `[h] or [b]`，一般使用 `[t]`
 
-可以使用 `\resizebox{0.4\textwidth}{!}{ formula }` 的方法调整公式宽度，`{!}` 表示自动调整高度
+### 调整公式大小
 
-写公式和表格前一定要检查是否使用对应的包！不然会报错，有时候还难以察觉
+如果内联公式比较长，不够紧凑怎么办？
 
-图片表格插入到下一页了怎么办？
+1. 可以使用 `\resizebox{0.4\textwidth}{!}{ formula }` 的方法调整公式宽度，`{!}` 表示自动调整高度
+2. 可以使用 `\!` 来去除间隙
 
-内联公式比较长怎么办？
+### 强调
+
+`\emph{words}` 来完成斜体强调
+
+### 编译错误
+
+1. 写公式和表格前一定要检查是否使用对应的包！不然会报错，有时候将难以察觉！
+
+2. `\&` 等特殊符号 
