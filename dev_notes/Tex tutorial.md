@@ -471,7 +471,7 @@ ABSTRACT
 
 ### 图片距离内容太远
 
-TODO
+使用 `\vspace{-0.3cm}` 在 `\begin{figure} \end{figure}` 前后均可调整
 
 ### 双栏大图片
 
