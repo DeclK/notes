@@ -337,7 +337,7 @@ Table Generator 使用技巧：
 
 自动插入需要创建一个 `.bib` 文件，该文件包含 bibitem
 
-推荐使用 [zotero better bibtex](https://retorque.re/zotero-better-bibtex/) 插件生成 `refs.bib` 文件，然后放到 latex 项目目录下。一般在 `main.tex` 文件中的末尾加入 `\bibliography{refs}`，然后在正文中使用 `\cite{key}` 方式完成引用。参考 [bilibili](https://www.bilibili.com/video/BV1ug411W7nY)，视频里还下载了 vscode 插件，不是必须的
+推荐使用 [zotero better bibtex](https://retorque.re/zotero-better-bibtex/) 插件生成 `refs.bib` 文件，然后放到 latex 项目目录下。一般在 `main.tex` 文件中的末尾加入 `\bibliography{refs}`，然后在正文中使用 `\cite{key}` 方式完成引用。参考 [bilibili](https://www.bilibili.com/video/BV1ug411W7nY)，视频里还下载了 vscode 插件，不是必须的。注意导出格式一定要选择 `BibTex` 而不是 `BibLaTex`
 
 ## 命令与环境
 
