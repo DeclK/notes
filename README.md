@@ -6,6 +6,11 @@
 
 ### Week 12
 
+> Wed.
+
+- 大论文字数达到 19.7k
+- 思考了一下tennis项目，可以利用视频理解/击球点分类+Human3D
+
 > Tue.
 
 - 大论文字数达到 14.5k
@@ -14,7 +19,7 @@
 > Mon.
 
 - 配置小米手机
-- 打算建立一个 check-list，包含9个关键因素能够帮助决策
+- 打算建立一个 check-list，包含9个关键因素能够帮助决策（why not use Chat to help😎）
 
 ### Week 11
 
