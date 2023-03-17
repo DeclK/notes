@@ -29,7 +29,7 @@
 > Mon.
 
 - 配置小米手机
-- 打算建立一个 check-list，包含9个关键因素能够帮助决策（why not use Chat to help😎）
+- 打算建立一个 check-list，包含9个关键因素能够帮助决策（can NOT use Chat to help）
 
 ### Week 11
 
