@@ -6,9 +6,9 @@
 
 tex 是一个专业的排版系统，也常有人认为 tex 是一种语言。我的理解也是类似的，就像 python 一样需要先下载一个解释器 `python.exe` 然后再执行 python 脚本；tex 也需要先下载其“解释器”，这个解释器有多个发行的版本，例如 Texlive or MikTex
 
-优点：处理公式非常强大
+优点：最强大的排版软件，写公式是比较方便的
 
-缺点：麻烦，麻烦，麻烦
+缺点：麻烦，麻烦，非常麻烦！
 
 ## 安装
 
@@ -469,6 +469,13 @@ ABSTRACT
 
 图片表格插入到下一页了怎么办？没什么办法，多尝试一下，放在哪里合适
 
+有时候图片太大了，latex 将其排版到最后一页，这里可以使用 `[H]` 参数，强制其在此页/下一页出现
+
+```tex
+\begin{figure}[H]
+\end{figure}
+```
+
 ### 图片距离内容太远
 
 使用 `\vspace{-0.3cm}` 在 `\begin{figure} \end{figure}` 前后均可调整
@@ -488,8 +495,70 @@ ABSTRACT
 
 `\emph{words}` 来完成斜体强调
 
+### 算法语法
+
+在许多论文当中都有算法的需求，规范的算法流程可以用latex语法表达，需要使用两个包，`algorithm & algorithmic` 前者用于 caption 后者用于书写代码。参考 [overleaf](https://www.overleaf.com/learn/latex/Algorithms)，下面是 AdamW 的算法：
+
+```tex
+\usepackage{algorithm,algorithmic}
+
+\begin{algorithm}[ht]
+    \caption{AdamW algorithm}
+    \label{algo:adamw}
+    
+    \textbf{Input:} $\gamma(\text{lr}), \beta 1,\beta 2, \epsilon, \lambda(\text{weight decay}),f(\theta)(\text{objective}),\theta_0(\text{parameters})$
+    \vspace{2pt} \hrule
+    
+    \begin{algorithmic}[0]  % [n]代表每n行有标号
+      \STATE $m_0 \leftarrow 0$ (Initialize first moment vector)
+      \STATE $v_0 \leftarrow 0$ (Initialize second moment vector)
+      \FOR {t=1,...}
+        % \STATE $t \gets t + 1$
+        \STATE $g_t = \nabla_\theta f (\theta_{t-1})$ % (Get gradients w.r.t. stochastic objective at timestep t)
+        \STATE $m_t = \beta_1 · m_{t-1} + (1 - \beta_1) · g_t$ % (Update biased first moment estimate)
+        \STATE $v_t = \beta_2 · v_{t-1} + (1 - \beta_2) · g_t^2$ % (Update biased second raw moment estimate)
+        \STATE $\hat{m}_t = m_t / (1 - \beta_1^t)$ % (Compute bias-corrected first moment estimate)
+        \STATE $\hat{v}_t = v_t / (1 - \beta_2^t)$ % (Compute bias-corrected second raw moment estimate)
+        \STATE $\theta_t = \theta_{t-1} - \gamma · (\hat{m}_t / (\sqrt{\hat{v}_t} + \epsilon) + \lambda \theta_{t-1})$ % (Update parameters with weight decay)
+      \ENDFOR
+      \STATE \textbf{return} $\theta_t$ % (Resulting parameters)
+    \end{algorithmic}
+    
+\end{algorithm}
+```
+
+技巧：
+
+1. 使用`\STATE`表示**所有语句**，这样才有缩进
+2. 使用 `\IF...\ELSIF...\ELSE...\ENDIF` 表示条件
+3. 使用 `\FOR...\ENDFOR` 或者 `\WHILE...\ENDWHILE` 表示循环
+4. 使用 `\RETURN` 表示返回值。也可以使用 `\STATE \textbf{text}` 表示任何语句
+
+
+
 ### 编译错误
 
 1. 写公式和表格前一定要检查是否使用对应的包！不然会报错，有时候将难以察觉！
 
 2. `\&` 等特殊符号 
+
+## 中文编译
+
+在 github 上找到了 [nju-lug/NJUThesis](https://github.com/nju-lug/NJUThesis) 这是有组织在维护的，所以推荐！该项目的 [用户手册](https://mirror-hk.koddos.net/CTAN/macros/unicodetex/latex/njuthesis/njuthesis.pdf)，非常长，仅作为查询
+
+**使用技巧，每一条都要看！**
+
+1. 设置 `\documentclass`，包含：本科/硕士/博士，学术型/专业型，单页/双页，盲审，字体设置win/mac/linux
+2. 设置 `info`，在 `njuthesis-setup` 文件当中，包括：标题，作者，学号，导师，专业等
+3. 设置 `.bib` 参考文献，依然在 `njuthesis-setup` 文件当中。但是使用默认方法在进行参考文献的引用时无法自动提示，根据 [discussion](https://github.com/nju-lug/NJUThesis/discussions/126) 解决。在 `njuthesis-setup` 中使用 `\addbibresource{.bib}` 即可
+4. 增加了 `\chapter{}` 作为文章结构，该结构等级高于 `\section`
+5. 使用 `\include{chapter.tex}` 来导入章节。区别于 `\input`：
+   - `\include` 命令会在插入文件之前和之后自动换页，而 `\input` 命令不会
+   - `\include` 命令只能在主文件的正文部分使用，不能在导言区或其他环境中使用，而 `\input` 命令没有这个限制
+6. 必须使用 xelatex 来进行编译，即 build latex project 选项下面有一个：Recipe: latexmk (xelatex)
+7. 模板使用 `unicode-math` 宏包配置数学字体， 该方案目前不兼容传统的 amsfonts，amssymb 等宏包。需要使用新方案提供的相应命令。可能会出现有的数学公式或者表格中的  `\checkmark` 打不出来，可以查阅  [用户手册](https://mirror-hk.koddos.net/CTAN/macros/unicodetex/latex/njuthesis/njuthesis.pdf)。例如使用 `\ensuremath{\checkmark}` 就可打出✔
+8. 参考文献超宽了，可以在 `\printbibliography` 之前加入 `\sloppy` 命令是最简单的方法，没人会在乎参考文献美观与否，参考 [issue](https://github.com/nju-lug/NJUThesis/issues/57)
+9. 如果参考文献中出现了 `\\`，这是符合规定的。如果非要修改那么可以参考 [issue](https://github.com/nju-lug/NJUThesis/issues/152)
+10. 在一个段落内插入图片时，需要使用 `\\` 进行换行处理，使用该方式换行不会有缩进
+
+其他问题就见招拆招吧，应该会比较顺利
