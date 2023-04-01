@@ -534,15 +534,13 @@ ABSTRACT
 3. 使用 `\FOR...\ENDFOR` 或者 `\WHILE...\ENDWHILE` 表示循环
 4. 使用 `\RETURN` 表示返回值。也可以使用 `\STATE \textbf{text}` 表示任何语句
 
-
-
 ### 编译错误
 
 1. 写公式和表格前一定要检查是否使用对应的包！不然会报错，有时候将难以察觉！
 
 2. `\&` 等特殊符号 
 
-## 中文编译
+## NJU中文毕设
 
 在 github 上找到了 [nju-lug/NJUThesis](https://github.com/nju-lug/NJUThesis) 这是有组织在维护的，所以推荐！该项目的 [用户手册](https://mirror-hk.koddos.net/CTAN/macros/unicodetex/latex/njuthesis/njuthesis.pdf)，非常长，仅作为查询
 
@@ -559,6 +557,6 @@ ABSTRACT
 7. 模板使用 `unicode-math` 宏包配置数学字体， 该方案目前不兼容传统的 amsfonts，amssymb 等宏包。需要使用新方案提供的相应命令。可能会出现有的数学公式或者表格中的  `\checkmark` 打不出来，可以查阅  [用户手册](https://mirror-hk.koddos.net/CTAN/macros/unicodetex/latex/njuthesis/njuthesis.pdf)。例如使用 `\ensuremath{\checkmark}` 就可打出✔
 8. 参考文献超宽了，可以在 `\printbibliography` 之前加入 `\sloppy` 命令是最简单的方法，没人会在乎参考文献美观与否，参考 [issue](https://github.com/nju-lug/NJUThesis/issues/57)
 9. 如果参考文献中出现了 `\\`，这是符合规定的。如果非要修改那么可以参考 [issue](https://github.com/nju-lug/NJUThesis/issues/152)
-10. 在一个段落内插入图片时，需要使用 `\\` 进行换行处理，使用该方式换行不会有缩进
+10. 在一个段落内插入图片时，需要使用 `\\` 进行换行处理，使用该方式换行不会有缩进。同时有时候会出现渲染超出文本范围的问题，也需要手动使用`\\`进行换行处理，或者加入连字符`-`，这种情况通常出现在公式/英文与中文混合的时候
 
 其他问题就见招拆招吧，应该会比较顺利

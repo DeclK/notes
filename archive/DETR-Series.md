@@ -29,7 +29,7 @@ DETR 的网络流程如下图所示
 
 Transformer 大致结构如下
 
-<img src="C:\Data\Projects\notes\dev_notes\DETR\image-20221215140623383.png" alt="image-20221215140623383" style="zoom:50%;" />
+<img src="C:\Data\Projects\notes\archive\DETR\image-20221215140623383.png" alt="image-20221215140623383" style="zoom:50%;" />
 
 图中 Decoder 这边的结构是不够完整的，或者说不够正确的。实际上 Decoder 关于 query 的输入有两个：1
 
@@ -111,7 +111,7 @@ multi_level_feats = self.neck(features)
 
 最终 neck 把这些特征图谱映射到同一个维度，以输入到 transformer 中做点积
 
-<img src="C:\Data\Projects\notes\dev_notes\DETR\image-20221216190202156.png" alt="image-20221216190202156" style="zoom:50%;" />
+<img src="C:\Data\Projects\notes\archive\DETR\image-20221216190202156.png" alt="image-20221216190202156" style="zoom:50%;" />
 
 #### Multi-scale Positional Embedding
 
