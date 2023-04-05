@@ -4,7 +4,22 @@
 
 ## Mar, 2023
 
+### Week 15
+
+> Tue.
+
+- 完整理解了 DINO 的各个提升点，缺少伪代码整理
+
+> Mon.
+
+- 开启 DETR Series 2.0 整理，要吃透 DINO，整理了 Deformable DETR
+
 ### Week 14
+
+> Sun.
+
+- 复习 Deformable DETR
+- 看了 Deformabel Attention 感觉比 Deformable DETR 要好，可以考虑使用，实现了 1d~3d 的各个版本
 
 > Sat.
 
