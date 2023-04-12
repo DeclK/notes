@@ -1,3 +1,11 @@
+---
+title: Tex Tutorial
+date: 2023-04-05
+categories:
+  - 编程
+  - Tools
+---
+
 # TeX Tutorial
 
 参考 [bilibili](https://www.bilibili.com/video/BV1Rd4y1X7AL) [overleaf](https://www.overleaf.com/learn) [latex writing tips](https://github.com/guanyingc/latex_paper_writing_tips) [Paper Writing Tips](https://github.com/MLNLP-World/Paper-Writing-Tips)

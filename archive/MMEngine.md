@@ -150,8 +150,6 @@ run_iter 中运行了模型的 `train_step` 步骤，在 `train_step` 中优化�
         self.evaluator.process(data_samples=outputs, data_batch=data_batch)
 ```
 
-
-
 ## Model 中 train_step 逻辑
 
 核心代码非常简单：数据预处理+前向损失+更新参数
@@ -261,7 +259,7 @@ Pytorch 实现的 Optimizer 的输入主要由 `model.parameters()` 和其他超
 mmengine 对 pytorch 优化器的包装还是比较轻的，除了 optimizer 原有的接口外，[OptimWrapper](https://mmengine.readthedocs.io/zh_CN/latest/tutorials/optim_wrapper.html) 主要多了几个接口：
 
 1. `optim_wrapper.update_params(loss)` 更新参数，替代 backward + step
-2. `optim_wrapper.get_lr()` 获得学习率，替代原来的 `optimizer.param_groups[0]['lr']`
+2. `optim_wrapper.get_lr()` 获得学习率，替代原来的 `optimizer.param_groups[0]['lr']`，理解 `param_groups` 可参考 [pytorch](https://pytorch.org/docs/stable/optim.html)。简单来说就是 pytorch 可以对模型的不同参数实现不同的学习率控制，所以需要分组
 3. 加载优化器状态字典使用的原始接口 `state_dict & load_state_dict`
 
 mmengine 中的 scheduler 和 pytorch 中的 scheduler 使用方法完全一致，但扩展了 scheduler 的使用范围，不仅仅能够对 lr 进行管理，还能对 momentum 进行管理。scheduler 的接口名称和 optimizer 的接口名称基本一致，使用 `scheduler.step()` 即可
@@ -357,9 +355,7 @@ for img, data_sample in dataloader:
 
 #### DataSample
 
-数据样本作为不同模块最外层的接口，提供了 xxxDataSample 用于单任务中各模块之间统一格式的传递。mmengine 对 xxxDataSample 的属性命名以及类型要进行约束和统一，保证各模块接口的统一性
-
-对命名的约束是使用 @property 装饰器完成，利用 property setter 增加对属性的更改
+数据样本作为不同模块最外层的接口，提供了 xxxDataSample 用于单任务中各模块之间统一格式的传递。mmengine 对 xxxDataSample 的属性命名以及类型要进行约束和统一，保证各模块接口的统一性。对命名的约束是使用 @property 装饰器完成，保证对应属性必须是指定数据类型
 
 ## Default Hooks 功能
 
@@ -524,6 +520,10 @@ mmengine 要求模型的 `forward` 方法接受的参数即为 `DataLoader` 的�
             raise RuntimeError(f'Invalid mode "{mode}". '
                                'Only supports loss, predict and tensor mode')
 ```
+
+## Load Pretrained Model
+
+可以使用 [MMPretrain](https://github.com/open-mmlab/mmpretrain) 中的方法创建模型，并获得预训练权重。如果在训练过程中需要冻结参数可以设置 `requires_grad = False`
 
 # TODO
 

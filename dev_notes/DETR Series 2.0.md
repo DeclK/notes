@@ -284,11 +284,64 @@ operation_order=("self_attn", "norm", "cross_attn", "norm", "ffn", "norm")
 
 前者为 encoder，后者为 decoder，norm 层为 `nn.LayerNorm`
 
+## Deformable DETR 流程
+
+### init
+
+需要构架的模块如下：
+
+1. `self.backbone & self.neck` 用于提取图像特征，通常由 resnet or swin 提取，然后用卷积将各个分辨率的输出统一到相同 channel 数量
+2. `self.position_embedding` 用于产生图像位置嵌入
+3. `self.transformer` 即 Deformabel DETR 的核心模块，负责编码和解码
+4. `self.class_embed & self.bbox_embed` 用于预测类别和位置残差，其中 `class_embed` 为一层 Linear，`bbox_embed` 为3层 MLP。这里有两个区别：
+   1. 如果有 box refine trick，则每一个 decoder 的中间输出使用独立的 `class_embed & bbox_embed`，用 `copy.deepcopy` 完成复制；
+   2. 如果有 two stage，需要多余一个 `class_embed & bbox_embed` 通过 encoder 输出获得 proposal
+5. `self.criterion` 用于计算损失函数
+
+### forward
+
+1. 图像预处理，获得 $(B, 3, H, W)$ 的 `ImageList`，并记录了每一张图缩放前后的 image size
+
+2. 创建 `image_masks` 用于后面进行 `query_key_padding_mask`
+
+3. 创建 `multi_level_positional_embeddings`
+
+4. 初始化 `query_embeds`：
+
+   1. 如果为两阶段，query 是由第一阶段的 proposal 产生，所以初始化为 None
+   2. 如果为单阶段，query 则由 `nn.Embedding(num_query, dim)` 产生，这里也说明 `nn.Embedding.weight` 能够简单替代 `nn.Parameter`
+
+5. 将图像输入到 transformer 当中获得 logits
+
+   ```python
+           (
+               inter_states,
+               init_reference,
+               inter_references,
+               enc_state,
+               enc_reference,
+           ) = self.transformer(
+               multi_level_feats, multi_level_masks, multi_level_position_embeddings, query_embeds
+           )
+   ```
+
+   各个输出分别代表：
+
+   1. `inter_states` decoder 各个层输出的 logits
+   2. `init_reference` 为第一阶段产生的 proposal/reference points (+ denoising ground truth 如果为 DINO
+   3. `inter_references` decoder 各个层输出的 proposal/reference points
+   4. `enc_state` 第一阶段产生的 logits
+   5. `enc_reference` 为第一阶段产生的 proposal/reference points，与 `init_reference` 等价！
+
+6. 再把 decoder 的中间输出又预测一遍用于计算损失。这是因为 decoder 中间输出的 reference points 是 detached tensor，所以不能直接计算梯度
+
+7. 计算每一层的损失
+
 ## DINO Improves
 
 ### Box Refinement
 
-Box refinement算法是一种迭代微调策略，它类似于Cascade R-CNN方法，可以在每个解码器层上对边界框进行微调，所以在创建的 `self.box_embed & self.class_embed` 是各自独立的，不共享参数
+Box refinement算法是一种迭代微调策略，它类似于 Cascade R-CNN 方法，可以在每个解码器层上对边界框进行微调，所以在创建的 `self.box_embed & self.class_embed` 是各自独立的，不共享参数
 
 ### Look Forward Twice
 
@@ -308,12 +361,255 @@ Box refinement算法是一种迭代微调策略，它类似于Cascade R-CNN方�
 
 ### Contrastive Denoising
 
-代码逻辑理顺，把每一个小块的目的描述出来
+Denoising 思想非常简单：将经过噪声处理的 gt 作为 query，输入到 decoder 当中去重建 gt。其准备过程如下：
 
-用伪代码的形式整理DINO
+1. 确定 `dn_groups`，就是每一个 gt 需要多少个噪声选框。一个 group 由 positive 和 negative 两个部分组成
 
-## More
+2. 创建 `known_labels & known_bbox` 其形状为 `labels & bbox` 在第一个维度重复 $(dn\_groups\times 2\times num\_gt)$。2代表 pos & neg，实际上 negative 区别于 positive 噪声就是 box 的缩放更大一些
 
-1. 中间损失函数的计算
-2. 第一阶段损失函数的计算
-3. COCO dataset
+3. 对 labels 进行随机噪声，即将部分类别随机替换为其他类别
+
+4. 对 boxes 进行随机噪声，即对选框进行随机位移和缩放
+
+5. 创建 `input_query_label & input_query_box`：
+
+   1. `input_query_label` 形状为 $(B, dn\_groups \times2\times pad\_size, C)$，其中 `pad_size` 是一个 batch 所有样本中 gt 数量的最大值，`C` 为 embed dim (= 128)，使用一个 `nn.Embed` 进行转换
+   2. `input_query_batch` 形状为 $(B, dn\_groups \times2\times pad\_size, 4)$，作为可变注意力的 reference points
+
+6. 创建 attention mask，因为 gt 噪声不能被真正的 query 所看见，但是 gt 噪声可以看见真正的 query，各个 gt 噪声 groups 之间不能相互看见，最后的 mask 形状可如图所示
+
+   <img src="DETR Series 2.0/image-20230407151520353.png" alt="image-20230407151520353" style="zoom:50%;" />
+
+   灰色部分 `attention_mask=True`
+
+并且由于 `pad_size` 的存在，在之后计算损失时，会有零填充的 query 做出预测结果，我认为需要把这些预测从损失计算中去除，但是源代码中没有做这一步，可能是因为影响不大？
+
+## Loss
+
+这一部分我要详细整理一下代码，是非常通用的结构
+
+### Matcher
+
+整体思路为：利用匈牙利匹配法获得最小损失匹配。关键在于计算损失矩阵 Cost Matrix
+
+1. 使用 cross entropy style 或者 focal loss style 来计算分类损失，着重理解 cross entropy style 就好
+
+   ```python
+        if self.cost_class_type == "ce_cost":
+            cost_class = -out_prob[:, tgt_ids]
+            
+        elif self.cost_class_type == "focal_loss_cost":
+            alpha = self.alpha
+            gamma = self.gamma
+            neg_cost_class = (1 - alpha) * (out_prob**gamma) * (-(1 - out_prob + 1e-8).log())
+            pos_cost_class = alpha * ((1 - out_prob) ** gamma) * (-(out_prob + 1e-8).log())
+            cost_class = pos_cost_class[:, tgt_ids] - neg_cost_class[:, tgt_ids]
+   ```
+
+   这里 `out_prob` 即为预测的可能性，其形状为 $(B\times num\_queries, num\_classes)$，通过取得 `tgt_ids` 来获得对应类别的损失
+
+   并且这里的 `focal_loss` 似乎是计算错了，[issue](https://github.com/IDEA-Research/detrex/issues/196) 也没有很好的回复，说是借用的 deformabel detr 的源代码
+
+2. 计算 L1 距离和 `generalized_box_iou` 
+
+   ```python
+           # Compute the L1 cost between boxes
+           cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
+   
+           # Compute the giou cost betwen boxes
+           cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox), box_cxcywh_to_xyxy(tgt_bbox))
+   ```
+
+   GIoU  `return iou - (area - union) / (area + 1e-6)`
+
+   **需要注意的是，这里将所有 batch sample 都合到一块了！在后面用切片解决** 
+
+3. 利用加权计算损失矩阵
+
+   ```python
+           # Final cost matrix
+           C = self.cost_bbox * cost_bbox + self.cost_class * cost_class + self.cost_giou * cost_giou
+           C = C.view(bs, num_queries, -1).cpu()
+   ```
+
+4. 匈牙利匹配
+
+   ```python
+           sizes = [len(v["boxes"]) for v in targets]
+           indices = [linear_sum_assignment(c[i]) for i, c in enumerate(C.split(sizes, -1))]
+   ```
+
+   然后将 `indices` 转为 tensor，`indices` 本身为一个 list of tuple (index_i, index_j)
+
+   ```python
+           return [
+               (torch.as_tensor(i, dtype=torch.int64), torch.as_tensor(j, dtype=torch.int64))
+               for i, j in indices
+           ]
+   ```
+
+### Last Layer Loss
+
+#### bboxes
+
+为了计算损失，首先应该通过 matcher 算出的 index 获得匹配的 boxes，相当于再 concat 起来，并加上 batch idx
+
+```python
+        ...
+    	idx = self._get_src_permutation_idx(indices)
+        src_boxes = outputs["pred_boxes"][idx]
+        target_boxes = torch.cat([t["boxes"][i] for t, (_, i) in zip(targets, indices)], dim=0)
+        
+    def _get_src_permutation_idx(self, indices):
+        # permute predictions following indices
+        batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
+        src_idx = torch.cat([src for (src, _) in indices])
+        return batch_idx, src_idx
+```
+
+有了匹配结果过后就直接计算 L1 和 GIoU
+
+```python
+
+        loss_bbox = F.l1_loss(src_boxes, target_boxes, reduction="none")
+
+        losses = {}
+        losses["loss_bbox"] = loss_bbox.sum() / num_boxes
+
+        loss_giou = 1 - torch.diag(
+            generalized_box_iou(
+                box_cxcywh_to_xyxy(src_boxes),
+                box_cxcywh_to_xyxy(target_boxes),
+            )
+        )
+        losses["loss_giou"] = loss_giou.sum() / num_boxes
+```
+
+#### classification
+
+分类也是一样的，先计算匹配的标签，然后构造 one hot 向量，最后计算 focal loss
+
+```python
+    def loss_labels(self, outputs, targets, indices, num_boxes):
+
+        src_logits = outputs["pred_logits"]
+
+        idx = self._get_src_permutation_idx(indices)
+        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
+        target_classes = torch.full(
+            src_logits.shape[:2],	# shape (B, num_queries)
+            self.num_classes,
+            dtype=torch.int64,
+            device=src_logits.device,
+        )
+        target_classes[idx] = target_classes_o
+
+        # Computation classification loss
+        if self.loss_class_type == "ce_loss":
+            loss_class = F.cross_entropy(
+                src_logits.transpose(1, 2), target_classes, self.empty_weight
+            )
+        elif self.loss_class_type == "focal_loss":
+            # src_logits: (b, num_queries, num_classes) = (2, 300, 80)
+            # target_classes_one_hot = (2, 300, 80)
+            target_classes_onehot = torch.zeros(
+                [src_logits.shape[0], src_logits.shape[1], src_logits.shape[2] + 1],
+                dtype=src_logits.dtype,
+                layout=src_logits.layout,
+                device=src_logits.device,
+            )
+            target_classes_onehot.scatter_(2, target_classes.unsqueeze(-1), 1)
+            target_classes_onehot = target_classes_onehot[:, :, :-1]
+            loss_class = (
+                sigmoid_focal_loss(
+                    src_logits,
+                    target_classes_onehot,
+                    num_boxes=num_boxes,
+                    alpha=self.alpha,
+                    gamma=self.gamma,
+                )
+                * src_logits.shape[1]
+            )
+
+        losses = {"loss_class": loss_class}
+```
+
+构造 One hot 向量可以用 scatter 也可以用 `F.one_hot`
+
+#### full loss
+
+完整的 api 调用如下
+
+```python
+        for loss in self.losses:
+            losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
+            
+            
+    def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
+        loss_map = {
+            "class": self.loss_labels,
+            "boxes": self.loss_boxes,
+        }
+        assert loss in loss_map, f"do you really want to compute {loss} loss?"
+        return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
+```
+
+### Aux Loss
+
+中间层损失输出就是 Last Layer Loss 的循环，完全一致！
+
+```python
+        if "aux_outputs" in outputs:
+            for i, aux_outputs in enumerate(outputs["aux_outputs"]):
+                indices = self.matcher(aux_outputs, targets)
+                if return_indices:
+                    indices_list.append(indices)
+                for loss in self.losses:
+                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes)
+                    l_dict = {k + f"_{i}": v for k, v in l_dict.items()}
+                    losses.update(l_dict)
+```
+
+### Two Stage Loss
+
+依然也是同样的损失计算
+
+```python
+        if "enc_outputs" in outputs:
+            enc_outputs = outputs["enc_outputs"]
+            if self.two_stage_binary_cls:
+                for bt in targets:
+                    bt["labels"] = torch.zeros_like(bt["labels"])
+            indices = self.matcher(enc_outputs, targets)
+            for loss in self.losses:
+                l_dict = self.get_loss(loss, enc_outputs, targets, indices, num_boxes)
+                l_dict = {k + "_enc": v for k, v in l_dict.items()}
+                losses.update(l_dict)
+```
+
+不过可以设置 `binary_cls`，这就完全靠齐了传统的两阶段方法：第一个阶段只预测前景，不预测类别。**这里直接将标签全部设置为 0 就可完成该目标！**实际上第一阶段的最重要作用还是提供 reference points 所以这个类别不重要
+
+### DN Loss
+
+DN 唯一不同的是不需要 Matcher 进行匹配，其正负样本都已经分配好了
+
+```python
+target_idx = [[0, 1, ..., n],
+              [0, 1, ..., n]
+              ...(repeat dn_num times)
+              [0, 1, ..., n]]	# n ground truth, (dn_num, gt_num_all)
+output_idx = (torch.tensor(range(dn_num)) * single_padding	# each starting point
+                    ).long().cuda().unsqueeze(1) + t	# (dn_num, gt_num_all)
+
+dn_idx = (output_idx, target_idx)	# match indices
+              
+            for loss in self.losses:
+                losses.update(
+                    self.get_loss(loss, output_known_lbs_bboxes, targets, dn_idx, num_boxes * dn_num))
+              
+              # aux loss
+              for i in range(aux_num):
+              	...
+```
+
+并且该分配结果对中间层的预测结果依然如此，从始至终不改变！
