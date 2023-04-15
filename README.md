@@ -6,6 +6,38 @@
 
 ### Week 16
 
+> Target Stack
+
+- [x] nuScenes Dataset
+- [x] View Transform 透视变换以及~~四元数~~
+- [x] BEVFormer 代码学习：感觉是比较复杂的，一个 temporal 一个 spatial cross attn。现在有两个优化目标：1. 去 deformabel attn 化；2. 更好的 time align trick；能不能使用更简洁的 attn 来获取特征
+- [ ] TPVFormer 代码学习，lidarseg & occ task
+- [ ] **BEVDet 项目学习以及 CUDA 加速，GPU puzzles**
+- [ ] Cylinder3D 语义分割，希望解决的问题：为什么 Cylinder3D 优于其他特征抽取结果
+
+> Sat.
+
+- 完成 BEVFormer 代码学习，但不进行整理，现在提出两个优化方向：
+
+  1. 去 deformabel attn 化
+  2. 更好的 time align 方式
+
+  实际上两个问题可能指向的是同一个问题
+
+> Fri.
+
+- 完成透视变换以及四元数的整理，透视变换放在了 BEVDet 笔记当中
+- 完成 nuScenes 数据集的下载
+
+> Thu.
+
+- 完成 nuScenes API 的整理
+- 深入了一下四元数相关知识，依然无法建立起通顺的逻辑理解。似乎只能先用了
+
+> Wed.
+
+- 开始学习 nuScenes 数据集
+
 > Tue.
 
 - 完成可视化代码整理以及 VanillaHeadv2

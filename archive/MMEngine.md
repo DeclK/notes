@@ -266,6 +266,8 @@ mmengine 中的 scheduler 和 pytorch 中的 scheduler 使用方法完全一致�
 
 scheduler 原理是根据当前步（last_step）和给定参数设置学习率，基本上不需要自己调整，直接参考文档 [mmengine.optim](https://mmengine.readthedocs.io/zh_CN/latest/api/optim.html) 写配置文件即可。要自己实现个性化的 scheduler 可以参考一下源码
 
+Freeze backbone 或者使用 0.1 倍的 learning rate 都可以通过配置文件指定 [doc](https://mmengine.readthedocs.io/zh_CN/latest/tutorials/optim_wrapper.html#id8)
+
 ## Dataset & DataSample
 
 ### BaseDataset 实现逻辑
@@ -523,7 +525,7 @@ mmengine 要求模型的 `forward` 方法接受的参数即为 `DataLoader` 的�
 
 ## Load Pretrained Model
 
-可以使用 [MMPretrain](https://github.com/open-mmlab/mmpretrain) 中的方法创建模型，并获得预训练权重。如果在训练过程中需要冻结参数可以设置 `requires_grad = False`
+可以使用 [MMPretrain](https://github.com/open-mmlab/mmpretrain) 中的方法创建模型，并获得预训练权重。如果在训练过程中需要冻结参数可以设置 `requires_grad = False`，但通常是使用 0.1 倍的学习率来缓慢更新。也可以使用 timm 中的 backbone
 
 # TODO
 
