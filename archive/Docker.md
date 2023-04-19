@@ -358,3 +358,5 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
    4. 挂载数据和项目
    5. 配置网络，并给容器取名
    6. 指定 image id
+   
+   如果是使用 wsl，这么配置甚至能够直接使用 matplotlib，直接在 window 中弹出可视化窗口

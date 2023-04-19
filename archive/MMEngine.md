@@ -268,6 +268,8 @@ scheduler 原理是根据当前步（last_step）和给定参数设置学习率�
 
 Freeze backbone 或者使用 0.1 倍的 learning rate 都可以通过配置文件指定 [doc](https://mmengine.readthedocs.io/zh_CN/latest/tutorials/optim_wrapper.html#id8)
 
+AMP 训练写法 pytorch 原生写法
+
 ## Dataset & DataSample
 
 ### BaseDataset 实现逻辑
@@ -525,10 +527,66 @@ mmengine 要求模型的 `forward` 方法接受的参数即为 `DataLoader` 的�
 
 ## Load Pretrained Model
 
-可以使用 [MMPretrain](https://github.com/open-mmlab/mmpretrain) 中的方法创建模型，并获得预训练权重。如果在训练过程中需要冻结参数可以设置 `requires_grad = False`，但通常是使用 0.1 倍的学习率来缓慢更新。也可以使用 timm 中的 backbone
+可以使用 [MMPretrain](https://github.com/open-mmlab/mmpretrain) 中的预训练模型。如果在训练过程中需要冻结参数可以设置 `requires_grad = False`，但通常是使用 0.1 倍的学习率来缓慢更新，这是通过 mmengine 中的 `paramwise_cfg` 实现，如下
+
+```python
+optim_wrapper = dict(
+    type='OptimWrapper',
+    optimizer=dict(
+        type='AdamW',
+        lr=0.0001,
+        weight_decay=0.0001),
+    clip_grad=dict(max_norm=0.1, norm_type=2),
+    paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)})
+)
+```
+
+这个是用 `DefaultOptimWrapperConstructor` 完成
+
+1. 可以确定的是，mmengine 的写法比较冗余...but I can live with this...使用 `init_cfg` 可以实现初始化，并会列出 key difference
+
+2. mmengine 使用了一个 `CheckpointLoader` 来在网络或者本地获取 checkpoints，然后通过 `_load_checkpoint_to_model` 完成初始化
+
+   ```python
+   def load_checkpoint(model,
+                       filename,
+                       map_location=None,
+                       strict=False,
+                       logger=None,
+                       revise_keys=[(r'^module\.', '')]):
+       """Load checkpoint from a file or URI.
+   
+       Args:
+           model (Module): Module to load checkpoint.
+           filename (str): Accept local filepath, URL, ``torchvision://xxx``,
+               ``open-mmlab://xxx``. Please refer to ``docs/model_zoo.md`` for
+               details.
+           map_location (str): Same as :func:`torch.load`.
+           strict (bool): Whether to allow different params for the model and
+               checkpoint.
+           logger (:mod:`logging.Logger` or None): The logger for error message.
+           revise_keys (list): A list of customized keywords to modify the
+               state_dict in checkpoint. Each item is a (pattern, replacement)
+               pair of the regular expression operations. Defaults to strip
+               the prefix 'module.' by [(r'^module\\.', '')].
+   
+       Returns:
+           dict or OrderedDict: The loaded checkpoint.
+       """
+       checkpoint = _load_checkpoint(filename, map_location, logger)
+       # OrderedDict is a subclass of dict
+       if not isinstance(checkpoint, dict):
+           raise RuntimeError(
+               f'No state_dict found in checkpoint file {filename}')
+   
+       return _load_checkpoint_to_model(model, checkpoint, strict, logger,
+                                        revise_keys)
+   ```
 
 # TODO
 
 - [ ] 分布式接口
 
 - [ ] 文件 io
+
+- [ ] 如何使用模型进行推理

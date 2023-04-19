@@ -52,7 +52,9 @@ date: 2022-10-06 12:56:00
 核心改进：
 
 1. 将 backbone 加深。YOLO 使用的 backbone 都是用 darknet，本质是残差网络，使用卷积层替代最大池化，使用 LeakyReLU 激活函数
-2. 引入了 FPN 结构
+2. 引入了 FPN 结构，图片来自与 [bilibili](https://www.bilibili.com/video/BV1dh411U7D9)
+
+<img src="YOLO/image-20230416115041793.png" alt="image-20230416115041793" style="zoom:50%;" />
 
 正负样本/anchor的匹配也是基于 anchor 与 gt 的 IoU 值，但为了平衡正负样本数量 IoU 阈值取得相对低，计算 IoU 时，仅计算 object 中心所落在的 grid 产生的 anchor，并且 anchor 和 gt 会先左上角对齐后再计算 IoU
 
