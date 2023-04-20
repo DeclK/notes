@@ -133,6 +133,10 @@ Host random_name
 
 ## 其他技巧
 
+### Remote Development
+
+Remote Development 是一个 VSCode 远程开发全家桶，强烈推荐😀！不仅方便于远程服务器开发，也可以连接到本地 WSL 当中。在 WSL 中开发体验非常好，对于图形化界面也有充分的支持
+
 ### VSCode with container
 
 想要 vscode 编辑 docker 容器中的文件，可以按照以下方法 
@@ -219,7 +223,7 @@ Host Arbitrary_Nane
 export DISPLAY="localhost:10.0"
 ```
 
-注意，10.0 这个数字是根据 .Xauthority 文件确定，可以通过 xauth list 命令查看。得到列表可能会比较长，我对这一块不是很了解...经验来看，关注的是最后一行，或者 unix:index 最小的那一行
+注意，10.0 这个数字是根据 .Xauthority 文件确定，可以通过 xauth list 命令查看。每一次登录服务器时，Xauth 就会分配一个编号给这次登录，这个编号就代表了你本地的显示设备，通过指定 DISPLAY 为该编号，就能使得图形程序出现你的显示器上。一般来说为最后一行
 
 ```shell
 user@linux xauth list

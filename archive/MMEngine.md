@@ -180,7 +180,7 @@ mmengine 期望模型在训练时的输出是一个字典，`parse_losses` 将�
 建议是从 `_base_` 中去继承 `default_runtime.py`，然后再挑选修改。总体来讲核心如下
 
 ```python
- dataset
+### dataset
 dataset = dict(type='COCO')
 train_pipeline = [dict(type='LoadImageFromFile')]
 train_dataloader = dict(batch_size=16, dataset=dataset, sampler=, pipline=train_pipline)
@@ -190,11 +190,11 @@ val_dataloader = ...
 
 val_evaluator = dict(type='CocoMetric', ann_file=...)
 
- model
+### model
 model = dict(type='DETR',...)
 data_preprocessor = dict(type='BaseDataPreprocessosr')
 
- optimizer & scheduler
+### optimizer & scheduler
 train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=12, val_interval=1)
 val_cfg = dict(type='ValLoop')
 
@@ -203,7 +203,7 @@ param_scheduler = dict(type='LinearLR', start_factor=0.001, by_epoch=False, begi
 
 auto_scale_lr = dict(enable=False, base_batch_size=16)
 
- logs & hooks
+### logs & hooks
 default_hooks
 
 log_processor = dict(type='LogProcessor', window_size=50, by_epoch=True)

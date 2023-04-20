@@ -356,7 +356,8 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
    2. 配置 GPU
    3. 配置容器内存
    4. 挂载数据和项目
-   5. 配置网络，并给容器取名
-   6. 指定 image id
+   5. 配置网络，使得容器能够使用 host 网络。除了使用网络外，还能够让 docker 与 host X server 进行交流，使得像 matplotlib 这样的画图能够直接呈现在显示器上 
+   6. 并给容器取名
+   7. 指定 image id
    
    如果是使用 wsl，这么配置甚至能够直接使用 matplotlib，直接在 window 中弹出可视化窗口

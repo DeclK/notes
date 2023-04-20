@@ -8,12 +8,19 @@
 
 > Target Stack
 
-- [x] TPVFormer 笔记整理，框架使用思维导图完成
+- [ ] TPVFormer 笔记整理，~~框架使用思维导图完成~~
 - [ ] BEVDet 项目学习以及 CUDA 加速
 - [ ] Cylinder3D 语义分割，希望解决的问题：为什么 Cylinder3D 优于其他特征抽取结果
-- [x] **tennis.ai 项目建立！跑通 RTMPose**
+- [ ] **~~tennis.ai 项目建立！~~跑通 RTMDet & RTMPose**
 - [ ] 完成姿态相似度评估，OKS
 - [ ] 使用 onnxruntime 推理
+
+> Thu.
+
+- 完成 colab mmdet3d 可视化脚本
+- 重新学习了 DISPLAY 的逻辑，对可视化更有把握
+- 创建了 tennis.ai 仓库，构建了 Model Zoo Manager，能够从 mmlab 直接获得模型
+- 再次深入学习 mmengine，目标：Registry trick...
 
 > Wed.
 

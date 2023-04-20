@@ -237,7 +237,7 @@ nusc.get('sample_data', '68e8e98cf7b0487baa139df808641db7')
 
 #### sample_annotation
 
-包含了 instance, attribute, category, bbox 等信息与 meta，所有的标注信息都是在 global coordinate system 下表示
+包含了 instance, attribute, category, bbox 等信息与 meta，**所有的标注信息都是在 global coordinate system 下表示**
 
 ```python
 my_annotation_token = my_sample['anns'][7]
