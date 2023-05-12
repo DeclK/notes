@@ -234,6 +234,12 @@ linux/unix:12  MIT-MAGIC-COOKIE-1  78cbc********************c64
 
 使用 `xeyes` 测试一下，如果看到一个眼睛窗口就成功了😎
 
+有时候经常会出现 `xcb` 相关的问题，这里提供一个万金油解决方法，是 ChatGPT 给出
+
+```shell
+sudo apt-get install libxcb-xinerama0 libxcb-xinerama0-dev libsm6
+```
+
 ### Docker with GUI
 
 如果能够在 Docker 中使用 GUI app 岂不是美滋滋？既然能够在 VSCode 中通过 X11 forward 协议运行图形界面，那么理论上 Docker 也是可以的！根据这两个博客：[Link-1](https://www.cnblogs.com/larva-zhh/p/10531824.html) [Link-2](https://medium.com/@SaravSun/running-gui-applications-inside-docker-containers-83d65c0db110) 进行配置，意想不到地成功了，说明博客中的原理是正确的，只要将 Host 中的 X11 服务器分享给 Docker 就可以，具体步骤如下：

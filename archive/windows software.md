@@ -56,6 +56,8 @@ date: 2021-08-17 11:32:56
 
 21. Utools，介绍自己常用的功能：中键快速用 cmd/vscode 打开文件夹；剪切板查看历史剪切记录；网页快开能够实现迅速搜索；中键显示翻译；OCR 图片转文字；Linux 命令查询插件；图片压缩插件；
 
+22. Local Send，夸平台传输文件神器！
+
 ## OBS 简要教程
 
 主要根据 [bilibili](https://www.bilibili.com/video/BV1wt4y1Q7rV?p=1) 进行学习

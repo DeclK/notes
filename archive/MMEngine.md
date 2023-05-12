@@ -590,3 +590,7 @@ optim_wrapper = dict(
 - [ ] 文件 io
 
 - [ ] 如何使用模型进行推理
+
+- [ ] mixin 全局管理
+
+- [ ] mmcv 常用

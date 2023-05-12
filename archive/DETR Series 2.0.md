@@ -282,7 +282,10 @@ operation_order=("self_attn", "norm", "ffn", "norm")
 operation_order=("self_attn", "norm", "cross_attn", "norm", "ffn", "norm")
 ```
 
-前者为 encoder，后者为 decoder，norm 层为 `nn.LayerNorm`
+前者为 encoder，后者为 decoder，norm 层为 `nn.LayerNorm`。值得注意的是
+
+1. vision transformer 都是使用的 `Norm & Add` 的方式，而一般的 transformer 使用的是 `Add & Norm` 的网络层顺序
+2. 在每一个 attention layer 前都加入了 positional embedding，这和一般 transformer 也是不一样的
 
 ## Deformable DETR 流程
 

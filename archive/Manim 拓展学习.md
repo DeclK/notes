@@ -168,7 +168,7 @@ vg.arrange_in_grid(rows, cols)
 
 1. 定义的常量，如下图
 
-2. 十六进制，形如 #66CCFF
+2. xxxxxxxxxx import matplotlibimport matplotlib.pyplot as plt%matplotlib inline%config InlineBackend.figure_format = 'svg'​# 输出为 pdf 可以轻松放入 latex 中plt.savefig('tmp.pdf', bbox_inches='tight')plt.show()python
 
 3. RGB数组，形如 np.array([255, 104, 100])
 
@@ -211,7 +211,7 @@ stroke 代表边框着色，fill 代表内部着色
 ```python
 mob.set_stroke(color, width)
 mob.set_fill(color, opacity)
-mob.set_fill([color_1, color_2,], opacity)
+mob.set_fill([color_1, color_2,], opacity)	# gradient color
 ```
 
 ### 给 VGroup 子物体上色
@@ -360,6 +360,8 @@ class CountingScene(Scene):
         self.play(Count(number, 0, 100), run_time=4, rate_func=linear)
 ```
 
+DecimalNumber & Tex 这些类实现可能有 Bug（目前发现了 Count & SpiralIn example 都有 bug），其余的几何图形随便用什么复杂的动画应该都没问题
+
 ### Updater
 
 既然这里提到了 updater，那么也必须要把 updater 给将明白。每一个 mobject 都有一个 updater list，所谓的 updater 实际上是一个函数：
@@ -379,7 +381,9 @@ class CountingScene(Scene):
 ag = AnimationGroup(Wait(1), circle.animate.set_fill(RED), lag_ratio=1)
 ```
 
-上方就实现了先等1秒，然后再进行其他动画
+上方就实现了先等1秒，然后再进行其他动画。[rate_func](https://easings.net/) 可以调整动画的播放速率，`lag_ratio` 代表上一个动画播放了多少百分比过后下一个动画开始
+
+**一般来说 Manim 不需要实现自己的 Custom Animation，使用 UpdateFromAlphaFunc & AnimationGroup & Succession 即可实现绝大部分动画！**
 
 ### 使用代码渲染
 
@@ -404,3 +408,26 @@ class Demo(ThreeDScene):
 [Reference manual](https://docs.manim.community/en/stable/reference.html) [物理模拟](https://www.bilibili.com/read/cv15424290)
 
 总体来说，Manim 非常适合用于制作**示例**，对于三维示例也能够完成大部分的任务，但是对于长视频的制作将非常考验项目的组织能力，可以参考 [issue](https://github.com/3b1b/manim/issues/1086#issuecomment-1272617831) 来完成对多个场景的组合，建议分为多个场景分别渲染以节省不必要的时间
+
+## Bazier Curve
+
+最常用的就是三阶贝塞尔曲线（Cubic Bazier Curve），其由四个点计算得出，起点和终点为 anchor，中间两个点为 handle，或者称为 control points
+
+可以通过这个 [link](https://pomax.github.io/bezierinfo/zh-CN/index.html#introduction) 来感受一下贝塞尔曲线的变化
+
+曲线的数学表达形式可以由递归形式表示，这是最好理解的一种形式 [link](https://pomax.github.io/bezierinfo/zh-CN/index.html#decasteljau)
+
+也可以由直接用参数表达，下面是三阶贝塞尔曲线的数学表达式
+$$
+B(t)=P_0(1-t)^3+3P_1t(1-t)^2+3P_2t^2(1-t)+P_3t^3
+$$
+可以看到是和二项式密切相关的
+
+了解数学形式其实非常简单，但我不是很能理解贝塞尔曲线的应用，因为这个曲线是由点绘制而来，即先有点，后有线。其实际应用在哪些地方？在此之前我需要强调：贝塞尔曲线的最大特点就是光滑！非常光滑！
+
+### 应用
+
+1. 缓动动画 [link](https://cubic-bezier.com/)，让物体运动变得丝滑
+2. **绘制曲线**，贝塞尔曲线被广泛地在电脑图形中用来为平滑曲线创建模型。贝塞尔曲线是矢量图形文件和相应软件（如PostScript、PDF等）能够处理的唯一曲线，用于光滑地近似其他曲线。可以：绘制椭圆，绘制连续圆弧，绘制平行曲线...
+
+在遇到更多的实际问题之前，就不继续深入啦！我需要知道的就是，图形的形状是由各个点进行定义的，那就足够了
