@@ -477,7 +477,7 @@ ABSTRACT
 
 图片表格插入到下一页了怎么办？没什么办法，多尝试一下，放在哪里合适
 
-有时候图片太大了，latex 将其排版到最后一页，这里可以使用 `[H]` 参数，强制其在此页/下一页出现
+有时候图片太大了，latex 将其排版到最后一页，这里可以使用 `[H]` 参数，强制其在此页/下一页出现，但是不推荐使用这个方法，会导致 latex 编译出现许多不美观问题，例如突然出现许多空白处。**所以还是建议调整图片大小和位置，最终目的是让整体紧凑，不要在乎图像太大或者太小**
 
 ```tex
 \begin{figure}[H]
@@ -486,7 +486,7 @@ ABSTRACT
 
 ### 图片距离内容太远
 
-使用 `\vspace{-0.3cm}` 在 `\begin{figure} \end{figure}` 前后均可调整
+可以使用 `\vspace{-0.3cm}` 在 `\begin{figure} \end{figure}` 前后均可调整，推荐在 `\end{figure}` 之前用
 
 ### 双栏大图片
 
@@ -555,16 +555,66 @@ ABSTRACT
 **使用技巧，每一条都要看！**
 
 1. 设置 `\documentclass`，包含：本科/硕士/博士，学术型/专业型，单页/双页，盲审，字体设置win/mac/linux
+
 2. 设置 `info`，在 `njuthesis-setup` 文件当中，包括：标题，作者，学号，导师，专业等
+
 3. 设置 `.bib` 参考文献，依然在 `njuthesis-setup` 文件当中。但是使用默认方法在进行参考文献的引用时无法自动提示，根据 [discussion](https://github.com/nju-lug/NJUThesis/discussions/126) 解决。在 `njuthesis-setup` 中使用 `\addbibresource{.bib}` 即可
+
 4. 增加了 `\chapter{}` 作为文章结构，该结构等级高于 `\section`
+
 5. 使用 `\include{chapter.tex}` 来导入章节。区别于 `\input`：
    - `\include` 命令会在插入文件之前和之后自动换页，而 `\input` 命令不会
    - `\include` 命令只能在主文件的正文部分使用，不能在导言区或其他环境中使用，而 `\input` 命令没有这个限制
+
 6. 必须使用 xelatex 来进行编译，即 build latex project 选项下面有一个：Recipe: latexmk (xelatex)
+
 7. 模板使用 `unicode-math` 宏包配置数学字体， 该方案目前不兼容传统的 amsfonts，amssymb 等宏包。需要使用新方案提供的相应命令。可能会出现有的数学公式或者表格中的  `\checkmark` 打不出来，可以查阅  [用户手册](https://mirror-hk.koddos.net/CTAN/macros/unicodetex/latex/njuthesis/njuthesis.pdf)。例如使用 `\ensuremath{\checkmark}` 就可打出✔
+
 8. 参考文献超宽了，可以在 `\printbibliography` 之前加入 `\sloppy` 命令是最简单的方法，没人会在乎参考文献美观与否，参考 [issue](https://github.com/nju-lug/NJUThesis/issues/57)
+
 9. 如果参考文献中出现了 `\\`，这是符合规定的。如果非要修改那么可以参考 [issue](https://github.com/nju-lug/NJUThesis/issues/152)
+
 10. 在一个段落内插入图片时，需要使用 `\\` 进行换行处理，使用该方式换行不会有缩进。同时有时候会出现渲染超出文本范围的问题，也需要手动使用`\\`进行换行处理，或者加入连字符`-`，这种情况通常出现在公式/英文与中文混合的时候
+
+11. 在答辩的时候老师突出 chapter 标题下面空格太多，根据 [issue](https://github.com/nju-lug/NJUThesis/issues/68) 添加
+
+    ```tex
+    % 调整章节标题与正文间距
+    \ctexset{
+      chapter/afterskip = 5pt,
+      % section/afterskip = 5pt,
+      % section/beforeskip = 5pt
+    }
+    ```
+
+12. 遇到了 `Underfull \vbox (badness 10000) in page` 问题，你会发现你的论文里由很多空白，实际上 word 一样也会面临这个问题。**如果空格太大，基本都是由大图片或者多个连续图片引起的！建议尝试调整图片的大小调整图片位置（毕竟图片不能拆分）。一个更好的方法是取消这个注释，强烈推荐**
+
+    ```tex
+    % 文档默认使用 \flushbottom，即底部平齐
+    % 效果更好，但可能出现 underfull \vbox 信息
+    % 如需抑制这些信息，可以反注释以下命令
+    \raggedbottom
+    ```
+
+    **但有可能会为了填空隙而导致页脚空间太大！这样的话依然要注意排版，或者多写一些字**
+
+13. 为目录添加引导线，需要把 `\njusetup[tableofcontents/dotline]{chapter}` 取消注释，[issue](https://github.com/nju-lug/NJUThesis/issues/66)
+
+14. 参考文献中有 `[S.l. : s.n.]`，自己提了一个 [issue](https://github.com/nju-lug/NJUThesis/issues/212)，通过 `\clist_gput_right:Nn \g__nju_blx_option_clist { backend = biber , gbpub=false}` 解决，也可以在 `njuthesis-setup` 中设置
+
+    ```tex
+    \njusetup[bib]{
+        resource = {references.bib},
+        option = {
+            gbpub = false
+          }
+    ```
+
+15. 参考文献需要再次检查的事情：
+
+    - Ieee 要改为 IEEE
+    - 一些期刊比较老了，期刊名首字母用的小写，我们要手动改为大写
+
+16. 最后一个 tips，
 
 其他问题就见招拆招吧，应该会比较顺利

@@ -274,22 +274,109 @@ if __name__ == "__main__":
 
 ## OpenCV & PIL
 
-在这个项目中 OpenCV 使用到的部分是比较少的。只有在将 `np.array` 图片输入到视频流，这一操作是必须要用 OpenCV 完成，其能够将生成的 `np.array` 写入到视频流当中
+项目中使用 MMCV 来处理视频流，比 OpenCV 的接口更友好
 
 ```python
+import cv2, mmcv
+
+video = mmcv.VideoReader(video_path)
+# slice to get image
+frame_0 = video[0]	
+
+# iter to get image
+for frame in video:
+    print(frame.shape)
+    
+# get video attr
+video.fps
+video.width
+video.height
+video.current_frame
+video.fourcc
+```
+
+项目中 OpenCV 使用到的部分是比较少的。只有在将 `np.array` 图片输入到视频流，这一操作是必须要用 OpenCV 完成，其能够将生成的 `np.array` 写入到视频流当中
+
+```python
+import cv2
+
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')	# video encoder
 video_writer = cv2.VideoWriter('video.mp4', 
                                fourcc, v1.fps, (w, h))
 video_writer.write(frame)
 video_writer.release()
-
 ```
 
-其余对于图片的操作，用 PIL 以及 skimage 能更好地完成
+其余对于图片的操作，用 PIL 以及 skimage 能更好地完成，在实验过程中使用 OpenCV 即使画方块都有毛刺...此外 OpenCV 和 MMCV 都是默认 `bgr` 的读取和展示图片，但是 PIL 和 matplotlib 都是默认 `rgb` 顺序，在 `img.show()` 的时候需要注意调整
 
 1. 使用 skimage 来绘制方块区域以及指定其颜色
-2. alpha blend 方法
-3. 使用 PIL 对 image 进行方便操作，加入文字
+
+   ```python
+   from skimage import draw
+   
+   def draw_rectangle(box_coord, color=(25, 113, 194), alpha=1.0):
+       xmin, ymin, xmax, ymax = box_coord
+       rr, cc = draw.rectangle((ymin, xmin), (ymax, xmax))
+       draw.set_color(self.image, (rr, cc), color, alpha=alpha)
+   ```
+
+2. 使用 PIL 对 image 进行方便操作
+
+   1. 打开图片
+
+      ```python
+      from PIL import Image, ImageDraw, ImageFont
+      
+      img = Image.open(image_file)
+      img = Image.fromarray(img_np_array, mode='RGB')
+      
+      img_np_array = np.array(img)	# conver Image object to np.array
+      ```
+
+      使用 PIL 打开图片兼容性会非常好，能够处理 RGBA 图片
+
+   2. 缩放与裁剪图片
+
+      ```python
+      img.resize((width, height))
+      img.crop((left, upper, right, lower))
+      ```
+
+   3. 转换图片格式
+
+      ```python
+      img.convert('RGB')
+      img.convert('BGR')
+      img.convert('RGBA')
+      
+      img.mode	# check the format
+      ```
+
+   4. 处理字符
+
+      ```python
+      pil_image = Image.open(image_file)
+      
+      # Load the font (default is Arial)
+      font = ImageFont.truetype(font_path, font_size)
+      # Create a drawing object
+      draw = ImageDraw.Draw(pil_image)
+      # Add the text to the image
+      draw.text(position, text, font=font, fill=text_color)
+      # Convert the PIL image back to a NumPy array
+      result = np.array(pil_image)
+      ```
+
+   5. alpha blend
+
+      ```python
+      img.alpha_composite(pil_img, dest_coord, source_coord)
+      # dest_coord is the left corner of pil_img in the dest img
+      # source_corrd is to choose area of pil_img to composite
+      # can be the left top corner, and can be a 4 tuple box
+      ```
+
+      alpha composite 本质上就是两个 RGBA 的图像相加
 
 ## 学习
 
@@ -299,10 +386,10 @@ video_writer.release()
 - [x] tmpfiles
 - [x] gradio
 - [x] Warings
-- [ ] OpenCV & PIL Operations 
+- [x] OpenCV & PIL Operations
+- [ ] MMDeploy convert to ONNX and what is onnxsim 
 - [ ] PPT skills 2.0
 - [ ] Friday toolbox update
-- [ ] MMDeploy convert to ONNX and what is onnxsim
 
 ## 后续可能的更新
 
