@@ -12,7 +12,7 @@
 
 前往链接下载 [MinGW-w64](https://sourceforge.net/projects/mingw-w64/files/mingw-w64/mingw-w64-release/)，我选择了下方版本
 
-<img src="C:\Data\Projects\notes\dev_notes\C++\image-20221227171144324.png" alt="image-20221227171144324" style="zoom:50%;" />
+<img src="C++\image-20221227171144324.png" alt="image-20221227171144324" style="zoom:50%;" />
 
 并把解压过后的 `bin` 其添加到环境变量中，完成后在 cmd 中输入
 
@@ -23,6 +23,8 @@ gcc -v
 验证是否安装完成
 
 安装 C/C++ VSCode 插件后就可以愉快编程了
+
+如果是 linux 上的话可以按照 [bilibili](https://www.bilibili.com/video/BV18P4y1C7Ei) 进行安装，最好用 Run Code 来运行
 
 ## 语法
 

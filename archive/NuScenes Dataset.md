@@ -161,6 +161,8 @@ nusc.sample[0]
 nusc.sample_data[0]
 ```
 
+**注意：即使是一个 sample 中，各个 sensor 所采集的时间会有微小偏差**，不是默认统一时间！这也是为什么所有的采集数据都有 timestamp 及其对应标定
+
 #### sample_data
 
 `sample_data` 包含了具体的传感器采集数据的 meta 信息，例如获得前视摄像头的 meta 数据。包含了：图像路径，相机参数，自车姿势等等
