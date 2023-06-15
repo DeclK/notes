@@ -575,7 +575,74 @@ server.quit()
 
 使用该包能够把本地的项目进行打包成 package，可供本地使用，也可以上传 pip
 
-使用逻辑可参考 [zhihu](https://zhuanlan.zhihu.com/p/460233022)
+使用逻辑可参考 [zhihu](https://zhuanlan.zhihu.com/p/460233022)，这里做简单整理。首先python库的打包分发方式有两种：**源码包source dist**（简称sdist）、**二进制包binary dist**（简称bdist）。源码包就是一个压缩包 `*.zip or *.tar.gz`，而二进制包就是常见的 `*.whl` 文件，打包命令可参考下方
+
+```python
+python setup.py sdist --formats=gztar
+python setup.py bdist --formats=rpm
+```
+
+有了这些“包”过后，就可以进行安装
+
+```python
+# 安装源码包 sdist，需要解压源码包，进入该目录过后安装
+python setup.py install
+python setup.py develop	# 该命令不会真正的安装包，而是在系统环境中创建一个软链接指向包实际所在目录
+pip install -e .		# 等价于 python setup.py develop
+
+
+# 安装二进制包 bdist
+pip install xxx.whl
+```
+
+### setup.py
+
+上述核心就在于 `setup.py` 文件的内容，该 python 文件包含以下信息
+
+- **python库的基本信息（作者、联系方式、当前库的版本等）**
+- **需要打包的文件**
+- **依赖包安装与版本管理**
+- **python环境限制**
+- **生成脚本**
+- **c/c++ 拓展**
+- **cmdclass自定义命令行为**
+
+一个最简单的写法如下
+
+```python
+from setuptools import setup, find_packages
+
+def readme():
+    with open('README.md', encoding='utf-8') as f:
+        content = f.read()
+    return content
+
+setup(
+    name = 'myapp', 						# 包名称
+    version = '1.0', 						# 版本
+    author = 'lihua', 						# 作者
+    author_email = 'lihua@163.com', 		# 作者邮箱
+    description='Example for pack python',	# 描述
+    long_description=readme(), 				# 长文描述
+    long_description_content_type='text/markdown',	# 长文描述的文本格式
+    keywords='keyword1, keyword2', 			# 关键词
+    url='https://github.com/lihua/myapp', 	# 项目主页,
+    license='Apache License 2.0', 			# 许可证
+	include_package_data=True,	# 打包 MANIFEST.in 中的指定文件
+    pakcages=find_packages(where='project_path') 	# 打包文件
+    install_requires=['numpy', 'matplotlib']		# 依赖包
+    classifiers=[ 							# 包的分类信息，可选
+            'Development Status :: 5 - Production/Stable',
+            'License :: OSI Approved :: Apache Software License',
+            'Operating System :: OS Independent',
+            'Programming Language :: Python :: 3',
+            'Programming Language :: Python :: 3.6',
+            'Programming Language :: Python :: 3.7',
+        ]
+)
+```
+
+### requirements.txt
 
 requirements.txt 可以对 pacakge 的版本进行限制
 
