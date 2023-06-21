@@ -242,6 +242,41 @@ Z_{1} & q_{1}<Z_{1}
 \end{array}\right.
 $$
 
+另外补充一点：BN 可以用一个 1x1 depth wise conv 来表示，用代码表示为 `nn.Conv1d(in_dim, in_dim, 1, groups=in_dim)`
+
+在 Conv 类中，groups 参数有两个要求：
+
+1. `in_dim` 必须能整除 groups，即 `in_dim % groups == 0`
+2. `out_dim` 必须能整除 groups
+
+使用了 groups=2 的卷积过程如下：
+
+1. 对于`in_dim` 的特征向量，其将分为 groups=2 个部分，即每个部分的向量形状为 `in_dim // groups`
+2. 每个部分将分别使用 `out_dim // groups` 个卷积核计算输出结果，最后 cat 起来得到最终输出
+
+groups 参数能够显著减少 conv 层的参数量，但实测下来并不会显著减少计算时间，参考 [link](https://zhuanlan.zhihu.com/p/448854623)
+
+```python
+# test group conv
+import torch
+import torch.nn as nn
+
+input = torch.randn(1, 4, 10, 10)
+conv1 = nn.Conv2d(4, 8, 3, 1, 1, bias=False, groups=1)
+conv2 = nn.Conv2d(4, 8, 3, 1, 1, bias=False, groups=2)
+# doc groups: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+
+print(conv1.weight.shape)
+print(conv2.weight.shape)
+# torch.Size([8, 4, 3, 3])
+# torch.Size([8, 2, 3, 3])
+
+print(conv1(input).shape)
+print(conv2(input).shape)
+# torch.Size([1, 8, 10, 10])
+# torch.Size([1, 8, 10, 10])
+```
+
 ## TensorRT/ONNX 量化
 
 参考 [paddle](https://aistudio.baidu.com/aistudio/projectdetail/3924447)	[ONNX doc](https://onnxruntime.ai/docs/performance/quantization.html)	[TensorRT doc](https://docs.nvidia.com/deeplearning/tensorrt/index.html)	[bilibili](https://www.bilibili.com/video/BV15Y4y1W73E)

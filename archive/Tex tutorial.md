@@ -566,7 +566,7 @@ ABSTRACT
    - `\include` 命令会在插入文件之前和之后自动换页，而 `\input` 命令不会
    - `\include` 命令只能在主文件的正文部分使用，不能在导言区或其他环境中使用，而 `\input` 命令没有这个限制
 
-6. 必须使用 xelatex 来进行编译，即 build latex project 选项下面有一个：Recipe: latexmk (xelatex)
+6. 必须使用 xelatex 来进行编译，即 build latex project 选项下面有一个：Recipe: latexmk (xelatex)。可以在 settings 里搜索 Latex: recipes，通过设置 json 文件调整默认 recipe。注意：一般只使用 xelatex 来编译中文毕业论文，而其他英文论文不使用 xelatex 编译，直接用 recipe: latexmk 即可 
 
 7. 模板使用 `unicode-math` 宏包配置数学字体， 该方案目前不兼容传统的 amsfonts，amssymb 等宏包。需要使用新方案提供的相应命令。可能会出现有的数学公式或者表格中的  `\checkmark` 打不出来，可以查阅  [用户手册](https://mirror-hk.koddos.net/CTAN/macros/unicodetex/latex/njuthesis/njuthesis.pdf)。例如使用 `\ensuremath{\checkmark}` 就可打出✔
 

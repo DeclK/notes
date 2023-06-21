@@ -401,17 +401,17 @@ for img, data_sample in dataloader:
    
    message_hub = MessageHub(name='name_for_message_hub')
    message_hub.update_scalar('train/loss', loss)
-    update with dict
+   # update with dict
    message_hub.update_scalrs(log_dict)
    ```
 
    `update_scalar` 可以自动将数据转换成 python built-in 类型。要获取数据可通过下面方法
 
    ```python
-   buffer = message_hub.get_scalar('train/loss')	 获取 buffer
-    buffer.data 返回一个 tuple: (log_data, counts)
-    counts代表对应的数据的重复次数
-    len(log_data) == len(counts)
+   buffer = message_hub.get_scalar('train/loss')	 # 获取 buffer
+    # buffer.data 返回一个 tuple: (log_data, counts)
+    # counts代表对应的数据的重复次数
+    # len(log_data) == len(counts)
    buffer.data[0]	 normally, an ndarray
    buffer.mean()
    buffer.max()
