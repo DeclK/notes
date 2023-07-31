@@ -125,6 +125,14 @@ output_file = 'output.mp4'
     .output('dummy2.mp4')
     .run()
 )
+
+import ffmpeg
+# Example usage: Change video speed to half (0.5x)
+spped = 0.5
+command = ffmpeg.input(input_file)
+        .filter('setpts', f'{1/speed}*PTS')
+        .output(output_file)
+        .run(overwrite_output=True)
 ```
 
 ### 图片与视频转换

@@ -263,3 +263,20 @@ sudo apt-get install libxcb-xinerama0 libxcb-xinerama0-dev libsm6
    ```shell
    --net=host
    ```
+
+### Copilot
+
+最近倒腾 Copilot 确实是烦心！已经充钱了，但是代码老是无法提示...`Cancelled after extractPrompt` 这个错误经常出现
+
+寻找半天还是网络的原因！首先设置 proxy，如果你也使用 clash，直接设置为 `http://127.0.0.1:7890`
+
+![image-20230723231600028](VSCode note/image-20230723231600028.png)
+
+但是设置成这样过后，在 WSL container 中无法使用，这里困扰我太久了，找了一天！终于在 [issue](https://github.com/orgs/community/discussions/36728#discussioncomment-5559172) 中找到解决方案！就是设置 remote json 如下
+
+```json
+"remote.extensionKind": {
+        "GitHub.copilot": ["ui"],
+    }
+```
+

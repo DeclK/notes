@@ -387,11 +387,11 @@ video_writer.release()
 - [x] gradio
 - [x] Warings
 - [x] OpenCV & PIL Operations
-- [ ] MMDeploy convert to ONNX and what is onnxsim 
+- [x] MMDeploy convert to ONNX and what is onnxsim 
 - [ ] PPT skills 2.0
 - [ ] Friday toolbox update
 
 ## 后续可能的更新
 
-- windows app 测试
-- 突破 detection model 的速度瓶颈
+- [x] windows app 测试
+- [x] 突破 detection model 的速度瓶颈。实现方式为 mmdeploy sdk，我估计是 C++ 接口更快
