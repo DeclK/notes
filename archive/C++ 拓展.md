@@ -46,6 +46,13 @@ using std::cout;
 
 命名空间也可以嵌套
 
+### Operator :: and .
+
+这里简要说明两个 oprator 的区别
+
+1. `::` 为 scope resolution operator，用于 static method/member 和 namespace 解析
+2. `.` 为 dot operator，用于访问类成员的操作
+
 ## 模板
 
 模板是泛型编程的基础，泛型编程即以一种独立于任何特定类型的方式编写代码
@@ -58,7 +65,7 @@ using std::cout;
 
 ```c++
 template <typename type> ret-type func-name(parameter list)
-{
+{	
 }
 ```
 
@@ -101,3 +108,62 @@ template <class type> class class-name {
 ```
 
 在这里，**type** 是占位符类型名称，可以在类被实例化的时候进行指定。-可以使用一个逗号分隔的列表来定义多个泛型数据类型
+
+## 头文件
+
+通常为了使得代码模块化，我们会将代码写到多个 cpp 文件里面。当我们想要使用其中的函数或者类时，可以选择进行声明
+
+```txt
+- Learn_C++
+	- log.cpp
+	- main.cpp
+```
+
+其中两个 cpp 文件的代码如下
+
+```c++
+// log.cpp
+#include <iostream>
+
+void log(const char* message)
+{
+    std::cout << message << std::endl;
+}
+
+// main.cpp
+#include <iostream>
+//  declaration
+void log(const char* message);
+
+int main()
+{
+    log("hello");
+    return 0;
+}
+```
+
+但是如果要引用的函数很多的话，每一次都要声明就非常麻烦，这个时候就可以使用头文件来替我们完成这些声明。创建一个 `log.h` 的头文件
+
+```c++
+// log.h
+#pragma once
+
+void log(const char* message);
+```
+
+其中 `#pragma once` 代表一下内容只会被引入一次，这样就不会重复导入。从此就可以用头文件来完成
+
+```c++
+#include "log.h"
+#include <iostream>
+
+int main()
+{
+    log("hello");
+    return 0;
+}
+```
+
+其中你还能注意到，有的时候 `#include` 使用的是 `<>` 但有的时候使用 `""`，这两种形式分别代表相对路径和绝对路径，通常 C++ 自带的标准库可以用 `<>` 表示，而自己项目里的库可以用 `""`，例如使用上一个文件夹中的 cpp 可以用 `"../xxx.cpp"` 来表示
+
+实际上 `"iostream"` 也是能够成功编译的，但为了可读性我们仍然进行区分
