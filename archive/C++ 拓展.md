@@ -2,10 +2,11 @@
 
 ## 动态内存
 
-下面是使用 new 运算符来为任意的数据类型动态分配内存的通用语法：
+下面是使用 new 运算符来为任意的数据类型动态分配内存的通用语.法，通常配合指针使用：
 
 ```c++
-new data-type;
+typeName* pointer = new data-type;
+typeName* pointer = new data-type [num_elements];
 ```
 
 **malloc()** 函数在 C 语言中就出现了，在 C++ 中仍然存在，但建议尽量不要使用 malloc() 函数。new 与 malloc() 函数相比，其主要的优点是，new 不只是分配了内存，它还创建了对象
@@ -15,6 +16,14 @@ new data-type;
 ```c++
 delete pointer;
 delete [] array_pointer;
+```
+
+**`new` 和 `delete` 一定要配对使用，否则会导致程序发生内存泄露（memory leak）**，即分配出去的内存拿不回来，无法再使用
+
+```c++
+int *ps = new int;   // 声明指针并分配一个可以存 int 类型的内存给指针
+...
+delete ps;  // 归还内存
 ```
 
 ## 命名空间
@@ -50,7 +59,7 @@ using std::cout;
 
 这里简要说明两个 oprator 的区别
 
-1. `::` 为 scope resolution operator，用于 static method/member 和 namespace 解析
+1. `::` 为 scope resolution operator，用于 static method & static member 和 namespace 解析
 2. `.` 为 dot operator，用于访问类成员的操作
 
 ## 模板
@@ -167,3 +176,18 @@ int main()
 其中你还能注意到，有的时候 `#include` 使用的是 `<>` 但有的时候使用 `""`，这两种形式分别代表相对路径和绝对路径，通常 C++ 自带的标准库可以用 `<>` 表示，而自己项目里的库可以用 `""`，例如使用上一个文件夹中的 cpp 可以用 `"../xxx.cpp"` 来表示
 
 实际上 `"iostream"` 也是能够成功编译的，但为了可读性我们仍然进行区分
+
+## 字符串
+
+C-style 字符串是有终止符的，这使得在申请字符串空间时要多一个字符
+
+在使用输入流读取字符串有两种方法
+
+```c++
+cin.getline(var, size)
+cin.get(var)
+```
+
+二者遇到回车终止读取
+
+TODO：字符串的规则比较多，后续如果有需要，清晰整理
