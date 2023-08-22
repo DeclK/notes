@@ -23,7 +23,17 @@ clang -v
 
 为什么需要编译包？编译包里包含了许多不同的编译器（例如 gcc 和 clang），任意一个编译器都可以对 C++ 代码进行编译，不同的编译器有各自的编译过程，其中对代码的运行可能有不同的优化，所以编译出来的程序有不同的运行速度
 
-编译器的本质就是将写好的 C++ 代码（txt），转换成二进制文件，这些二进制文件才能被计算机理解并执行
+**编译器的本质就是将写好的 C++ 代码（txt），转换成二进制文件，这些二进制文件才能被计算机理解并执行**
+
+### Linux
+
+如果想要在 linux 进行学习的话，可以下载 `gcc & g++ & gdb`
+
+```shell
+sudo apt install gcc g++ gdb
+# or, vscode doc recommends:
+sudo apt install build-essential gdb
+```
 
 ### VSCode
 
@@ -78,6 +88,26 @@ VSCode 是一个很好的**编辑器**，但其中并不内置任何**编译器*
 
 1. `label`，就是取一个自定义的名字，没什么特别的
 2. `args`，`-g` 之后我选择编译当前文件夹下所有 cpp 文件
+
+实际上 C++ 插件也能够支持 CUDA 编程，只需要我们修改一下编译器路径（compiler path）就可以享受 IDE 带来的自动提示功能，并且能够自动识别 CUDA 中特有的关键字而不报错。方法就是创建 `c_cpp_properties.json`，我的配置如下
+
+```json
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/local/cuda/bin/nvcc",
+        }
+    ],
+    "version": 4
+}
+```
+
+或者可以直接使用 ` C/C++: Edit Configurations (UI) ` 进行修改
 
 除了运行之外，插件当然也支持 debug，你可以在右上角的按钮中找到，这里不多赘述
 
