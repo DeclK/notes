@@ -27,7 +27,7 @@ clang -v
 
 ### Linux
 
-如果想要在 linux 进行学习的话，可以下载 `gcc & g++ & gdb`
+如果想要在 linux 进行学习的话，可以下载 `gcc & g++ & gdb`，`gdb` 一定要下载用于 debug，同时插件依赖于此，可能造成无法识别 task
 
 ```shell
 sudo apt install gcc g++ gdb
@@ -43,7 +43,7 @@ VSCode 是一个很好的**编辑器**，但其中并不内置任何**编译器*
 
 ![image-20230805153833663](C++ 基础/image-20230805153833663.png)
 
-安装好插件过后，在你的 C++ 代码文件夹下创建 `.vscode/task.json` 文件，来配置好 vscode 中使用的编译器，但实际上最简单的方法就是直接 `Run C/C++ file`，如果你是第一次运行 C++ 代码，vscode 会引导你选择想使用的编译器，然后自动生成一个 `task.json` 配置文件。如下图所示，我直接选择 g++ 编译器
+安装好插件过后，在你的 C++ 代码文件夹下创建 `.vscode/task.json` 文件，来**配置好 vscode 中使用的编译器**，但实际上最简单的方法就是直接 `Run C/C++ file`，如果你是第一次运行 C++ 代码，vscode 会引导你选择想使用的编译器，然后自动生成一个 `task.json` 配置文件。如下图所示，我直接选择 g++ 编译器
 
 ![image-20230805162107297](C++ 基础/image-20230805162107297.png)
 
@@ -62,7 +62,7 @@ VSCode 是一个很好的**编辑器**，但其中并不内置任何**编译器*
             "command": "C:\\Data\\Software\\mingw64\\bin\\g++.exe",
             "args": [
                 "-fdiagnostics-color=always",
-                "-g",
+                "-g",	// generate debug info at debug console
                 "${fileDirname}\\*.cpp",
                 "-o",
                 "${fileDirname}\\${fileBasenameNoExtension}.exe"
@@ -89,17 +89,27 @@ VSCode 是一个很好的**编辑器**，但其中并不内置任何**编译器*
 1. `label`，就是取一个自定义的名字，没什么特别的
 2. `args`，`-g` 之后我选择编译当前文件夹下所有 cpp 文件
 
-实际上 C++ 插件也能够支持 CUDA 编程，只需要我们修改一下编译器路径（compiler path）就可以享受 IDE 带来的自动提示功能，并且能够自动识别 CUDA 中特有的关键字而不报错。方法就是创建 `c_cpp_properties.json`，我的配置如下
+解读一下其他参数：
+
+1. `group` 参数一般配置了该编译器能够被哪些接口调用。例如 `"kind": "build"`，表示使用 `Run build task` 的时候，就会使用该编译器；`"isDefault": true` 代表了使用 `Run C/C++ File` 时，就会使用该编译器
+2. `detail` 参数就是在 select the task 时显示下方的小字 
+
+之后就可以直接点击插件的 play button ▶️，之后会使用 `tasks.json` 中配置好的编译器与指令进行编译，然后会使用 `launch.json` 中的配置，运行编译好的文件，如果不存在 `launch.json` 一般会使用一个默认的配置，但是我们不可见
+
+实际上 C++ 插件也能够支持 CUDA 编程，只需要我们修改一下编译器路径（compiler path）就可以享受 IDE 带来的自动提示功能，并且能够自动识别 CUDA 中特有的关键字而不报错。方法就是创建 `c_cpp_properties.json`，或者可以直接使用 ` C/C++: Edit Configurations (UI) ` 进行修改。我的配置如下
 
 ```json
 {
     "configurations": [
         {
-            "name": "Linux",
+            "name": "NVCC: CUDA 11.8",	// any string
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**"，
+                // ***** include torch C++/CUDA libs for extension development *****
+                "/usr/include/python3.8",
+                "/home/declk/miniconda3/envs/pytorch/lib/python3.8/site-packages/torch/include",
+                "/home/declk/miniconda3/envs/pytorch/lib/python3.8/site-packages/torch/include/torch/csrc/api/include"
             ],
-            "defines": [],
             "compilerPath": "/usr/local/cuda/bin/nvcc",
         }
     ],
@@ -107,7 +117,7 @@ VSCode 是一个很好的**编辑器**，但其中并不内置任何**编译器*
 }
 ```
 
-或者可以直接使用 ` C/C++: Edit Configurations (UI) ` 进行修改
+虽然 `c_cpp_properties.json` 配置了编译器路径，但是只提供 IntelliSense 功能，真正的编译器路径仍然由 `tasks.json` 配置
 
 除了运行之外，插件当然也支持 debug，你可以在右上角的按钮中找到，这里不多赘述
 
@@ -661,7 +671,7 @@ void Function(const Entity& e)
 }
 ```
 
-我们给函数传入一个 const reference 常量引用，这样我们是不能够
+我们给函数传入一个 const reference 常量引用，这样我们是不能够对该常量赋值，也不能够修改该常量的成员
 
 ## 数据结构
 
