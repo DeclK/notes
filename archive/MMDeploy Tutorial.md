@@ -1,4 +1,4 @@
-# Dive into MMDeploy
+# MMDeploy Tutorial
 
 学习 [mmdeploy tutorial](https://github.com/open-mmlab/mmdeploy/tree/main/docs/zh_cn/tutorial)
 
@@ -162,6 +162,8 @@ TODO：第二种方式的映射
 
 ## C++ 扩展
 
+### C++ 算子
+
 我们来学习一种简单的为 PyTorch 添加 C++ 算子实现的方法。同样的，我们也会用 `torch.autograd.Function` 封装这个新算子，将其继承到 pytorch 的自动微分框架中。这是我们比较推荐的为算子添加 ONNX 支持的方法
 
 我们定义一个简单 C++ 算子，文件名为 `my_add.cpp`
@@ -230,15 +232,26 @@ PYBIND11_MODULE(my_lib, m)
 
    这里的 `my_lib` 是我们未来要在 Python 里导入的模块名。双引号中的 `my_add` 是 Python 调用接口的名称
 
-之后需要写好 `setup.py` 来将我们的 C++ 代码编译完成
+### setup.py
+
+之后需要写好 `setup.py` 来将我们的 C++ 代码编译完成，这里额外补充了 CUDA extension 的内容
 
 ```python
 from setuptools import setup
-from torch.utils import cpp_extension
+from torch.utils.cpp_extension import CppExtension, CUDAExtension, BuildExtension
 
 setup(name='my_add',
-      ext_modules=[cpp_extension.CppExtension('my_lib', ['my_add.cpp'])],
-      cmdclass={'build_ext': cpp_extension.BuildExtension})
+      ext_modules=[CppExtension('my_lib', ['my_add.cpp'])],
+      cmdclass={'build_ext': BuildExtension})
+
+# cuda extension
+setup(name='my_add',
+        ext_modules=[CUDAExtension(name='my_lib', 
+                                   sources=['my_add.cpp', 'my_add_cuda.cu'],
+                                   include_dirs=['./include'],
+                                   extra_compile_args={'cxx': ['-O2'],
+                                                       'nvcc': ['-O2']})],
+        cmdclass={'build_ext': BuildExtension})
 ```
 
 解释一下代码：
@@ -253,9 +266,13 @@ setup(name='my_add',
    }
    ```
 
-2. 通过 `cmdclass` 来指定编译 extension 的命令
+2. 通过指定 `include_dirs` 来指定需要包含的头文件位置
 
-通过 `python setup.py install` 就可以编译好 C++ 拓展了！之后就是使用 C++ 算子，正如之前所说，我们要用 `torch.autograd.Function` 来包装
+3. 通过指定 `extra_compile_args` 来指定编译时需要加入的指令，这里加入了一些优化等级参数
+
+4. 通过 `cmdclass` 来指定编译 extension 的命令
+
+写好 `setup.py` 过后，使用 `python setup.py install` 就可以编译好 C++ 拓展了！之后就是使用 C++ 算子，正如之前所说，我们要用 `torch.autograd.Function` 来包装
 
 ```python
 import torch
@@ -342,7 +359,7 @@ UserWarning: The shape inference of Just_A_Scope_Name::DynamicTRTResize type is 
 
 现在通过 netron 就可以看到我们定义的 `DynamicTRTResize` 节点啦😎
 
-![image-20230811154525422](Dive into MMDeploy/image-20230811154525422.png)
+![image-20230811154525422](MMDeploy Tutorial/image-20230811154525422.png)
 
 虽然导出成功了，但是路途还非常遥远，因为我们根本没有定义 `DynamicTRTResize` 的任何具体内容
 

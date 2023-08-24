@@ -177,6 +177,22 @@ int main()
 
 实际上 `"iostream"` 也是能够成功编译的，但为了可读性我们仍然进行区分
 
+在一些项目中我也看到了一些不按照相对路径来进行引用的头文件，例如如下结构
+
+```txt
+- include
+	- utils.h
+- main.cpp
+```
+
+我发现代码直接在 `main.cpp` 中使用 `#include "utils.h"` 而没有使用 `#include "include/utils.h"`。这样直接编译 `main.cpp` 是不行的，需要在执行编译时使用 `-I` 命令将其加入到 `IncludePath` 中
+
+```shell
+g++ -I./include main.cpp -o out
+```
+
+还可以通过 `-H` 参数来列出包含的头文件 `g++ -H main.cpp`
+
 ## 字符串
 
 C-style 字符串是有终止符的，这使得在申请字符串空间时要多一个字符

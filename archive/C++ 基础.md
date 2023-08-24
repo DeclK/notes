@@ -104,7 +104,7 @@ VSCode 是一个很好的**编辑器**，但其中并不内置任何**编译器*
         {
             "name": "NVCC: CUDA 11.8",	// any string
             "includePath": [
-                "${workspaceFolder}/**"，
+                "${workspaceFolder}/**"， // include all files in the workspace
                 // ***** include torch C++/CUDA libs for extension development *****
                 "/usr/include/python3.8",
                 "/home/declk/miniconda3/envs/pytorch/lib/python3.8/site-packages/torch/include",
@@ -214,6 +214,26 @@ Identifier 的定义如下
 > An "identifier" in C++ is a name given to an entity in the program, such as variables, functions, classes, or macros. Identifiers are used to uniquely identify these entities and provide a way to access and manipulate them within the code.
 
 所以还是以上面的例子，`PI` 就是该 macro 的 identifier。这虽然很绕，但我理解的就是 macro 的名字就是 macro 本身...
+
+macro 还可以作为函数使用，扩展了其应用空间
+
+```c++
+#define LOG(your_content) printf("%s\n", your_content)
+```
+
+这里的 `LOG` macro，就能够将你输入的 `your_content` 进行打印，但永远记住，本质上还是一个代码的替换。还可以使用 `#your_content` 来将你的**参数名**字符串化
+
+```c++
+#include <stdio.h>
+#define LOG(your_content) printf(#your_content"\n")
+
+int main() {
+    int log_param = 10;
+    LOG(log_param);
+    return 0;
+}
+// output: log_param， not 10!
+```
 
 ### Declaration & Definition
 
