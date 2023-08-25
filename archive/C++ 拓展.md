@@ -44,23 +44,85 @@ namespace namespace_name {
 name::code;  // code is variable or function
 ```
 
-可以使用 **using namespace** 指令，这样在使用命名空间时就可以不用在前面加上命名空间的名称，但不推荐。using 指令也可以用来指定命名空间中的特定项目
+可以使用 **using** 指令，`using` 通常用于将其他的命名空间导入到当前的空间中。这样在使用命名空间时就可以不用在前面加上命名空间的名称。using 指令也可以用来指定命名空间中的特定项目
 
 ```c++
 using namespace std;
 using std::cout;
+
+// using can also used for class alias
+using test Add	// the same with: typedef Add test
 ```
 
-命名空间可以定义在几个不同的部分中，因此命名空间是由几个单独定义的部分组成的
+命名空间还有3个特点：
 
-命名空间也可以嵌套
+1. 命名空间可以定义在几个不同的部分中
+2. 命名空间可以嵌套
+3. 命名空间可以位于等式左侧 `namespace a = std`
 
 ### Operator :: and .
 
-这里简要说明两个 oprator 的区别
+两个操作符中，`::` 的功能要丰富得多！`.` 仅用于访问成员的操作
 
-1. `::` 为 scope resolution operator，用于 static method & static member 和 namespace 解析
-2. `.` 为 dot operator，用于访问类成员的操作
+`::` 为 scope resolution operator，有 6 种使用方式
+
+1. namespace 解析
+
+   最常见使用场景
+
+2. 在 class 之外定义函数 & static variable
+
+   定义不区分公有私有，可通过函数 `()` 后是否为 `;` 来判定函数受否被定义
+
+3. 访问 class 中的 static variable & function
+
+   这里区分公有私有，只能访问 public static variable & function
+
+4. 用于多重继承
+
+   即一个类继承了多个类，而多个类中存在相同名称的变量或者函数
+
+5. 引用嵌套类
+
+   ```c++
+   #include <iostream>
+   using namespace std;
+    
+   class outside {
+   public:
+       int x;
+       class inside {
+       public:
+           int x;
+           static int y;
+           int foo();
+       };
+   };
+   int outside::inside::y = 5;
+    
+   int main()
+   {
+       outside A;
+       outside::inside B;
+   }
+   ```
+
+6. 访问全局变量
+
+   ```c++
+   #include<iostream>
+   using namespace std;
+    
+   int x; // Global x
+    
+   int main()
+   {
+   int x = 10; // Local x
+   cout << "Value of global x is " << ::x;
+   cout << "\nValue of local x is " << x;
+   return 0;
+   }
+   ```
 
 ## 模板
 
@@ -109,14 +171,38 @@ int main ()
 }
 ```
 
-正如我们定义函数模板一样，我们也可以定义类模板
+我们也可以定义类模板
 
 ```c++
-template <class type> class class-name {
+template <typename type>
+class name_of_class {
 }
 ```
 
-在这里，**type** 是占位符类型名称，可以在类被实例化的时候进行指定。-可以使用一个逗号分隔的列表来定义多个泛型数据类型
+在这里，**type** 是占位符类型名称，可以在类被实例化的时候进行指定。**还可以使用一个逗号分隔的列表来定义多个泛型数据类型**
+
+```c++
+tempate <typename T1, typename T2,...>
+```
+
+实际上你可看待使用 `class` 来替代 `typename` 的情况
+
+```c++
+template<class T>
+    void func()
+```
+
+二者其实是相同的，不过 `typename` 还有更广泛的用途，可以用在模板函数/类里面，其作用是表明某命名为一个类型，而不是一个变量或者其他
+
+```c++
+template <class T>
+void foo() {
+    typename T::iterator* iter;
+    // ...
+}
+```
+
+上述代码就表明 `T::iterator` 为一个类，`T::iterator* iter` 新建了一个类型指针
 
 ## 头文件
 
@@ -192,6 +278,48 @@ g++ -I./include main.cpp -o out
 ```
 
 还可以通过 `-H` 参数来列出包含的头文件 `g++ -H main.cpp`
+
+## Lambda 匿名函数
+
+匿名函数的语法如下
+
+```c++
+[ capture clause ] (parameters) -> return-type  
+{   
+   definition of method   
+} 
+```
+
+其中 `parameters & return-type` 是可以省略的，因为 lambda 可以自动推断返回类型，通常搭配 `auto` 关键字使用。 `capture` 的功能，就是给 lambda 函数在 `parameters` 以外的 local variables，看下面的例子就明白了
+
+```c++
+#include <iostream>
+
+int main()
+{
+    {
+        int a = 4; // can't be captured, because it's in another scope
+    }
+    int a = 3;
+    int b = 5;
+    
+    // capture a, b by value
+    auto func1 = [a, b] { std::cout << a << std::endl; };
+    func1();
+
+    // capture all local variables by value
+    auto func2 = [=] { std::cout << a << " " << b << std::endl; };
+    func2();
+
+    // capture a by reference, b by value
+    auto func3 = [&a, b] { std::cout << a << std::endl; a = -1;};
+    func3();
+
+    // capture all local variables by reference
+    auto func4 = [&] { std::cout << a << " " << b << std::endl; };
+    func4();
+}
+```
 
 ## 字符串
 

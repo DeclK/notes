@@ -419,9 +419,11 @@ C++ 程序中变量/函数的范围（可见性）和生命周期。这些说明
 
   - 用于 class
 
-    在 class 中修饰变量时，这个变量会被所有该类的实例所共享
+    **在 class 中修饰变量时**，这个变量会被所有该类的实例所共享。并且该 static 变量只能在 class 外进行定义
 
-    在 class 中修饰方法时，这个方法将会属于该类，而不是任意实例，参考 python @staticmethod
+    **在 class 中修饰方法时**，这个方法将会属于该类，而不是任意实例，参考 python @staticmethod
+    
+    需要注意的是，即使是 static variable & function，仍然受到 private & public 的限制，即 private static variable & function 不能在类的外面访问
 
 - extern 用于 global variable
 
@@ -589,9 +591,11 @@ char* ch;
 
 2. 可对指针进行四种算数运算，`++, --, +, -`
 
-3. 可以定义一个指针数组，即数组中的每一个值是一个指针
+3. 可以对指针使用索引 `p[i]` 来获得数组元素，此时和数组名是等价的
 
-4. 可以定义多个 `**`，表示嵌套的指针，可用于存储指针的地址，即地址的地址
+4. 可以定义一个指针数组，即数组中的每一个值是一个指针
+
+5. 可以定义多个 `**`，表示嵌套的指针，可用于存储指针的地址，即地址的地址
 
    ```c++
    #include <iostream>
@@ -612,7 +616,7 @@ char* ch;
     }
    ```
 
-5. 可定义返回指针的函数
+6. 可定义返回指针的函数
 
    ```c++
    int* myFunction()
@@ -738,3 +742,10 @@ pint32 x, y, z;
 ```
 
 x, y 和 z 都是指向长整型 long int 的指针
+
+现在更推荐使用 `using` 来替代 `typedef` 
+
+```c++
+using pint32 = long int*;
+```
+
