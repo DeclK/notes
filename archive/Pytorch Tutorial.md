@@ -607,7 +607,7 @@ print(input.grad)
 几个要点：
 
 1. 继承 `Function`，实现 `forward & backward` 方法
-2. 使用装饰器 `@statcimethod` 修饰 `forward & backward` 方法
+2. 使用装饰器 `@statcimethod` 修饰 `forward & backward` 方法。`forward` 输入有 `N_i` 个，输出有 `N_o` 个，那么 `backward` 的输入就有 `N_o` 个，输出有 `N_i` 个
 3. `forward & backward` 方法的第一个参数 `ctx` 可用于存储和获取需要的变量，通过 `ctx.save_for_backward & ctx.saved_tensors` 实现，并且这两个方法只能调用一次
 4. 使用 `apply` 就可调用该方程
 

@@ -105,7 +105,7 @@ TensorRT 8.6.0 版本目前已经对很多 Plugin 进行了原生支持！对 St
 
 ### Install
 
-TensorRT installation guide 8.5.1 [link](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-851/install-guide/index.html#installing-tar)
+TensorRT installation guide 8.5.1 [installation guide](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-851/install-guide/index.html#installing-tar)	[download-link](https://developer.nvidia.com/tensorrt-download)
 
 安装 CUDA/CUDNN/TensorRT 通常都有几种选项：deb 安装，RPM 安装，tar/zip 安装
 

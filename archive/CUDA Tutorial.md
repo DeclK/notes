@@ -504,7 +504,7 @@ int main()
 }
 ```
 
-使用 `cudaMallocManaged` 会降低 kernel 的运算速度，是因为其使用的时 L2 cache，速度更慢。使用 nsys 来对程序运行时进行分析
+使用 `cudaMallocManaged` 会降低 kernel 的运算速度，（为什么？）速度更慢。使用 nsys 来对程序运行时进行分析
 
 ```shell
 nsys profile --stats true  -o profile -f true --trace cuda ./add
