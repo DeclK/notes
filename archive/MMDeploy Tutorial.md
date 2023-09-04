@@ -160,6 +160,8 @@ TODO：介绍如何根据定义写 `symbolic` 映射
 
 TODO：第二种方式的映射
 
+TODO: how pytorch register onnx: register_custom_op_symbolic
+
 ## C++ 扩展
 
 ### C++ 算子
