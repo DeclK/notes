@@ -53,6 +53,14 @@ date: 2021-07-12 14:36:42
    plugins=(git zsh-autosuggestions)
    ```
 
+   上面的步骤可以用下面脚本统一替换
+
+   ```shell
+   cd ~/.oh-my-zsh/custom/plugins && git clone https://gitclone.com/github.com/zsh-users/zsh-autosuggestions.git
+   sed -i 's/(git)/(git zsh-autosuggestions)/g' ~/.zshrc
+   source ~/.zshrc
+   ```
+
 4. 打开个人目录下的配置文件:  `~/.zshrc` 
 
    找到 `auto_update` 相关行，将注释去掉，则可禁用 ohmyzsh 自动检查更新。可通过命令 `upgrade_oh_my_zsh` 手动升级
@@ -74,7 +82,7 @@ date: 2021-07-12 14:36:42
 3. （如果没有中文输入法）下载中文输入法，并重启。之后按照 [zhihu](https://zhuanlan.zhihu.com/p/399805081) 添加中文输入法
 
    ```shell
-   sudo apt install ibus-pinyin && reboot
+   sudo apt install sogoupinyin && reboot
    ```
 
 4. 配置代理 clash，从 youtube 上学的（迷途小书童），要点就是将配置文件 config.yaml 和 Country.mmdb 移动到 ~/.config/clash 文件夹下面，配置文件通过 clash for windows 生成，文件目录为 User/.config/clash(/profiles) 。通过 clash dashboard 切换节点 http://clash.razord.top/
