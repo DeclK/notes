@@ -64,6 +64,8 @@ date: 2021-07-12 14:36:42
 4. 打开个人目录下的配置文件:  `~/.zshrc` 
 
    找到 `auto_update` 相关行，将注释去掉，则可禁用 ohmyzsh 自动检查更新。可通过命令 `upgrade_oh_my_zsh` 手动升级
+   
+5. 如果由于 git 文件太大，oh-my-zsh 会比较卡顿，可以使用 `git config --add oh-my-zsh.hide-dirty 1` 来禁止其读取文件变化信息，如果还觉得慢则用 `git config --add oh-my-zsh.hide-status 1`
 
 ## Install Ubuntu
 
@@ -104,17 +106,17 @@ date: 2021-07-12 14:36:42
    # config sogou
    rm -rf ~/.config/sogoupinyin
    
-   reboot # or restart?
+   # restart the fcitx so it is completely exit
    ```
 
-   然后取消一些快捷键：
+   安装好过后取消一些快捷键：
 
    1. fcitx 的 `ctrl+alt+P` 的快捷键设置，因为我平常习惯用这个快捷键在 vscode 中 close panel。方式是 `Configure -> Global config -> Show advanced options -> Switch embedded preedit`
    2. 设置 sogou 输入法的简体繁体快捷键，以及 fcitx 的简体繁体快捷键 `Configure -> Addon -> Advanced -> Simpliflied Chinese To Traditional Chinese `
 
 4. 时过境迁，现在已经有了图形化界面的 [clash](https://github.com/zzzgydi/clash-verge) 啦！
 
-5. 重要需求 miniconda chrome typora chrome vscode 软件
+5. 重要需求 [miniconda](https://docs.conda.io/projects/miniconda/en/latest/#quick-command-line-install) [typora](https://typoraio.cn/) chrome vscode 软件
 
    conda install, pip install 下载速度慢时，请使用国内镜像源，例如：
 
@@ -158,6 +160,8 @@ date: 2021-07-12 14:36:42
 9. 安装 flameshot，[Download Link](https://flameshot.org/#download)，通过 keyboards shortcut 添加 flameshot gui 命令完成快捷键设置，参考 [CSDN](https://blog.csdn.net/u013171226/article/details/107717009)
 
 10. 安装 fsearch，[Download Link](https://github.com/cboxdoerfer/fsearch#download)
+
+11. 修改 Files 侧栏 [StackOverflow](https://unix.stackexchange.com/questions/207216/user-dirs-dirs-reset-at-start-up)
 
 # Windows
 
