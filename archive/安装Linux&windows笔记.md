@@ -114,7 +114,7 @@ date: 2021-07-12 14:36:42
    1. fcitx 的 `ctrl+alt+P` 的快捷键设置，因为我平常习惯用这个快捷键在 vscode 中 close panel。方式是 `Configure -> Global config -> Show advanced options -> Switch embedded preedit`
    2. 设置 sogou 输入法的简体繁体快捷键，以及 fcitx 的简体繁体快捷键 `Configure -> Addon -> Advanced -> Simpliflied Chinese To Traditional Chinese `
 
-4. 时过境迁，现在已经有了图形化界面的 [clash](https://github.com/zzzgydi/clash-verge) 啦！
+4. 时过境迁，现在已经有了图形化界面的 [clash](https://github.com/zzzgydi/clash-verge) 啦！目前该软件还在开发当中，所以可能会遇到一些 bug，多试几个版本，我正在使用 1.3.6，1.3.7 无法显示图形界面
 
 5. 重要需求 [miniconda](https://docs.conda.io/projects/miniconda/en/latest/#quick-command-line-install) [typora](https://typoraio.cn/) chrome vscode 软件
 
