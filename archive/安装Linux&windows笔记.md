@@ -159,9 +159,11 @@ date: 2021-07-12 14:36:42
 
 9. 安装 flameshot，[Download Link](https://flameshot.org/#download)，通过 keyboards shortcut 添加 flameshot gui 命令完成快捷键设置，参考 [CSDN](https://blog.csdn.net/u013171226/article/details/107717009)
 
-10. 安装 fsearch，[Download Link](https://github.com/cboxdoerfer/fsearch#download)
+10. 安装 electerm 作为更好的 sftp 传输工具，[github](https://github.com/electerm/electerm)
 
-11. 修改 Files 侧栏 [StackOverflow](https://unix.stackexchange.com/questions/207216/user-dirs-dirs-reset-at-start-up)
+11. 安装 fsearch，[Download Link](https://github.com/cboxdoerfer/fsearch#download)
+
+12. 修改 Files 侧栏 [StackOverflow](https://unix.stackexchange.com/questions/207216/user-dirs-dirs-reset-at-start-up)
 
 # Windows
 

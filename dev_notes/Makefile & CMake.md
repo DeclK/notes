@@ -2,6 +2,10 @@
 
 ## Makefile
 
+Makefile 文件通常用于编译和链接程序的源代码文件，并可以定义目标、依赖关系和命令等
+
+
+
 注意将你的 vscode 右下角从 `Space: 4` 调整为 `Tab Size:4`，否则会一直报错：`*** missing separator.  Stop.`
 
 
@@ -141,3 +145,8 @@ all:
 
 ## CMake
 
+https://zhuanlan.zhihu.com/p/534439206
+
+https://github.com/wzpan/cmake-demo/
+
+CMake 允许开发者编写一种平台无关的 CMakeList.txt 文件来定制整个编译流程，然后再根据目标用户的平台进一步生成所需的本地化 Makefile 和工程文件，如 Unix 的 Makefile 或 Windows 的 Visual Studio 工程。从而做到 “Write once, run everywhere”

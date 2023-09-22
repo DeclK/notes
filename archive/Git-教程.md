@@ -71,8 +71,8 @@ git config --global --unset http.proxy
 生成仓库(master 分支)的两种方法
 
 1. `git init` 初始化，生成 .git 文件
-2. `git clone url` 克隆远程仓库
-3. `git clone -b branch_name url` 克隆指定分支
+2. `git clone url` 克隆远程仓库，默认克隆所有分支，但是仅将 master 分支检出到本地，可通过 git switch 切换分支
+3. `git clone -b branch_name url` 克隆指定分支，还可加上 `--single-branch` 这样将不会保留其他分支的记录
 
 删除仓库则只需要删除 .git 文件夹即可
 
@@ -176,6 +176,16 @@ node_modules	# 忽略 node_modules 文件和目录
 ### git checkout
 
 `git checkout filename` 能够让文件回到最近一次 add 或者 commit 时的状态
+
+`git checkout commit_id` 能够直接将工作区切换到指定版本，相比于 `git reset --hard` 是一种更安全的切换版本命令
+
+### git stash
+
+TODO
+
+### git rebase
+
+TODO
 
 ## 分支与冲突
 
