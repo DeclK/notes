@@ -191,40 +191,7 @@ auto feat_data = reinterpret_cast<float*> (static_cast<char*>(feat->data)+feat->
 
 
 
-问题：目前能够编译 tvm，导入 tvm plugin，但是在构建 function 时出现了 segmentation fault 
-
-```shell
-  27: tvm::runtime::PackedFuncObj::Extractor<tvm::runtime::PackedFuncSubObj<tvm::runtime::TypedPackedFunc<tvm::runtime::String (tvm::runtime::ObjectRef const&)>::AssignTypedLambda<tvm::runtime::String (*)(tvm::runtime::ObjectRef const&)>(tvm::runtime::String (*)(tvm::runtime::ObjectRef const&), std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)::{lambda(tvm::runtime::TVMArgs const&, tvm::runtime::TVMRetValue*)#1}> >::Call(tvm::runtime::PackedFuncObj const*, tvm::runtime::TVMArgs, tvm::runtime::TVMRetValue*)
-  26: tvm::relay::PrettyPrint(tvm::runtime::ObjectRef const&)
-  25: tvm::relay::TextPrinter::PrintFinal(tvm::runtime::ObjectRef const&)
-  24: tvm::relay::RelayTextPrinter::PrintFinal(tvm::runtime::ObjectRef const&)
-  23: tvm::relay::RelayTextPrinter::PrintScope(tvm::runtime::ObjectRef const&)
-  22: tvm::relay::RelayTextPrinter::Print(tvm::runtime::ObjectRef const&, bool, bool)
-  21: tvm::relay::RelayTextPrinter::PrintExpr(tvm::RelayExpr const&, bool, bool, bool)
-  20: tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)
-  19: void tvm::relay::ExpandDataflow<tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#2}, tvm::relay::ExpandDataflow<{lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1}>(tvm::RelayExpr, {lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1})::{lambda(tvm::RelayExpr const&)#1}>(tvm::RelayExpr, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#2}, tvm::relay::ExpandDataflow, tvm::relay::ExpandDataflow<{lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1}>(tvm::RelayExpr, {lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1})::{lambda(tvm::RelayExpr const&)#1}) [clone .isra.0]
-  18: tvm::relay::RelayTextPrinter::VisitLeaf(tvm::RelayExpr const&)
-  17: _ZZN3tvm5relay11ExprFunctorIFNS0_3DocERKNS_9RelayExprEEE10InitVTableEvENUlR
-  16: tvm::relay::RelayTextPrinter::VisitExpr_(tvm::relay::FunctionNode const*)
-  15: tvm::relay::RelayTextPrinter::PrintFunc(tvm::relay::Doc const&, tvm::relay::Function const&)
-  14: tvm::relay::RelayTextPrinter::PrintBody(tvm::runtime::ObjectRef const&, int)
-  13: tvm::relay::RelayTextPrinter::PrintScope(tvm::runtime::ObjectRef const&)
-  12: tvm::relay::RelayTextPrinter::Print(tvm::runtime::ObjectRef const&, bool, bool)
-  11: tvm::relay::RelayTextPrinter::PrintExpr(tvm::RelayExpr const&, bool, bool, bool)
-  10: tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)
-  9: void tvm::relay::ExpandDataflow<tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#2}, tvm::relay::ExpandDataflow<{lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1}>(tvm::RelayExpr, {lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1})::{lambda(tvm::RelayExpr const&)#1}>(tvm::RelayExpr, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#2}, tvm::relay::ExpandDataflow, tvm::relay::ExpandDataflow<{lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1}>(tvm::RelayExpr, {lambda(tvm::RelayExpr const&)#1}, tvm::relay::RelayTextPrinter::VisitExpr(tvm::RelayExpr const&)::{lambda(tvm::RelayExpr const&)#1})::{lambda(tvm::RelayExpr const&)#1}) [clone .isra.0]
-  8: tvm::relay::RelayTextPrinter::VisitLeaf(tvm::RelayExpr const&)
-  7: _ZZN3tvm5relay11ExprFunctorIFNS0_3DocERKNS_9RelayExprEEE10InitVTableEvENUlR
-  6: tvm::relay::RelayTextPrinter::VisitExpr_(tvm::relay::CallNode const*)
-  5: tvm::relay::RelayTextPrinter::PrintCallAttrs(tvm::Attrs const&, tvm::RelayExpr const&)
-  4: tvm::relay::RelayTextPrinter::AppendGenericAttrs(std::vector<tvm::relay::Doc, std::allocator<tvm::relay::Doc> >*, tvm::Attrs const&, bool)
-  3: tvm::AttrsNode<tvm::relay::GridSampleAttrs>::VisitNonDefaultAttrs(tvm::AttrVisitor*)
-  2: tvm::relay::RelayTextPrinter::AttrPrinter::Visit(char const*, tvm::runtime::ObjectRef*)
-  1: tvm::relay::RelayTextPrinter::PrintAttributeValue(tvm::runtime::ObjectRef const&, bool)
-  0: tvm::runtime::Object::DerivedFrom(unsigned int) const
-  File "/Projects/cuda_tutorial/tvm/src/runtime/object.cc", line 73
-InternalError: Check failed: child_tindex < type_table_.size() (1768712546 vs. 654) :
-```
+问题：目前能够编译 tvm，导入 tvm plugin，但是在构建 function 时出现了 segmentation fault。这似乎是 bool type 所导致的，改成了 Integer
 
 
 
@@ -238,6 +205,8 @@ tvm/python/tvm/relay/frontend/onnx.py
 
 auto tune
 
+template and non-template tune
+
 https://tvm.apache.org/docs/how_to/tune_with_autotvm/index.html
 
 https://tvm.apache.org/docs/how_to/tune_with_autoscheduler/index.html
@@ -250,3 +219,6 @@ fp16
 
 
 
+## TVM Overview
+
+![A High Level View of TVM](/home/lixiang/Projects/notes/dev_notes/TVM Tutorial/overview.png)

@@ -222,7 +222,7 @@ int main(int argc, char *argv[])
 # version check
 cmake_minimum_required (VERSION 2.8)
 
-# project name
+# project name, use ${PROJECT_NAME} to get the value
 project (Demo1)
 
 # compile main.cc to Demo executable file
@@ -237,7 +237,7 @@ cmake ..
 
 一般用外部构建
 
-命令不区分大小写
+命令不区分大小写，变量区分大小写
 
 在cmake里定义变量需要使用set
 
@@ -379,7 +379,9 @@ PROJECT_SOURCE_DIR 宏对应的值就是我们在使用cmake命令时，后面�
 
 
 
-制作静态库
+制作库
+
+静态
 
 ```cmake
 add_library(lib_name STATIC source_files...) 
@@ -387,7 +389,7 @@ add_library(lib_name STATIC source_files...)
 
 在Linux中，静态库名字分为三部分：lib+库名字+.a
 
-
+动态
 
 在cmake中，如果要制作动态库，需要使用的命令如下：
 
@@ -502,6 +504,12 @@ message，当成 print 来用
 message([STATUS|WARNING|AUTHOR_WARNING|FATAL_ERROR|SEND_ERROR] "message to display" ...)
 ```
 
+message project name
+
+```cmake
+message(STATUS "**** PROJECT NAME ****" ${PROJECT_NAME})
+```
+
 
 
 ### 变量操作
@@ -562,4 +570,215 @@ add_executable(app ./test.c)
 ```shell
 gcc test.c -DDEBUG -o app
 ```
+
+
+
+### 嵌套 CMakeList.txt
+
+如果项目很大，或者项目中有很多的源码目录，在通过CMake管理项目的时候如果只使用一个CMakeLists.txt，那么这个文件相对会比较复杂，有一种化繁为简的方式就是给每个源码目录都添加一个CMakeLists.txt文件（头文件目录不需要），这样每个文件都不会太复杂，而且更灵活，更容易维护
+
+
+
+```txt
+$ tree
+.
+├── build
+├── calc
+│   ├── add.cpp
+│   ├── CMakeLists.txt
+│   ├── div.cpp
+│   ├── mult.cpp
+│   └── sub.cpp
+├── CMakeLists.txt
+├── include
+│   ├── calc.h
+│   └── sort.h
+├── sort
+│   ├── CMakeLists.txt
+│   ├── insert.cpp
+│   └── select.cpp
+├── test1
+│   ├── calc.cpp
+│   └── CMakeLists.txt
+└── test2
+    ├── CMakeLists.txt
+    └── sort.cpp
+```
+
+include 目录：头文件目录
+calc 目录：目录中的四个源文件对应的加、减、乘、除算法
+对应的头文件是include中的calc.h
+sort 目录 ：目录中的两个源文件对应的是插入排序和选择排序算法
+对应的头文件是include中的sort.h
+test1 目录：测试目录，对加、减、乘、除算法进行测试
+test2 目录：测试目录，对排序算法进行测试
+可以看到各个源文件目录所需要的CMakeLists.txt文件现在已经添加完毕了。接下来庖丁解牛，我们依次分析一下各个文件中需要添加的内容
+
+众所周知，Linux的目录是树状结构，所以嵌套的 CMake 也是一个树状结构，最顶层的 CMakeLists.txt 是根节点，其次都是子节点。因此，我们需要了解一些关于 CMakeLists.txt 文件变量作用域的一些信息：
+
+根节点CMakeLists.txt中的变量全局有效
+父节点CMakeLists.txt中的变量可以在子节点中使用
+子节点CMakeLists.txt中的变量只能在当前节点中使用
+
+#### 子目录
+
+cmake 中父子节点的关系使用命令
+
+```cmake
+add_subdirectory(source_dir [binary_dir] [EXCLUDE_FROM_ALL])
+```
+
+source_dir：指定了CMakeLists.txt源文件和代码文件的位置，其实就是指定子目录
+binary_dir：指定了输出文件的路径，一般不需要指定，忽略即可。
+EXCLUDE_FROM_ALL：在子路径下的目标默认不会被包含到父路径的ALL目标里，并且也会被排除在IDE工程文件之外。用户必须显式构建在子路径下的目标
+
+
+
+在目录中 test1 要完成计算相关的测试
+
+test2 要完成排序相关的测试
+
+所以对于 calc sort 可以把它们先编译成库（静态动态都行），然后再加入到根节点中
+
+
+
+根目录的 cmake
+
+```cmake
+cmake_minimum_required(VERSION 3.0)
+project(test)
+# 定义变量
+# 静态库生成的路径
+set(LIB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+# 测试程序生成的路径
+set(EXEC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/bin)
+# 头文件目录
+set(HEAD_PATH ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# 静态库的名字
+set(CALC_LIB calc)
+set(SORT_LIB sort)
+# 可执行程序的名字
+set(APP_NAME_1 test1)
+set(APP_NAME_2 test2)
+# 添加子目录
+add_subdirectory(calc)
+add_subdirectory(sort)
+add_subdirectory(test1)
+add_subdirectory(test2)
+```
+
+在根节点对应的文件中主要做了两件事情：定义全局变量和添加子目录。
+
+定义的全局变量主要是给子节点使用，目的是为了提高子节点中的CMakeLists.txt文件的可读性和可维护性，避免冗余并降低出差的概率。
+一共添加了四个子目录，每个子目录中都有一个CMakeLists.txt文件，这样它们的父子关系就被确定下来了。
+
+add_subdirectory 应该就是告诉根目录，还有目录需要使用 cmake 编译
+
+CMake构建工程会自动将该子目录添加到编译和链接的搜索目录中，以保证整个构建工程能满足依赖，这也是为什么使用 add_subdirectory 后不需要将子文件夹加入到头文件或库文件搜索目录也能搜索到子目录的头文件或库文件
+
+
+
+子节点的 cmake
+
+calc cmake
+
+```cmake
+cmake_minimum_required(VERSION 3.0)
+project(CALCLIB)
+aux_source_directory(./ SRC)
+include_directories(${HEAD_PATH})
+set(LIBRARY_OUTPUT_PATH ${LIB_PATH})
+add_library(${CALC_LIB} STATIC ${SRC})
+```
+
+第4行include_directories：包含头文件路径，HEAD_PATH是在根节点文件中定义的
+第5行set：设置库的生成的路径，LIB_PATH是在根节点文件中定义的
+第6行add_library：生成静态库，静态库名字CALC_LIB是在根节点文件中定义的
+
+
+
+sort cmake 基本一样，就是替换了名字，并且生成的是动态库
+
+```cmake
+cmake_minimum_required(VERSION 3.0)
+project(SORTLIB)
+aux_source_directory(./ SRC)
+include_directories(${HEAD_PATH})
+set(LIBRARY_OUTPUT_PATH ${LIB_PATH})
+add_library(${SORT_LIB} SHARED ${SRC})
+```
+
+
+
+test1 cmake 也和上面的 cmake 基本一样，就是替换了名字，使用 EXECUTABLE_OUTPUT_PATH 指定输出位置，并且最重要的一点：加入 link_libraries，这样才能使用库
+
+```cmake
+cmake_minimum_required(VERSION 3.0)
+project(CALCTEST)
+aux_source_directory(./ SRC)
+include_directories(${HEAD_PATH})
+link_libraries(${CALC_LIB})
+set(EXECUTABLE_OUTPUT_PATH ${EXEC_PATH})
+add_executable(${APP_NAME_1} ${SRC})
+```
+
+所以可以看到，在 C++ 中使用三方库最重要的两件事：
+
+1. 声明。要让编译器知道某函数/类的存在，由 `include_directoires` 完成
+2. 链接库。要让编译器能使用某函数/类，由 `link_libraries` 完成
+
+
+
+
+
+test2 cmake 和 test1 cmake 基本一致，但是链接的是动态库！
+
+```cmake
+cmake_minimum_required(VERSION 3.0)
+project(SORTTEST)
+aux_source_directory(./ SRC)
+include_directories(${HEAD_PATH})
+set(EXECUTABLE_OUTPUT_PATH ${EXEC_PATH})
+# link_directories(${LIB_PATH})
+add_executable(${APP_NAME_2} ${SRC})
+target_link_libraries(${APP_NAME_2} ${SORT_LIB})
+```
+
+> 在生成可执行程序的时候，动态库不会被打包到可执行程序内部。当可执行程序启动之后动态库也不会被加载到内存，只有可执行程序调用了动态库中的函数的时候，动态库才会被加载到内存中，且多个进程可以共用内存中的同一个动态库，所以动态库又叫共享库
+
+
+
+完成过后直接 camke .. && build，一键构建！！
+
+问题：仍然是头文件与 object file 的联系。当我们 include a function 过后，编译器如何寻找到对应的 object file 中的对应函数？这个过程又如何体现在 cmake file 当中？
+
+并且如何将 头文件和具体的实现分离开来？
+
+add_executable or add_library 本质上就是在用编译器生成 object
+
+```shell
+g++ -o main main.cpp -Iinclude ...
+```
+
+
+
+### 控制语句
+
+cmake 有比较灵活的控制语句
+
+if
+
+for
+
+while
+
+比较重要的是条件的表示
+
+### config.h.in
+
+TODO
+
+### install & test
+
+TODO
 
