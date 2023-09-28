@@ -1,4 +1,6 @@
-# TVM Tutorial
+# TVM 中迁移 Grid Sample
+
+## Install TVM
 
 1. 安装 llvm
 
@@ -147,7 +149,7 @@
    ```
 
 
-## Grid Sample
+## 迁移 Grid Sample
 
 1. 使用的 `trt_grid_sampler_kernel.cu` 中对 grid sampler 的实现，创建了 helper 文件夹，主要针对 trt_grid_sampler.
 
@@ -155,70 +157,10 @@
 
    问题：哪些是需要使用 cpu 数据，而哪些不需要？
 
+## 问题
 
+1. 有哪些可能的 attribute type，Integer，Bool，如何表示 string？
 
+2. 如何获得 BevpoolRel 当中的 types？这应该是函数的输入？
 
-
-问题：有哪些可能的 attribute type，Integer，Bool，如何表示 string？
-
-```c++
-/*! \brief Attributes used for grid sample operator */
-struct GridSampleAttrs: public tvm::AttrsNode<GridSampleAttrs>{
-    std::string interpolation; // what are the possible type values?
-    std::string padding_mode;
-    Bool align_corners;
-    TVM_DECLARE_ATTRS(GridSampleAttrs, "relay.attrs.GridSampleAttrs"){
-        TVM_ATTR_FIELD(interpolation).describe("The interpolation mode to calculate output values.");
-        TVM_ATTR_FIELD(padding_mode).describe("The padding mode to deal with border pixels.");
-        TVM_ATTR_FIELD(align_corners).describe("Whether to align the corner pixels of input and output.");
-    }
-};
-```
-
-问题：如何获得 BevpoolRel 当中的 types？这应该是函数的输入？
-
-函数的输入是由 xxx_api.cc 决定，types 问题还不太清楚
-
-问题：为什么在 cast data 的时候需要使用 byte_offset
-
-```c++
-auto feat_data = reinterpret_cast<float*> (static_cast<char*>(feat->data)+feat->byte_offset);
-```
-
-问题：attribute 为什么没有在 api 中出现？那不是白定义了？发现了，是在 MakeGridsample 中有的，在 transform.py 里面是有的
-
-问题：似乎 Bool 的 attr 行不通
-
-
-
-问题：目前能够编译 tvm，导入 tvm plugin，但是在构建 function 时出现了 segmentation fault。这似乎是 bool type 所导致的，改成了 Integer
-
-
-
-
-
-onnx 
-
-注册 onnx
-
-tvm/python/tvm/relay/frontend/onnx.py
-
-auto tune
-
-template and non-template tune
-
-https://tvm.apache.org/docs/how_to/tune_with_autotvm/index.html
-
-https://tvm.apache.org/docs/how_to/tune_with_autoscheduler/index.html
-
-pass
-
-https://tvm.apache.org/docs/how_to/extend_tvm/index.html
-
-fp16
-
-
-
-## TVM Overview
-
-![A High Level View of TVM](/home/lixiang/Projects/notes/dev_notes/TVM Tutorial/overview.png)
+3. 目前能够编译 tvm，导入 tvm plugin，但是在构建 function 时出现了 segmentation fault。这似乎是 bool type 所导致的，改成了 Integer
