@@ -155,15 +155,33 @@ date: 2021-07-12 14:36:42
    sudo fc-cache -f -v
    ```
 
-8. 安装 utools，[Download Link](https://www.u.tools/)，打开 startup applications preference，add 一个 utools command 即可开机启动
+8. 安装 MiSans 字体，ttf 字体可以通过直接双击文件进行安装。安装好字体过后可以修改 typora 的渲染字体
 
-9. 安装 flameshot，[Download Link](https://flameshot.org/#download)，通过 keyboards shortcut 添加 flameshot gui 命令完成快捷键设置，参考 [CSDN](https://blog.csdn.net/u013171226/article/details/107717009)
+   ```css
+   # file base.user.css, to change code font
+   body {
+   font-family: "JetBrains Mono";
+   }
+   
+   # file github.css
+   body {
+       font-family: "Open Sans","MiSans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+       color: rgb(51, 51, 51);
+       line-height: 1.6;
+   }
+   ```
 
-10. 安装 electerm 作为更好的 sftp 传输工具，[github](https://github.com/electerm/electerm)
+9. 安装 utools，[Download Link](https://www.u.tools/)，打开 startup applications preference，add 一个 utools command 即可开机启动
 
-11. 安装 fsearch，[Download Link](https://github.com/cboxdoerfer/fsearch#download)
+10. 安装 flameshot，[Download Link](https://flameshot.org/#download)，通过 keyboards shortcut 添加 flameshot gui 命令完成快捷键设置，参考 [CSDN](https://blog.csdn.net/u013171226/article/details/107717009)
 
-12. 修改 Files 侧栏 [StackOverflow](https://unix.stackexchange.com/questions/207216/user-dirs-dirs-reset-at-start-up)
+11. 安装 electerm 作为更好的 sftp 传输工具，[github](https://github.com/electerm/electerm)
+
+12. 安装 fsearch，[Download Link](https://github.com/cboxdoerfer/fsearch#download)
+
+13. 修改 Files 侧栏 [StackOverflow](https://unix.stackexchange.com/questions/207216/user-dirs-dirs-reset-at-start-up)
+
+14. 安装 foxit pdf reader，[Download Link](https://www.foxitsoftware.cn/pdf-reader/)
 
 # Windows
 

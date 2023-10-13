@@ -152,3 +152,10 @@ QKVToContextInterleavedPlugin::QKVToContextInterleavedPlugin(std::string const& 
    > 6. D2H Latency: D2H stands for Device-to-Host, representing the time taken to transfer data from the GPU (device) back to the CPU (host). The statistics provided are similar to latency statistics seen before.
    > 7. Total Host Walltime: This metric represents the total time spent by the host (your system) in running the entire inference workload. In this case, it took 3.00359 seconds.
    > 8. Total GPU Compute Time: This metric represents the total time spent by the GPU in executing the inference workload. In this case, it took 2.99759 seconds.
+
+一些 profile 的 flag
+
+- --best
+- --useCudaGraph
+
+待整理什么意思

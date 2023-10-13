@@ -145,7 +145,7 @@ node_modules	# 忽略 node_modules 文件和目录
 
 当你想要将最近的多个 commit 融合为一个 commit 时，就需要 git rebase
 
-`git rebase -i HEAD~n` 这里 `-i` 代表 interactive 模式，你需要将最后几个 `pick` 替换为 `squash`，仅保留第一个 `pick` 即可，然后保存退出，git 会再提示你输入新的 commit message，输入完成后保存退出 
+`git rebase -i HEAD~n` 这里 `-i` 代表 interactive 模式，你需要将最后 n 个 `pick` 替换为 `squash`，仅保留一个 `pick` 即可，然后保存退出，git 会再提示你输入新的 commit message，输入完成后保存退出 
 
 修改默认的 git commit editor 为 vscode，`git config --global core.editor "code --wait"`
 
