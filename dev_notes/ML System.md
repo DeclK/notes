@@ -29,7 +29,7 @@
 
   模型并行的致命问题：bubble!!!但是只要你的块数足够多，bubble 的占用比例会越小
 
-  ![mp-pp](/home/lixiang/Projects/notes/dev_notes/ML System/parallelism-gpipe-bubble.png)
+  ![mp-pp](./ML System/parallelism-gpipe-bubble.png)
 
   批量归一化会计算得不一样些，因为要算均值和方差
 
@@ -51,11 +51,11 @@
 
   下面是 transformer block 中的 MLP 层的 tensor 切分方式，一般来说 X 输入没那么大，但是模型参数量很大，所以这里只讨论了参数的切分，MLP 就是两层的 Linear，对应的参数就是 A 和 B，A 被竖着切分成了2份，B 则被横着切分成了2份，这两份就可以分到2块 GPU 上。这样就能做到通信最少，不信的话，你横着切 A，那么输入 X 就得要被竖着切掉，之后就要进行整合通信。（切分搜索空间）
 
-  ![parallel shard processing](/home/lixiang/Projects/notes/dev_notes/ML System/parallelism-tp-parallel_shard_processing.png)
+  ![parallel shard processing](./ML System/parallelism-tp-parallel_shard_processing.png)
 
   下面是 transformer block 中的 attention 的 tensor 切分方式，其就是将 Head 作为切分代为，在不同的 GPU 上算不同的 Head 就行了
 
-  ![parallel self-attention](/home/lixiang/Projects/notes/dev_notes/ML System/parallelism-tp-parallel_self_attention.png)
+  ![parallel self-attention](./ML System/parallelism-tp-parallel_self_attention.png)
 
   在 embedding 层也进行了 GPU 的划分，所以也是有并行优化的
 

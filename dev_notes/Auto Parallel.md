@@ -29,7 +29,7 @@
 
   下图使用一个两层的 Linear 来直观展示
 
-  ![image-20231007162157269](/home/lixiang/Projects/notes/dev_notes/Auto Parallel/image-20231007162157269.png)
+  ![image-20231007162157269](./Auto Parallel/image-20231007162157269.png)
 
   Intra-op para 由于需要对数据进行切分和整合，所以需要在设备之间进行大量的交流，这需要高带宽进行支撑。对比于 inter-op para，则不需要这么高带宽来进行设备间的交流
 
@@ -63,7 +63,7 @@
   2. Intra-op Pass，优化子图在 devices 中的运行速度，执行计划由整数线性规划算法决定
   3. Runtime Orchestration，将上面的最优策略进行编译生成 pipeline 和执行指令，完成不同子图间的数据交流和 resharding
 
-  ![image-20231007172514939](/home/lixiang/Projects/notes/dev_notes/Auto Parallel/image-20231007172514939.png)
+  ![image-20231007172514939](./Auto Parallel/image-20231007172514939.png)
 
 - SPMD-style intra-op para
 
@@ -115,7 +115,7 @@
   $$
   其中 t 为某个 stage 所花费的时间，B 为 micro-batches 数量。下面为整个计算图的消耗时间 T 的示意图
   
-  ![image-20231010151313826](/home/lixiang/Projects/notes/dev_notes/Auto Parallel/image-20231010151313826.png)
+  ![image-20231010151313826](./Auto Parallel/image-20231010151313826.png)
   
 - XLA, Ray, Jax, NCCL
 

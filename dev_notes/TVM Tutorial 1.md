@@ -4,7 +4,7 @@
 
 下面这张图简单描述了 TVM 的框架流程
 
-![A High Level View of TVM](/home/lixiang/Projects/notes/dev_notes/TVM Tutorial 1/overview.png)
+![A High Level View of TVM](./TVM Tutorial 1/overview.png)
 
 整体来讲，TVM (Tensor Virtual Machine) 作为一个 MLC (Machine Learning Compiler) 的核心目的就是将模型编译成为可以部署的库
 
@@ -26,7 +26,7 @@
 
 我们使用抽象/实现，来表示张量函数的计算过程。一个张量函数可以有多个抽象，并且不同的抽象可以包含不同的细节量。例如下图：
 
-![image-20230928113436117](/home/lixiang/Projects/notes/dev_notes/TVM Tutorial 1/image-20230928113436117.png)
+![image-20230928113436117](./TVM Tutorial 1/image-20230928113436117.png)
 
 一个抽象可以用简单的流程图表示，也可以用 python 代码表示，也可以用 C++ 代码表示。显然 C++ 抽象肯定比流程图包含的细节更多。这里也表明了，“语言”也是一种抽象
 
@@ -74,7 +74,7 @@ Tensor Intermediate Representation，TVM 中最底层的计算描述语言，由
 
 了解了这些概念过后再来看看这张图
 
-![A High Level View of TVM](/home/lixiang/Projects/notes/dev_notes/TVM Tutorial 1/overview-1695882108590-3.png)
+![A High Level View of TVM](./TVM Tutorial 1/overview-1695882108590-3.png)
 
 TVM 的流程就是 IR 的不断降级（lowering）的过程，并且在这个过程中不断地对 IR 进行优化，使得实现最优
 

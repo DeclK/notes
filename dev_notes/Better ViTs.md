@@ -218,7 +218,7 @@ block = nn.Sequential(
 
 ### Layout
 
-![summary_tab](/home/lixiang/Projects/notes/dev_notes/Better ViTs/eva_pipeline.png)
+![summary_tab](./Better ViTs/eva_pipeline.png)
 
 - 想要把 EVA 改得更小一点，并提供各种尺寸的模型。还要改进一下 pre-train 方法
 
@@ -296,7 +296,7 @@ block = nn.Sequential(
    - 将 BN 改为 LN
    - 使用单独的下采样层 conv stride 2
 
-![image-20231011212106151](/home/lixiang/Projects/notes/dev_notes/Better ViTs/image-20231011212106151.png)
+![image-20231011212106151](./Better ViTs/image-20231011212106151.png)
 
 - ConvNext V2
 
@@ -317,7 +317,7 @@ block = nn.Sequential(
 
   同时使用 Re-parameterization 对 DW Conv 进行整合，这样在推理的时候节省时间
 
-  ![image-20231012101206176](/home/lixiang/Projects/notes/dev_notes/Better ViTs/image-20231012101206176.png)
+  ![image-20231012101206176](./Better ViTs/image-20231012101206176.png)
 
 - 对于输入的降采样（stem）使用了两个卷积，为什么不和 ConvNext 一样采用 4 kernel size 的卷积一步到位？可能是因为时间问题，做 3x3 卷积优化更好
 
@@ -331,7 +331,7 @@ block = nn.Sequential(
 
 - SE layer 能够弥补卷积的注意力机制，但是相当耗时，论文对所有 stage 都使用，但是只在 stage 的一个 block 用
 
-![image-20231012111256993](/home/lixiang/Projects/notes/dev_notes/Better ViTs/image-20231012111256993.png)
+![image-20231012111256993](./Better ViTs/image-20231012111256993.png)
 
 - we develope multiple RepViT variants, including RepViT-M0.9/M1.0/M1.1/M1.5/M2.3. The suffix ”-MX” means that the latency of the model is Xms.
 
@@ -397,7 +397,7 @@ block = nn.Sequential(
 
 - 这个 [zhihu](https://zhuanlan.zhihu.com/p/543730203) image 基本上就把 DeiT 的过程写清楚了
 
-  ![img](/home/lixiang/Projects/notes/dev_notes/Better ViTs/v2-113e443837587f41239d38cde9f0caf7_720w.webp)
+  ![img](./Better ViTs/v2-113e443837587f41239d38cde9f0caf7_720w.webp)
 
 ### Question
 

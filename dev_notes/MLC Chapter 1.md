@@ -6,7 +6,7 @@
 
 同时，我们还发现将训练 (Training) 过程本身部署到不同环境会变得越来越重要。这些需求源于出于隐私保护原因，或将模型学习扩展到分布式节点集群的需要，或需要将模型更新保持在用户设备的本地。
 
-![image-20230926102157615](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230926102157615.png)
+![image-20230926102157615](./MLC Chapter 1/image-20230926102157615.png)
 
 本课程将讨论如何把机器学习从开发、研究阶段，引入到生产环境。我们将讨论一系列促进机器学习算法落地部署的方法。
 
@@ -44,7 +44,7 @@
 
 ### 抽象和实现
 
-![image-20230926103801302](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230926103801302.png)
+![image-20230926103801302](./MLC Chapter 1/image-20230926103801302.png)
 
 We use **abstractions** to denote the ways we use to represent the same tensor function。不同的抽象可能会指定一些细节，而忽略其他**实现(Implementations)**细节。例如，`linear_relu` 可以使用另一个不同的 for 循环来实现。
 
@@ -60,13 +60,13 @@ MLC 实际上是在相同或不同抽象下转换和组装张量函数的过程�
 
 特别的是，许多不同的抽象能够表示（和实现）同样的元张量函数（正如下图所示）
 
-![image-20230926105548023](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230926105548023.png)
+![image-20230926105548023](./MLC Chapter 1/image-20230926105548023.png)
 
 上面分别是 torch, python, C++ 对于矩阵加法的抽象
 
 许多机器学习框架都提供机器学习模型的编译过程，以将**元张量函数变换（transform）**为更加专门的、针对特定工作和部署环境的函数。
 
-![image-20230926111710082](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230926111710082.png)
+![image-20230926111710082](./MLC Chapter 1/image-20230926111710082.png)
 
 上图可以看做 python 抽象转换为 C++ 抽象
 
@@ -82,17 +82,17 @@ MLC 实际上是在相同或不同抽象下转换和组装张量函数的过程�
 
 我们称这类抽象为**张量程序抽象（ Tensor Program Abstraction）**。
 
-![image-20230926112609564](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230926112609564.png)
+![image-20230926112609564](./MLC Chapter 1/image-20230926112609564.png)
 
 张量程序抽象的一个重要性质是，他们能够被一系列有效的程序变换所改变，但仍然表示同一个张量函数。例如，我们能够通过一组变换操作（如循环拆分、并行和向量化）将上图左侧的一个初始循环程序变换为右侧的程序
 
-![image-20230926112739729](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230926112739729.png)
+![image-20230926112739729](./MLC Chapter 1/image-20230926112739729.png)
 
 重要的是，我们不能任意地对程序进行变换，比方说这可能是因为一些计算会依赖于循环之间的顺序（例如动态规划中，有的嵌套循环的顺序不能被更改，这将会导致错误结果）。但幸运的是，我们所感兴趣的大多数元张量函数都具有良好的属性（例如循环迭代之间的独立性）。
 
 举个例子，下面图中的程序包含额外的 `T.axis.spatial` 标注，表明 `vi` 这个特定的变量被映射到循环变量 `i`，并且所有的迭代都是独立的。这个信息对于执行这个程序而言并非必要，但会使得我们在变换这个程序时更加方便。在这个例子中，我们知道我们可以安全地并行或者重新排序所有与 `vi` 有关的循环，只要实际执行中 `vi` 的值按照从 `0` 到 `128` 的顺序变化。
 
-![image-20230926113418566](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230926113418566.png)
+![image-20230926113418566](./MLC Chapter 1/image-20230926113418566.png)
 
 ## TensorIR
 
@@ -112,7 +112,7 @@ Tensor program abstraction 主要为了方便表示两种实现：
 
 仍然是以 matrix multiply + relu 为例子，直接看下 TensorIR code 以及 low-level numpy code 的对比
 
-![../_images/tensor_func_and_numpy.png](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/tensor_func_and_numpy.png)
+![../_images/tensor_func_and_numpy.png](./MLC Chapter 1/tensor_func_and_numpy.png)
 
 通过对照二者的实现来深入理解二者的联系与区别
 
@@ -446,13 +446,13 @@ print("Time cost of transformed sch.mod %g sec" % f_timer_after(a_nd, b_nd, c_nd
 
 在下图中，我们关注最里面的两个循环：`k` 和 `j1`。高亮的地方显示了当我们针对 `k` 的一个特定实例迭代 `j1` 时迭代触及的 `Y`、`A` 和 `B` 中的相应区域
 
-![image-20230927102128590](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230927102128590.png)
+![image-20230927102128590](./MLC Chapter 1/image-20230927102128590.png)
 
 我们可以发现，`j1` 这一迭代产生了对 `B` 元素的**连续访问**。具体来说，它意味着在 `j1=0` 和 `j1=1` 时我们读取的值彼此相邻。这可以让我们拥有更好的缓存访问行为。此外，我们使 `C` 的计算更接近 `Y`，从而实现更好的缓存行为
 
 原始的矩阵乘法可按照下图示意，按照 k 循环的方向进行点积，对于每一次读取 B 矩阵来说，都不会是连续的存储空间，所以访存读取将变得更慢，进而成为计算瓶颈
 
-![image-20230927102914055](/home/lixiang/Projects/notes/dev_notes/MLC Chapter 1/image-20230927102914055.png)
+![image-20230927102914055](./MLC Chapter 1/image-20230927102914055.png)
 
 ## 张量表达式
 

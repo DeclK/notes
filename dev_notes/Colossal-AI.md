@@ -29,7 +29,7 @@
 
   rank 和 world size 的概念都是针对某个 process group 的。对不同的 process group 可能有不同的值
 
-  ![image-20231008171659165](/home/lixiang/Projects/notes/dev_notes/Colossal-AI/image-20231008171659165.png)
+  ![image-20231008171659165](./Colossal-AI/image-20231008171659165.png)
 
 - communicate ways
 
@@ -91,7 +91,7 @@
 
   简单理解就是 pipeline + model parallelism，下图从 GPipe paper 中展示了。model parallelism 就是将模型进行切分，然后把每个子模型放到一个 GPU 上，这就是 model parallelism。但是这将产生 GPU 空闲的问题，为了减缓这个问题，可以使用 pipeline 来更多的 GPU 同时运行
 
-  ![mp-pp](/home/lixiang/Projects/notes/dev_notes/Colossal-AI/parallelism-gpipe-bubble.png)
+  ![mp-pp](./Colossal-AI/parallelism-gpipe-bubble.png)
 
 - Activation Checkpoint
 
