@@ -159,5 +159,247 @@ block = nn.Sequential(
 )
 ```
 
-## Hiera
+### Question
 
+- MBConv 所使用的必要性？
+
+## EVA
+
+### Layout
+
+1. 问题
+
+   将了下 MIM 存在的挑战：low-level geometry & high-level semantics 之间的关系建模
+
+   目前有两个 debate
+
+   1. tokenized semantic features 能否比 masked images 产生更好的监督信号
+   2. 能否使用 distillation 来获得好的表现，不使用 masked prediction 
+
+2. 把各个视觉的 SOTA 刷了个遍
+
+3. 泛化性极强，对于 1200 类  LVISv1.0 和 80 类的 COCO 都表现很好。LVIS 和 COCO 使用的图像数据几乎一样。论文猜测 swin v2 beit-3 也会有类似的效果，因为数据和模型都大。
+
+4. 训练 CLIP 更加稳定。原始 clip 必须使用 bfloat 16（训练不稳定），并且训练效率 efficiency 低。论文使用 EVA 来初始化 CLIP 的 vision encoder，直接用 fp16 的 AMP 就能训了。
+
+   但是这里有一个问题，EVA 本来就是用 CLIP 训的，再拿去训 CLIP 不是作弊吗？关键点在于此：EVA 的参数有 1000M，而训练 EVA 的 CLIP 参数只有 400M，而再用 EVA 去初始化一个更大的 1000M 的 CLIP，就能稳定训练了。有种循序渐进的感觉
+
+5. 两个实验结果，用于验证之前的 debate：
+
+   1. tokenization 是不必要的
+   2. distillation 在增加训练 epoch 后无法获得更好的效果，反之直接回归图像特征效果好
+
+   这两个结论催生出 EVA 的训练策略：
+
+   simply reconstructing the masked out CLIP vision features conditioned on visible image patches
+
+6. 论文不是首先提出 MIM image-text aligned 的，但是是规模最大的，证明了不需要 semantic tokenization & explicitly image-text pair data
+
+7. 实际上对齐的就是 CLIP 特征，CLIP 使用的是 400 million image-text dataset 训练出来的
+
+8. 数据集使用的公开联合数据集，29.6 million
+
+9. 现在 imagenet-21K 微调，然后再 imagenet-1K 微调，微调花费的时间是 MIM 的 1/5，相比 swin V2 的微调时间反而是 MIM 的 1.5 倍 
+
+10. 在分类时采用的是 vision-style 方法，只用一个 Linear 进行分类，而不是像 CLIP 一样要使用 text encoder
+
+11. 吐槽 DINO，EVA 不用 DETR 结构，就用 R-CNN 框架，就能达到好的效果，并且 DINO 还不能做实例分割
+
+- Efficient scale up ViT
+- achieves SOTA on 1000 categories
+- reconstrunct the masked out image-text aligned vision features
+
+### Question
+
+- 什么是 additional tokenization？
+- using efficient video hierachical vit to train
+
+## EVA-02
+
+### Layout
+
+![summary_tab](/home/lixiang/Projects/notes/dev_notes/Better ViTs/eva_pipeline.png)
+
+- 想要把 EVA 改得更小一点，并提供各种尺寸的模型。还要改进一下 pre-train 方法
+
+- 原始 ViT 的设计没有太多 inductive bias，所以有更强的表示能力，并且天然适合于 MIM 任务
+
+  经过一些简单的改变过后，也能处理高分辨率和多尺度任务
+
+- 经过一些 trick 实验，在 IN-1K 上进行 Pre-train 和 fine-tune 提出了改进的 ViT，并称之为 TrV (Transform Vision)
+
+  1. 激活函数用 SwiGLU/SiLU + xnorm
+  2. positional embedding 用 RoPE
+  3. 在 FFN 中用 sub-LN
+
+  Pre-train 用的是 EVA-CLIP
+
+  比原 ViT 提了 1.6 个点
+
+- 再研究了不同大小的 CLIP 来作为 MIM target 的效果。EVA-CLIP 教 ViT-B 反而把 ViT 给教坏了，论文认为是因为训练时间不够，ViT 没有学到
+
+- EVA-02：TrV with sufficient MIM pretraining from EVA-CLIP
+
+- EVA-02 即使模型很小，也能够达到精心设计的小模型的速度，这说明了 MIM 能够克服 inductive bias 问题
+
+- 左脚踩右脚，再训一个 EVA-02-CLIP 又刷 SOTA。
+
+### Question
+
+- RoPE 的表示形式？
+- 目前 MIM 和 CLIP 形成了完整的闭环，但是这个环是否还能有第三方加入？例如 language 的语义训练提升？又例如视频的语义学习？Reinforcement Learning with EM Algorithm
+- 如果继续提升 EVA-02 的尺寸，会不会还能提升？
+
+## ConvNext
+
+### Concept
+
+- Stem
+
+  >  Typically, the stem cell design is concerned with how the input images will be processed at the network’s beginning.
+  >
+  > A common stem cell will aggressively downsample the input images to an appropriate feature map size in both standard ConvNets and vision Transformers. The stem cell in standard ResNet contains a 7×7 convolution layer with stride 2, followed by a max pool, which results in a 4× downsampling of the input images. In vision ransformers, a more aggressive “patchify” strategy is used as the stem cell, which corresponds to a large kernel size (e.g. kernel size = 14 or 16) and non-overlapping convolution
+
+### Layout
+
+全面模仿 Swin Transformer
+
+1. Macro design
+
+   - 更改堆叠块比例，从 3:4:6:3 变为 1:1:3:1
+   - 最初的下采样模块 stem 从 7x7 + 3x3 一步改为 4x4 stride 4
+
+2. ResNeXt
+
+   - depth wise conv + bigger channels，单独使用 depth wise conv 是会变差的。使用 depth wise 是想对标大的感受野
+
+3. Inverted bottleneck
+
+   - 两头细中间粗
+
+4. Large Kernel size
+
+   - 将卷积顺序改变，把 depth wise 提前
+
+     原始：1x1 -> depth wise -> 1x1
+
+     更改：depth wise -> 1x1 (96 to 384)-> 1x1 (384 to 96)
+
+     这是为了对标 transformer 的 attention + FFN
+
+   - 更改 depth wise 卷积核大小增加，从 3x3 改到 7x7
+
+5. Various layer-wise micro designs
+
+   - ReLU 改为 SiLU，并降低激活层的数量
+   - 更少的 normalization 层
+   - 将 BN 改为 LN
+   - 使用单独的下采样层 conv stride 2
+
+![image-20231011212106151](/home/lixiang/Projects/notes/dev_notes/Better ViTs/image-20231011212106151.png)
+
+- ConvNext V2
+
+  使用 MAE + ConvNext，并提出了一个  Global Response Normalization (GRN) layer
+
+  论文中 MAE 叫做 FCMAE（Fully Convolutional MAE）。为了适配 MAE 需要采用 sparse convolution 才能享受 MAE 的计算节省
+
+## RepViT
+
+### Layout
+
+- 最近轻量级的 ViT 表现强势，作者想把这些结构往 CNN 上用。简单来说就是用 MobileNet V3 + light weight ViT architectures。有点像 ConvNext 的写作风格，就是一个一个 trick 的测试
+- 是目前最快的方案，在 iphone 12 上只要 0.87 ms，实际上 MobileNet V3 也只要 1.01 ms
+- 通常的方案：hybrid，改 attention 计算为线性复杂度，dimension-consistent design
+- training recipe 使用更现代的方式，改了一下 mobile vit 的激活层，然后 MobileNet 就掉点了，但只为了建立基线，所以无所谓 
+
+- 和 ConvNext 一样对每一个 block 进行重新排列，使得其按照 transformer block 的方式能够进行 token mix 和 channel mix，直接这样改回导致迅速掉点，但是增大 channel 就能涨回来，同时减少了 expansion ratio 以减少不必要的计算
+
+  同时使用 Re-parameterization 对 DW Conv 进行整合，这样在推理的时候节省时间
+
+  ![image-20231012101206176](/home/lixiang/Projects/notes/dev_notes/Better ViTs/image-20231012101206176.png)
+
+- 对于输入的降采样（stem）使用了两个卷积，为什么不和 ConvNext 一样采用 4 kernel size 的卷积一步到位？可能是因为时间问题，做 3x3 卷积优化更好
+
+- 收到 patch merging & EfficientViT 启发，使用更深的 downsampling layer，此时会增加耗时
+
+- 使用简单的 classifier 以替代原来 MobileNet V3-L 的两层 classifier，加速但降精度
+
+- 调整 stage ratio 为 1:1:7:1，并且一个 stage 基础 block 数调整为 2，耗时但是增加精度
+
+- 把 MobileNet-V3 中的 kernel size 5x5 的换成 3x3 的，但精度没变，同时 3x3 对 mobile device 更友好
+
+- SE layer 能够弥补卷积的注意力机制，但是相当耗时，论文对所有 stage 都使用，但是只在 stage 的一个 block 用
+
+![image-20231012111256993](/home/lixiang/Projects/notes/dev_notes/Better ViTs/image-20231012111256993.png)
+
+- we develope multiple RepViT variants, including RepViT-M0.9/M1.0/M1.1/M1.5/M2.3. The suffix ”-MX” means that the latency of the model is Xms.
+
+### Question
+
+- 又回到了这个问题：什么样的算子是可以融合的？这里简单的 DW 分支可以融合，Conv + BN + ReLU 也可以融合
+- Depth wise convolution 到底是快还是慢？
+
+## EfficientViT-MIT
+
+### Layout
+
+- 使用 Linear Attention + Depthwise conv 来获得全局 + local 的信息，单独的 Linear Attention 多半不会好用
+
+### Question
+
+- 有没有更好的 Linear Attention 比 ReLU attention 更强，但同样获得信息
+- 针对这些模型的 micro & macro designs 提炼出共同特点，看看它们之间有没有矛盾的地方
+- 似乎这个模型 timm 甚至像要把其剔除了...
+
+## EfficientViT-MSRA
+
+### Layout
+
+- Attention 的 Memory bound 需要解决，论文使用 sandwich layout 来解决，即减少 attention 模块的计算比例，在前后增加 DW+FFN，channel 数量应该也有相应调整。
+- Attention 可能学习重复的 linear projection，论文使用 cascade group attention 解决
+
+### Question
+
+- Multi-head attention 本来就是将原来的 input 分开为多个 head，这里的 group 又有什么意义呢？并且 cascade 会导致模型无法并行🤔
+
+## FastViT
+
+### Layout
+
+- 使用 RepMixer 来减少推理用时，RepMixer 对标的是 Attention（Apple 真的很喜欢 Rep 技术），同时 FNN 还使用了 big kernel depthwise conv 来增强全局视野
+- 把所有的 conv 使用 depthwise conv + 1x1 conv 替代，主要在 stem 和 patch embedding 中使用
+
+### Question
+
+- 结构设计不好总结出规律...可以和 RepViT 进行细致对比，我感觉二者几乎等效
+- 怎样将 Transformer 的 MIM 训练方式和卷积结合起来，或者针对 transformer-based 进行加速？
+
+## DeiT
+
+### Concept
+
+- hard distillation & soft distillation
+
+  假设有两个预测结果 teacher & student，二者都是一个长为 n 的向量，对应 n 个分类。那么 soft distillation 就是求两个向量的 KL 散度，而 hard distillation 就是把 teacher 的预测结果（argmax）作为目标，求 student 与目标间的交叉熵
+
+### Layout
+
+- ViT 使用了大量的图像和 GPU 进行训练，DeiT 只用了 ImageNet only 的图像，并且不用 Convolution。训练方式是使用 teacher-student distillation on token
+
+  训练设备是一个8卡机，训练时间大约2~3天
+
+- 使用 Convnet 作为教师网络能够比使用 Transformer 架构效果更好，但论文没有给出使用 tansformer teacher 的实验结果
+
+  并且蒸馏出来的网络比 teacher 网络更好，这非常神奇。论文推测可能是学习了 inductive bias
+
+- 蒸馏使用的是 hard distillation，比 soft 效果更好
+
+- 这个 [zhihu](https://zhuanlan.zhihu.com/p/543730203) image 基本上就把 DeiT 的过程写清楚了
+
+  ![img](/home/lixiang/Projects/notes/dev_notes/Better ViTs/v2-113e443837587f41239d38cde9f0caf7_720w.webp)
+
+### Question
+
+- 不同的模型可能擅长捕捉不同的模式？inductive bias 可以通过蒸馏传入，那么还有没其他方式更快地传入？
+- 为什么 soft distillation 比 hard 弱这么多？

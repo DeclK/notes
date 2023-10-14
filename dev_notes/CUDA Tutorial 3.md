@@ -178,7 +178,7 @@ cudaMalloc 是分配 global memory
 
 
 
-
+**分配极限**
 
 例子：对于一个 G80 显卡，一共有 8K 个寄存器，并且一个 SM 最多承载768个线程。在此条件下：
 
@@ -192,5 +192,14 @@ cudaMalloc 是分配 global memory
 
 Shared Memory 的分配也是类似的道理，是整个 block 共享的 `Shared Memory Per Block: 48 KB`。我们也不能让每个 block 分配过多的 shared memory，这样会导致一个 SM 最多载入的 block 减少
 
+
+
+
+
 ## Matrix Multiply
 
+在 cuda-tutorial chk-dev 中写的 `matmul.cu` 中记录了3个矩阵乘法：
+
+1. baseline，只使用多线程
+2. 使用 block
+3. 使用 shared memory

@@ -27,7 +27,7 @@
 
 ## 基础概念
 
-参考 [link1](https://zhuanlan.zhihu.com/p/34587739) 进行整理
+参考 [zhihu-CUDA编程入门极简教程](https://zhuanlan.zhihu.com/p/34587739) 进行整理
 
 来一张 CPU / GPU 芯片设计图
 
@@ -198,7 +198,7 @@ int main()
 
 ### SP, Warp, SM
 
-参考 [zhihu](https://zhuanlan.zhihu.com/p/123170285)
+参考 [zhihu-理解CUDA中的thread,block,grid和warp](https://zhuanlan.zhihu.com/p/123170285)
 
 这部分是对 GPU 的硬件介绍，并且将硬件概念与软件概念进行联系与区分
 
@@ -268,7 +268,7 @@ int main(){
 
 ## Hello World
 
-参考 [link](https://developer.nvidia.com/blog/even-easier-introduction-cuda/) 进行整理
+参考 [An Even Easier Introduction to CUDA](https://developer.nvidia.com/blog/even-easier-introduction-cuda/) 进行整理
 
 在 C++ 中我们使用了 g++ 编译器来将 C++ 语言翻译（更准确说是编译）成为了 CPU 能够执行的二进制文件，对于 CUDA 编程也是类似的。我们需要使用一个编译器，来将所写的 CUDA 代码 翻译/编译成为 GPU 能够执行的文件，而这个编译器就是 **nvcc**，之前对 nvcc 的了解仅限于使用 `nvcc -V` 查看 CUDA 版本🤣
 
@@ -527,3 +527,8 @@ Time (%)  Total Time (ms)  Instances  Avg (ms)  Med (ms)  Min (ms)  Max (ms)	Nam
 
 ```
 
+可能 cuMallocManaged 计算了数据从 cpu 输送到 gpu 的时间
+
+同时这里再解释一下使用双重指针 pointer to pointer `void**` 的意义：**非常简单，因为我们需要改变指针的地址**
+
+我们在 cpu 上创建了一个 `float* d_x` 指针，然后我们在 gpu 上也分配了一段相应的内存，这时候，gpu 内存的首地址就存在 `d_x` 中。显然修改指针的值，我们就需要指针的指针，就像修改变量的值，我们需要变量的指针一样 

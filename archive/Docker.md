@@ -22,7 +22,7 @@ Link: [Docker Cheat Sheet](https://dockerlabs.collabnix.com/docker/cheatsheet/)
 
 ## 安装 Docker
 
-这一步就不多说了，直接上 [官网](https://www.docker.com/) 下载，一般可以只下载 [docker engine](https://docs.docker.com/engine/install/ubuntu/)，不需要下载 docker desktop。如果下载慢可以考虑使用镜像，这里贴个本家 [NJU Mirror docker-ce](https://mirror.nju.edu.cn/help/docker-ce)
+这一步就不多说了，直接上 [官网](https://www.docker.com/) 下载，只需要下载 [docker engine](https://docs.docker.com/engine/install/ubuntu/)。如果下载慢可以考虑使用镜像，这里贴个本家 [NJU Mirror docker-ce](https://mirror.nju.edu.cn/help/docker-ce)
 
 如果 docker hub 下载很慢的话依旧考虑使用镜像，[NJU Mirror docker hub](https://mirror.nju.edu.cn/help/docker-ce)
 

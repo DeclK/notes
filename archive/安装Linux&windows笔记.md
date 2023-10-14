@@ -64,6 +64,8 @@ date: 2021-07-12 14:36:42
 4. 打开个人目录下的配置文件:  `~/.zshrc` 
 
    找到 `auto_update` 相关行，将注释去掉，则可禁用 ohmyzsh 自动检查更新。可通过命令 `upgrade_oh_my_zsh` 手动升级
+   
+5. 如果由于 git 文件太大，oh-my-zsh 会比较卡顿，可以使用 `git config --add oh-my-zsh.hide-dirty 1` 来禁止其读取文件变化信息，如果还觉得慢则用 `git config --add oh-my-zsh.hide-status 1`
 
 ## Install Ubuntu
 
@@ -79,17 +81,42 @@ date: 2021-07-12 14:36:42
 
 2. 修改 /etc/hostname，reboot 后永久更改主机名
 
-3. （如果没有中文输入法）下载中文输入法，并重启。之后按照 [zhihu](https://zhuanlan.zhihu.com/p/399805081) 添加中文输入法
+3. （如果没有中文输入法）下载中文输入法，需要严格按照以下步骤！**不要按照官方的教程去安装搜狗拼音！！！**
 
    ```shell
-   sudo apt install sogoupinyin && reboot
+   # 1. open regions & language -> manage installed language, make sure you choose fcitx
+   # 2. 
+   sudo apt remove fcitx-ui-qimpanel
+   # 3. install sogou deb
+   sudo dpkg -i sogoupinyin_4.2.1.145_amd64.deb &reboot
+   # this might give magic: sudo apt install sogoupinyin && reboot
+   # when reinstall it you need to install this
+   sudo apt install fcitx-config-gtk
    ```
 
-4. 配置代理 clash，从 youtube 上学的（迷途小书童），要点就是将配置文件 config.yaml 和 Country.mmdb 移动到 ~/.config/clash 文件夹下面，配置文件通过 clash for windows 生成，文件目录为 User/.config/clash(/profiles) 。通过 clash dashboard 切换节点 http://clash.razord.top/
+   之后就可以在 fcitx configure 中看到 sogou pinyin 了，把其移到第一个位置即可！如果不行，就按照下面方法彻底卸载 fcitx，重复以上步骤，一定能行！
 
-   让Terminal走代理的方法(desktop上的settings中设定会改写terminal端，使用export改写则不会影响desktop)，参考 [知乎链接](https://zhuanlan.zhihu.com/p/46973701)
+   ```shell
+   # zsh, if batch sudo apt purge fcitx*
+   sudo apt purge 'fcitx*'
+   sudo apt autoremove
+   sudo rm -rf /opt/sogoupinyin
+   # config 
+   rm -rf ~/.config/fcitx
+   # config sogou
+   rm -rf ~/.config/sogoupinyin
+   
+   # restart the fcitx so it is completely exit
+   ```
 
-5. 重要需求 miniconda chrome typora chrome vscode 软件
+   安装好过后取消一些快捷键：
+
+   1. fcitx 的 `ctrl+alt+P` 的快捷键设置，因为我平常习惯用这个快捷键在 vscode 中 close panel。方式是 `Configure -> Global config -> Show advanced options -> Switch embedded preedit`
+   2. 设置 sogou 输入法的简体繁体快捷键，以及 fcitx 的简体繁体快捷键 `Configure -> Addon -> Advanced -> Simpliflied Chinese To Traditional Chinese `
+
+4. 时过境迁，现在已经有了图形化界面的 [clash](https://github.com/zzzgydi/clash-verge) 啦！目前该软件还在开发当中，所以可能会遇到一些 bug，多试几个版本，我正在使用 1.3.6，1.3.7 无法显示图形界面
+
+5. 重要需求 [miniconda](https://docs.conda.io/projects/miniconda/en/latest/#quick-command-line-install) [typora](https://typoraio.cn/) chrome vscode 软件
 
    conda install, pip install 下载速度慢时，请使用国内镜像源，例如：
 
@@ -118,12 +145,43 @@ date: 2021-07-12 14:36:42
    教程里还教了如何更新 apt source 为阿里云镜像源，镜像中的软件会持续而且下载速度很快（但现在好像默认的源速度也不错了）。这里我选择更换为 [北外镜像源](https://mirrors.bfsu.edu.cn/help/ubuntu/)
 
    如果是新的系统，一定要记得 `sudo apt update && apt upgrade` 这样在安装其他环境的时候会避免一些莫名其妙的错误
-   
-   同时教程里也设置了 sudo，让每一次 sudo 都不需要输入密码
-   
-7. pip install 遇到问题 enter your password to unlock your login keyring
 
-   解决方法，直接cancel，或者在passwd and key中更改密码
+   同时教程里也设置了 sudo，让每一次 sudo 都不需要输入密码
+
+7. 安装 JetBrains Mono 字体，[Download Link](https://www.jetbrains.com/lp/mono/)，安装命令
+
+   ```shell
+   sudo unzip -d /usr/share/fonts JetBrainsMono-xxx.zip
+   sudo fc-cache -f -v
+   ```
+
+8. 安装 MiSans 字体，ttf 字体可以通过直接双击文件进行安装。安装好字体过后可以修改 typora 的渲染字体
+
+   ```css
+   # file base.user.css, to change code font
+   body {
+   font-family: "JetBrains Mono";
+   }
+   
+   # file github.css
+   body {
+       font-family: "Open Sans","MiSans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
+       color: rgb(51, 51, 51);
+       line-height: 1.6;
+   }
+   ```
+
+9. 安装 utools，[Download Link](https://www.u.tools/)，打开 startup applications preference，add 一个 utools command 即可开机启动
+
+10. 安装 flameshot，[Download Link](https://flameshot.org/#download)，通过 keyboards shortcut 添加 flameshot gui 命令完成快捷键设置，参考 [CSDN](https://blog.csdn.net/u013171226/article/details/107717009)
+
+11. 安装 electerm 作为更好的 sftp 传输工具，[github](https://github.com/electerm/electerm)
+
+12. 安装 fsearch，[Download Link](https://github.com/cboxdoerfer/fsearch#download)
+
+13. 修改 Files 侧栏 [StackOverflow](https://unix.stackexchange.com/questions/207216/user-dirs-dirs-reset-at-start-up)
+
+14. 安装 foxit pdf reader，[Download Link](https://www.foxitsoftware.cn/pdf-reader/)
 
 # Windows
 

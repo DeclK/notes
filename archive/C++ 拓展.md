@@ -204,9 +204,11 @@ void foo() {
 
 上述代码就表明 `T::iterator` 为一个类，`T::iterator* iter` 新建了一个类型指针
 
+关于模板实例化 [模板：显式具体化和显式实例化](https://zhuanlan.zhihu.com/p/152211160)，目前的结论是：如果利用头文件使用模板，则在模板所在的源文件需要实例化
+
 ## 头文件
 
-通常为了使得代码模块化，我们会将代码写到多个 cpp 文件里面。当我们想要使用其中的函数或者类时，可以选择进行声明
+通常为了使得代码模块化，我们会将代码写到多个 cpp 文件里面。当我们想要使用其中的函数或者类时，可以通过引入头文件来调用它们。下面以某文件结构举例：
 
 ```txt
 - Learn_C++
@@ -246,7 +248,7 @@ int main()
 void log(const char* message);
 ```
 
-其中 `#pragma once` 代表一下内容只会被引入一次，这样就不会重复导入。从此就可以用头文件来完成
+其中 `#pragma once` 代表以下内容只会被引入一次，这样就不会重复导入。从此就可以用头文件来完成
 
 ```c++
 #include "log.h"
@@ -278,6 +280,16 @@ g++ -I./include main.cpp -o out
 ```
 
 还可以通过 `-H` 参数来列出包含的头文件 `g++ -H main.cpp`
+
+**头文件是不需要进行编译的，**但是必须要在编译器找得到的地方，换句话说要么头文件在同一个目录下，或者使用 `-I` 来指明头文件的路径。或许用“声明文件”来描述头文件是一个不错的选择？
+
+问题：在头文件里通常要干的事情是什么？[理解头文件](https://www.runoob.com/w3cnote/cpp-header.html)，有时候头文件里的东西让人摸不到头脑
+
+在头文件中可以定义类，参考 [Classes and header files](https://www.learncpp.com/cpp-tutorial/classes-and-header-files/)。主要有几点：
+
+1. 类的定义，和函数的定义要区分开。类的定义不一定要把类的方法进行定义。当我们对类的方法进行定义，有时也成为方法的实现
+2. 当直接在类定义体中，对某方法进行定义/实现时，该方法将被默认为内联函数
+3. 通常在头文件中实现对类的定义，但不对类的方法进行实现，方法的实现在其他源文件。如果你在头文件中，在类定义体外对方法进行了实现，会有 **重复定义** 的报错
 
 ## Lambda 匿名函数
 
@@ -321,6 +333,12 @@ int main()
 }
 ```
 
+在 C++ 中是无法在函数中定义函数的，但是可以使用匿名函数，这是匿名函数的用途之一
+
+## Vector
+
+
+
 ## 字符串
 
 C-style 字符串是有终止符的，这使得在申请字符串空间时要多一个字符
@@ -335,3 +353,71 @@ cin.get(var)
 二者遇到回车终止读取
 
 TODO：字符串的规则比较多，后续如果有需要，清晰整理
+
+## {} 的用法
+
+在 Torch C++ 中看到使用 {1, 2, 3} 来初始化，这也可以作为函数参数？
+
+## 零碎关键字
+
+1. `__inline__` or `inline`
+
+   中文翻译为 **内联**，通常用于修饰函数 `inline func`。在我看来就是在编译时将函数的 code 直接展开到其调用的位置。这省略了调用函数的流程，可能加速程序运行。其功能应该与 Macro 类似，但是比 Macro 更贴近于 C++ 代码，方便 debug
+
+2. `noexcept override`
+
+   这两个关键字我在类方法中看到
+
+   ```C++
+   class AddScalarPluginCreator : public IPluginCreator
+   {
+       const char *getPluginName() const noexcept override;
+       const char *getPluginVersion() const noexcept override;
+   ```
+
+   简单解释 `const noexcept override`
+
+   1. const 代表这个函数不会修改任何变量
+
+   2. noexcept 代表这个函数不会使用 `throw` 来抛出 exception，该操作时的在运行时不会进行 exception 处理从而加速
+
+      ```c++
+      // throw an exception
+      #include <stdexcept>
+      
+      int divide_e(int a, int b) {
+         if (b == 0) {throw std::runtime_error("Division by zero");}
+         return a / b;
+      }
+      
+      // without exception
+      int divide_no_e(int a, int b) noexcept {
+          return a / b;
+      }
+      
+      // this will cause error, because we use throw in a noexcpet function
+      int divide_e(int a, int b) noexcept {
+         if (b == 0) {throw std::runtime_error("Division by zero");   }
+         return a / b;
+      }
+      
+      // this will not cause error, and return 0 (false), as we might be throwing exception in this function, whether the throw is actual thrown or not
+      std::cout << std::boolalpha << noexcept(divide_e(1, 0)) << std::endl;
+      std::cout << std::boolalpha << noexcept(divide_e(3, 3)) << std::endl;
+      ```
+
+   3. override 代表该函数是重载了所继承类中的同名函数
+
+3. `reinterpret_cast & static_cast & const_cast & (T)`
+
+   分别介绍下这四种 cast，参考 [C++强制类型转换运算符（static_cast、reinterpret_cast、const_cast和dynamic_cast）](http://c.biancheng.net/view/410.html)
+
+   1. `static_cast` 用于进行比较“自然”和低风险的转换，如整型和浮点型、字符型之间的互相转换。但是 `static_cast` 不能用于在不同类型的指针之间互相转换，当然也不能用于不同类型的引用之间的转换。因为这些属于风险比较高的转换
+
+   2. `reinterpret_cast` 用于进行各种不同类型的指针之间、不同类型的引用之间以及指针和能容纳指针的整数类型之间的转换。转换时，执行的是逐个比特复制的操作
+
+   3. `const_cast` 运算符仅用于进行去除 const 属性的转换，它也是四个强制类型转换运算符中唯一能够去除 const 属性的运算符
+
+   4. C-style 转换 `(Type)`，参考 [What is the difference between static_cast and reinterpret_cast?](https://stackoverflow.com/questions/6855686/what-is-the-difference-between-static-cast-and-reinterpret-cast)
+
+      > A C-style cast of the form `(T)` is defined as trying to do a `static_cast` if possible, falling back on a `reinterpret_cast` if that doesn't work. It also will apply a `const_cast` if it absolutely must.
