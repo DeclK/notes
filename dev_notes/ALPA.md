@@ -1,4 +1,4 @@
-# Auto Parallel
+# ALPA
 
 ## Links
 
@@ -11,9 +11,7 @@
 - https://github.com/microsoft/DeepSpeed
 - https://github.com/alpa-projects/alpa
 
-## Alpa
-
-### Concept
+## Concept
 
 - Auto Parallel
 
@@ -29,7 +27,7 @@
 
   下图使用一个两层的 Linear 来直观展示
 
-  ![image-20231007162157269](./Auto Parallel/image-20231007162157269.png)
+  ![image-20231007162157269](./ALPA/image-20231007162157269.png)
 
   Intra-op para 由于需要对数据进行切分和整合，所以需要在设备之间进行大量的交流，这需要高带宽进行支撑。对比于 inter-op para，则不需要这么高带宽来进行设备间的交流
 
@@ -45,7 +43,7 @@
 
 - ZeRO
 
-  权重分片更新，一种 data para 的优化技巧
+  权重分片更新，一种 data para 的优化技巧，详细的解读 [zhihu](https://zhuanlan.zhihu.com/p/394064174)
 
 - Compilation Pass
 
@@ -63,11 +61,11 @@
   2. Intra-op Pass，优化子图在 devices 中的运行速度，执行计划由整数线性规划算法决定
   3. Runtime Orchestration，将上面的最优策略进行编译生成 pipeline 和执行指令，完成不同子图间的数据交流和 resharding
 
-  ![image-20231007172514939](./Auto Parallel/image-20231007172514939.png)
+  ![image-20231007172514939](./ALPA/image-20231007172514939.png)
 
 - SPMD-style intra-op para
 
-  scalable parallelization for ml computation graphs
+  Single Program Multi Data. scalable parallelization for ml computation graphs
 
   > which partitions operators evenly across devices and executes the same instructions on all devices
 
@@ -93,17 +91,29 @@
 
   resharding 其实就是 reshape，即将数据重新进行分片
 
+- Computational graph 计算图
+
+  这个概念在接触深度学习之初就看到过了，尤其是在计算反向传播的时候，会频繁提到计算图的概念。计算图由节点和边组成 $G=(V,E)$，**其中每一个节点是一个算子，而边代表数据的流向**。其他教程也有说：节点是数据，边是算子的。但为了统一，我以后都按加粗字体理解
+
 - ILP Formulation
 
   将计算图所花费的时间进行数学抽象
 
-  计算图中的每一个节点代表一个算子，每一个算子需要花费计算时间以及通信时间，而节点与节点之间需要进行 resharding
+  计算图中的每一个节点代表算子，每一个算子需要花费计算时间以及通信时间，而节点与节点之间需要进行 resharding
 
   总时间就是节点的时间和边的时间
   $$
   \operatorname*{min}_{s}\sum_{\nu\in V}s_{\nu}^{T}(c_{\nu}+d_{\nu})+\sum_{(\nu,u)\in E}s_{\nu}^{T}R_{\nu u}s_{u},
   $$
   其中把一个 stage 仍然抽象为一个图 $(V,E)$，下标 v 代表一个节点（一个或多个算子，这里混用了节点和算子概念），s 则代表所选用的策略，为一个 one-hot 向量，c 为算子内通信时间，d 为算子计算时间，R 为节点之间的通信时间
+
+  算子内的通信时间和节点之间的通信时间，都可以理解为 resharding 所花费的时间
+
+  几个优化：
+
+  1. 所有的计算量 $c_v$ 都是 0。这基于一个假设：shard specs 不影响算子的计算速度。矩阵乘法拆分成几个部分做，其算数计算数都是一样的，而且我们都是平分到 GPU 上，所以都应该是同时完成
+  2. 将一些 element-wise 的算子融合到节点当中
+  3. 将通信的 all-reduce 操作全部替换为 reduce-scatter + all-gather，这样更快 [zhihu](https://zhuanlan.zhihu.com/p/504957661)
 
 - DP Formulation
 
@@ -115,7 +125,7 @@
   $$
   其中 t 为某个 stage 所花费的时间，B 为 micro-batches 数量。下面为整个计算图的消耗时间 T 的示意图
   
-  ![image-20231010151313826](./Auto Parallel/image-20231010151313826.png)
+  ![image-20231010151313826](./ALPA/image-20231010151313826.png)
   
 - XLA, Ray, Jax, NCCL
 
@@ -125,16 +135,68 @@
   - https://github.com/ray-project/ray
   - https://github.com/google/jax
   - https://github.com/NVIDIA/nccl
+  
+- 1F1B pipeline
 
-### Layouts
+  one-forward-one-backward pipeline 就是 Gpipe 的升级版本，其核心思想是尽快释放占用显存，这样 peak memory 相比 Gpipe 要少，但是二者的时间其实是一样的 [ColossalAI](https://colossalai.org/docs/features/pipeline_parallel/#introduction-of-1f1b-pipeline)
 
+- 3D parallelism
 
+  所谓的 3D 是指包含了三个维度：data parallelism, tensor parallism (also called model parallelsim & operator parallelism), pipeline parallelism
+  
+- Operand
 
-### Question
+  直翻为操作数。带入到论文里根本读不通，这里应该是指一个算子
 
-- ZeRO Optimizer 同时使用了 Data Para & Op Para? 具体是如何实现。同时为什么 ZeRO 被放在了 intra-op parallelism 当中
-- 在 Op Para 中，为什么第二个 matmul 是 replicated，而没有被划分
-- 如何将 op 进行分割，从而在多设备上运行
+## Layouts
+
+- Manual combination of parallelism
+
+  Megatron-LM 就是手工设计 parallelism 的经典之作。通过假设模型为堆叠的 transformer blocks，可以很容易地将模型切分为几个相同的子图。对所有层都使用手工设计的 operator + data parallelism 很容易完成对 Megatron-LM 的 3D 并行训练
+
+- Parallelism 之间的交互
+
+  当我们在使用多种并行技巧的时候，它们之间显然是会相互影响的。例如在某个 operator parallelism 之下，你想要再增加一个 data batch 以提升 data parallelism 并行度，此时你需要添加多个 GPU，以满足 operator parallelism 的 GPU 基础条件，而不是只添加一个 GPU。同时 pipeline parallelism 也取决于你如何分配 GPU，以及在这些 GPU 之上你的 data & operator parallelism 如何运行
+
+- Operator oriented parallelism
+
+  在我看来，intra-op para 似乎更多的是比谁的 operator parallelism 设计得好。要有足够好的并行算法，才能生成足够好的搜索空间
+  
+- ILP 详解
+
+  看懂 ILP Formulation 的公式并不难，但是仍有几个问题没有弄清楚：
+
+  
+
+## Question
+
+- ✅如何将 Data Parallelism, Operator Parallelsim, ZeRO 统一起来的？在 ZeRO 中还有对 optimizer 的优化
+
+  ALPA 的 intra-op para 和 ZeRO 可以说关系不大，因为 ZeRO 是直接将数据展开到一维，然后暴力切分，在计算的时候再利用通信组合起来成为完成的 layer。这与 ZeRO blog 的图示理解不一致
+
 - 在 ILP Formulation 中，这些计算时间、通信时间是如何获得的
-- 在 DP Formulation 中，动态规划的代码是如何实现的
-- 为什么使用更多的 GPU 反而 out of memory？原因可能在于并行时额外的通信增加，导致显存增加
+
+- 在 DP Formulation 中，动态规划的代码是如何实现的？如何理解动态规划的状态转移方程？
+
+- 在以上 formulation 中，哪些计算是估计的？
+
+- 为什么使用更多的 GPU 反而 out of memory？因为随着 GPU 的增加，模型 channel 也在增加，导致显存平方增加，没进行张量并行的话一定会炸掉
+
+- 就使用论文里面的 limitations，看能否突破？例如建模通信速度
+
+- Crazy ideas，是否能够使用以下优化算法来进行 management:
+  1. Neural Nets，神经网络对于非凸优化应该有不错的能力，DeepMind 应该会比较在行
+  2. RegNets，向 Kaiming 学习
+  3. xgboosts，向 TVM 学习。但是在 [bilibili](https://www.bilibili.com/video/BV1f14y1A7AN) 中说与 autoTVM 还是有一定区别的，没有那么细？区别在哪里？
+  
+- 算法复杂度如何进行降低？似乎不能扩展到 64+ 的 Cluster
+
+- **ALPA 中最核心的部分应该就是 strategy 的空间，具体是什么样子的？**
+
+- Logical & physical mesh 如何进行区别？如果 Logical 不符合 Physical 的建模，是否会影响最后结果？
+
+- ✅为什么视觉模型无法做到和语言模型一样大？
+
+  实际上是可以的，只不过训练视觉模型没有语言模型那样简单，resolution 在不断地降低，这样在网络前期占用显存高，计算密度大，网络后期显存和计算都会显著降低。这种情况很难在 GPU 之间进行简单切分。我认为现在的 vit 应该能解决这样的问题，因为 vit 训练不需要多个 resolution，也是简单堆叠
+
+- 在计算图中，如何将 transpose, reduce 和其他 operand 融合？

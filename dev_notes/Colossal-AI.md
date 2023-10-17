@@ -31,11 +31,33 @@
 
   ![image-20231008171659165](./Colossal-AI/image-20231008171659165.png)
 
-- communicate ways
+- communicate ways: **All-Reduce, All-Gather**...
 
   在一个 process group 中有两种交流方式：peer-to-peer 和 collective
 
   前者是 process 间的交流，后者是整个 group 的交流（scatter, gather, all-reduce...）
+
+  ![image-20231017095247271](./Colossal-AI/image-20231017095247271.png)
+
+  补充一个：all to all 的 collective 方式，该方式可理解为 scatter and gather，其最终效果类似于矩阵转置
+
+  ```python
+  >>> input = torch.arange(4) + rank * 4
+  >>> input = list(input.chunk(4))
+  >>> input
+  [tensor([0]), tensor([1]), tensor([2]), tensor([3])]     # Rank 0
+  [tensor([4]), tensor([5]), tensor([6]), tensor([7])]     # Rank 1
+  [tensor([8]), tensor([9]), tensor([10]), tensor([11])]   # Rank 2
+  [tensor([12]), tensor([13]), tensor([14]), tensor([15])] # Rank 3
+  >>> output = list(torch.empty([4], dtype=torch.int64).chunk(4))
+  >>> dist.all_to_all(output, input)
+  >>> output
+  # rank0 element is scatter to all process, and gather all elements
+  [tensor([0]), tensor([4]), tensor([8]), tensor([12])]    # Rank 0
+  [tensor([1]), tensor([5]), tensor([9]), tensor([13])]    # Rank 1
+  [tensor([2]), tensor([6]), tensor([10]), tensor([14])]   # Rank 2
+  [tensor([3]), tensor([7]), tensor([11]), tensor([15])]   # Rank 3
+  ```
 
 - ZeRO
 
@@ -185,3 +207,4 @@ for idx, (img, label) in enumerate(train_dataloader):
 - 经常看到 O1 O2 O3 的优化水平（Optimization Level），这是否有固定的标准？
 - Sequence Parallel 是否会影响前后关系？毕竟在并行的时候进行了切分？
 - Sequence Parallel 如何在 activation recomputation 中发挥作用？
+
