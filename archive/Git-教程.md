@@ -181,11 +181,35 @@ node_modules	# 忽略 node_modules 文件和目录
 
 ### git stash
 
-TODO
+git stash 使用场景：当你正在某个分支进行开发，忽然想要切换到其他分支，但是当前分支的工作区的开发并未完成，你不想要提交一个 commit，这个时候就需要使用 stash
+
+`git stash` 可以直接将工作区的修改存储到暂存区，经过 stash 过后你会发现之前修改的文件都变回了未更改的内容。并且，你可以进行多次的存储：stash -> modify -> stash again -> modify again ->...
+
+`git stash save 'message'` 可以给每一次 stash 进行命名
+
+`git stash list` 可以查看所有的 stash
+
+`git stash pop` 会释放最近一次的 stash 所存储的更改，你会看到最前保存的更改又回到了文件当中
+
+`git stash apply stash@{index}` 会将指定 index stash 所存储的内容释放
+
+`git stash drop stash@{index}` 会删除指定 index stash 所存储的内容
 
 ### git rebase
 
-TODO
+rebase 一种较危险的 merge 操作，会更换节点的基底
+
+```txt
+# before rebase
+--A--B--M (master branch)
+     |
+     C--D (feature branch)
+
+#(at feature branch) git rebase master
+--A--B--M--C'--D'
+```
+
+在 rebase 的过程中需要处理 C, D 与 M 之间的提交冲突。由于在变基过后无法追溯代码分支与合并过程，所以增加了追溯问题的难度
 
 ## 分支与冲突
 

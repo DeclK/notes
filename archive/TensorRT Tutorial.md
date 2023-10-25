@@ -509,6 +509,26 @@ nsys 其原理是去追踪程序运行时的一些 API，根据这些 API 调用
 
 在默认参数中 `--trace` 被设置为跟踪 `cuda, opengl, nvtx, osrt` 这四个 API，一般足够用了
 
+之前 nvidia 使用 nvprof 来对程序进行测速，但现在随着版本迭代更新，nvprof 也不再支持。从 nvprof 迁移到 nsys 也很简单，只需要加入 `--stats true` 就可以在 terminal 输出耗时信息。我们主要关注 `gpukernsum` & `gpumemtimesum`，分别关注核函数以及内存时间
+
+```shell
+nsys profile --stats=true ./a.out
+
+[6/8] Executing 'gpukernsum' stats report
+
+ Time (%)  Total Time (ns)  Instances   Avg (ns)     Med (ns)       GridXYZ           BlockXYZ              Name
+ --------  ---------------  ---------  -----------  -----------  ----------------  --------------  -----------------------
+    100.0       39,654,920         11  3,604,992.7  3,473,411.0  781250    1    1   128    1    1  add()
+
+[7/8] Executing 'gpumemtimesum' stats report
+
+ Time (%)  Total Time (ns)  Count    Avg (ns)       Med (ns)      Min (ns)     Max (ns)    StdDev (ns)      Operation     
+ --------  ---------------  -----  -------------  -------------  -----------  -----------  -----------  ------------------
+     67.0      347,475,859      1  347,475,859.0  347,475,859.0  347,475,859  347,475,859          0.0  [CUDA memcpy DtoH]
+     33.0      170,811,302      2   85,405,651.0   85,405,651.0   85,208,819   85,602,483    278,362.5  [CUDA memcpy HtoD]
+
+```
+
 ## 插件（Plugins）
 
 主要介绍使用 Plugin 的流程，不对如何构建 Plugin 做深入介绍
