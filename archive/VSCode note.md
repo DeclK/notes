@@ -280,3 +280,6 @@ sudo apt-get install libxcb-xinerama0 libxcb-xinerama0-dev libsm6
     }
 ```
 
+当打开了代理过后，还建议打开对 extension 的代理支持
+
+![image-20231031123653453](VSCode note/image-20231031123653453.png)
