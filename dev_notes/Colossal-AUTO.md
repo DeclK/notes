@@ -28,6 +28,8 @@
 
 ## Layout
 
+### 论文
+
 - 之前的方法都是分别优化 distributed execution plans & activation checkpointing scheduling，这篇论文将二者都使用了
 
 - 论文提供了一个好用的 symbolic profiler，能够快速生成算子所使用的内存和计算耗时数据
@@ -99,6 +101,109 @@
 
 - 论文将 intra-op 和 activation checkpointing solver 分开求解，合在一起求解都不知道该咋弄。但是二者都是为了减少 memory 的使用，所以需要给二者进行 memory 分配。到底是给 intra-op 更多的内存，还是让 activation checkpoint 去解决内存。论文的方法是尝试多种分配方案，选择最优方案
 
+### AlphaBetaProfiler
+
+- `alpha_beta_dict`
+
+  存储了一个字典
+
+  ```python
+  {(0, 1): (1.9641e-05, 4.7404e-12), ...}
+  ```
+
+  key 是一个 tuple，代表了两个 device 的 global rank
+
+  value 也是一个 tuple，分别代表了 alpha 和 beta
+
+  这个字典应该是存储了两两 GPU 之间的通信参数。但实际上代码所计算的结果并不是准确的 alpha & beta，直接用 beta 就行了？
+  $$
+  beta = \frac{nbytes}{total\ time}
+  $$
+
+- `detect_homogeneous_device`
+
+  返回一个字典 `homogeneous_device_dict` 
+
+  ```python
+  {4.7404e-12: [(0, 1), (0, 2), (4, 5)],
+   beta: [...], ... ...}
+  ```
+
+  key 是一个基础的 beta 值
+
+  value 是一个列表，列表中的元素为一个 process group
+
+  这个字典代表的是，这些 group 的通信代价都在对应的 beta 值附近。这说明在这些节点之间进行通信，代价都是相同的
+
+  如果找不到一个 homogeneous group 能够包含所有的节点，那就会采用一个默认的方阵 mesh
+
+- `search_best_logical_mesh`
+
+  搜索最优的 logical mesh，这是对所有的 device 而言的，而没有对其进行划分
+
+  在该 2D logical mesh (Y, X) 角度下，X 轴的通信速度是最快的
+
+- `extract_alpha_beta_for_device_mesh` 
+
+  针对于所使用的 2D logical mesh 进行 profile，查看 X 轴和 Y 轴的 alpha beta 参数
+
+### DeviceMesh
+
+- `convert_map`
+
+  是一个字典，将 global rank 映射到 logical rank 当中
+
+  所谓的 logical rank 其实是一个二维坐标 [0, 0], [0, 1]...
+
+- `create_process_groups_for_logical_mesh`
+
+  一个 process group 就是在一个轴上的 devices
+
+  举一个例子，一个 logical mesh 为 2x3 的集群
+
+  ```txt
+  [[0, 1, 2],
+   [3, 4, 5]]
+  ```
+
+  其 process group 有 2 + 3 = 5 个
+
+  ```txt
+  [0, 1, 2]
+  [3, 4, 5]
+  [0, 3]
+  [1, 4]
+  [2, 5]
+  ```
+
+- 并且将 mesh alpha 和 mesh beta 作为属性放在 DeviceMesh 中
+
+### initialize_model
+
+所有的重头戏应该都包含在这个函数当中了！
+
+- `ColoTracer` & `ColoGraphModule`
+
+  基于 Fx 的图
+
+  具有哪些性质？
+
+- `StrategiesConstructor`
+
+  有三个初始化参数：`graph, device mesh, solver_options`
+
+  其中 solver options 可看做一个结构体，仅包含三个元素
+
+  1. solver preference：standard, DP, TP，不清楚 standard 表示什么 solver，猜测 DP 和 TP 分别表示 data & tensor
+  2. dataloader option: replicate, distributed
+  3. shard option: standard, shard, shard last axis, full shard
+
+  估计 standard 是不作任何限制
+
+  
+
+  
+
 ## Question
 
 - 什么是 meta tensor
@@ -123,3 +228,11 @@
   ```
 
   不太清楚为什么要使用一个 flatten mesh
+  
+- alpha beta profile 中
+
+  beta 的计算是对 1GB 的数据计算 all reduce 的时间，此时 latency 时间忽略不计
+
+  alpha 的计算是发送极少量的数据来测量 all reduce 的时间，此时 beta 时间忽略不计
+
+- 基于 Fx 的图具有哪些性质？
