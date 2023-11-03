@@ -200,17 +200,14 @@
 
   估计 standard 是不作任何限制
 
-  
 
-  
+- dataclass decorator in python [zhihu](https://zhuanlan.zhihu.com/p/59657729)
 
 ## Question
 
 - 什么是 meta tensor
 
-- 如果不在具体的设备上进行运行，怎么知道模型的运行时间？
-
-- 如何测试 symoblic profiler 与真实 profiling 的时间
+- 如果不在具体的设备上进行运行，怎么知道模型的运行时间？如何测试 symoblic profiler 与真实 profiling 的时间
 
 - alpa 中的 specs conversion path 是如何计算的
 
@@ -229,7 +226,7 @@
 
   不太清楚为什么要使用一个 flatten mesh
   
-- alpha beta profile 中
+- ✅alpha beta profile 中
 
   beta 的计算是对 1GB 的数据计算 all reduce 的时间，此时 latency 时间忽略不计
 

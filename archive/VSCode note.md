@@ -280,6 +280,12 @@ sudo apt-get install libxcb-xinerama0 libxcb-xinerama0-dev libsm6
     }
 ```
 
-当打开了代理过后，还建议打开对 extension 的代理支持
+当打开了代理过后，还可以打开对 extension 的代理支持（不推荐，除非报错）。我尝试过打开这个代理支持，但是在远程依然安装很慢
 
 ![image-20231031123653453](VSCode note/image-20231031123653453.png)
+
+一个不错的解决方案是从你的本地下载好的插件移植到容器当中
+
+![image-20231103123206142](VSCode note/image-20231103123206142.png)
+
+这样就只需要对本地 vscode 进行管理，而在远程的 vscode server 可以通过本地已经下载好的插件快速安装。可以在 OUTPUT -> Window 查看进程，如果没有反应说明远端与本地的连接出现了问题，我通过重启 docker 服务解决了
