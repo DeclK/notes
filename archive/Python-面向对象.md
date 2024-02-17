@@ -302,6 +302,37 @@ test(name, age)
 
 **还有一个方法来学习装饰器的内部逻辑，就是直接对代码 debug，一步步看程序是如何运行的**
 
+### 理解装饰器
+
+我发现用一下思路来理解装饰器将非常自然：把装饰器当成一个 class 来看待。我们为什么需要装饰器？因为需要给原始的函数/类增加一些功能。当这些功能比较复杂的时候，实际上用一个类来处理是最合适不过的，把原函数作为装饰器“类”的一个方法：
+
+```python
+class decorator:
+    param = None
+    def __init__(self, func):
+        # do anything
+        self.configure_decorator_with_param(cls.param)
+        
+        self.func = func
+        # return _wrap_func
+
+    def _wrap_func(self, *args, **kwargs):
+        # do anything
+        self.func(*args, **kwargs)
+        
+    @classmethod
+    def configure_decorator_with_param(cls, param):
+        pass
+        
+@decorator
+def fun(*args, **kwargs)
+
+@decorator(param)
+def fun(*args, **kwargs)
+```
+
+至此，我们就可以统一来看待装饰器和类了，这样既自然又不失装饰器的功能。带参数的装饰器，就是给类加入一个类方法，做一些初始化，最终调用的就是 `self._wrap_func`
+
 ### python 内置装饰器
 
 内置的装饰器和普通的装饰器原理是一样的，只不过一般用于类的方法当中，让类变得更灵活

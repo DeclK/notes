@@ -47,6 +47,14 @@ transforms = timm.data.create_transform(**data_config, is_training=False)
 有了模型，有了输入图像，可直接进行推理
 
 ```python
+from PIL import Image
+import numpy as np
+import timm
+
+img = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+data_config = timm.data.resolve_model_data_config(model)
+transforms = timm.data.create_transform(**data_config, is_training=False)
+
 model.eval()
 output = model(transforms(img).unsqueeze(0))  # output is (batch_size, num_features) shaped tensor
 ```
@@ -58,11 +66,43 @@ output = model(transforms(img).unsqueeze(0))  # output is (batch_size, num_featu
 ```python
 import torch
 import timm
-m = timm.create_model('resnest26d', features_only=True, pretrained=True)
+m = timm.create_model('resnest26d', features_only=True, pretrained=True, out_indices=(2,3))
 o = m(torch.randn(2, 3, 224, 224))
 for x in o:
     print(x.shape)
 ```
+
+总结下 `timm.create_model` 的完整逻辑：
+
+1. 输入有三个重要元素：
+
+   1. `model_name`，其由两部分组成 `model.pretrained_tag`，前半部分代表模型名，后半部分代表预训练 tag
+   2. `pretrained`，是否拉取预训练权重
+   3. `features_only`，是否仅用于抽取特征
+
+2. 通过 `model_name` 创建模型
+
+   模型的创建方法全部都写在了模型的文件里，如上面的 `def resnet50(...)`，就是典型的模型创建方法。通常来说 timm 还喜欢用一层 `_create_model` 的抽象，用于真实的创建模型，`@register_model` 所装饰函数通常用于创建 config，可看做配置文件。而 `_create_model` 需要干两件事：加载预训练函数以及使用配置创建文件
+
+   ```python
+   def _create_convnext(variant, pretrained=False, **kwargs):
+       # variant is model name, you can find config with variant
+       model = build_model_with_cfg(
+           ConvNeXt, variant, pretrained,
+           feature_cfg=dict(out_indices=(0, 1, 2, 3), flatten_sequential=True),
+           **kwargs)
+       return model
+   ```
+
+   这里写为 `kwargs` 的输入对于阅读代码来说很不友好，需要自己查看到底会传入什么东西。我认为 `kwargs` 主要包含三个部分：
+
+   1. `pratrained_tag`
+   2. `features_only`
+   3. `out_indices`，会覆盖掉默认的 `out_indices`
+
+3. 如果 `features_only` 则可能会使用 `FeatureListNet` 去封装一下原模型
+
+   `FeatureListNet` 就是根据 `out_indices` 返回输出，并且会剔除掉 `head` 相关的层，只保留前向计算必须的网络层
 
 ## ResNet
 
@@ -99,7 +139,7 @@ ResNet 分为四个部分，这也是目前 vision backbone 的主流框架
 
 4. Head
 
-   分类头，通常为一个全连接层
+   分类头，通常为一个 avrage pool + fc (linear)
 
 ### 理解 ResNet building block
 
@@ -198,7 +238,7 @@ model = mobilenet_v3_large(pretrained=False)
            x = self.se(x)
    
        # stride = 1, project out channels
-       x = self.ConvBnAct2(x)
+       x = self.ConvBn2(x)
        
        # only used when stride = 1 and in_c = out_c
        if self.use_res:
@@ -352,9 +392,8 @@ $w_m$ 我理解为一个“阶梯”因子，例如当 $w_m=2$ 时，每一个�
 
 timm 中 regnet bottleneck 和 ResNet 中几乎一样，有如下区别
 
-> This is almost exactly the same as a ResNet Bottlneck. The main difference is the SE block is moved from
+> This is almost exactly the same as a ResNet Bottlneck. The main difference is the SE block is moved from after conv3 to after conv2. Otherwise, it's just redefining the arguments for groups/bottleneck channels.
 >
-> after conv3 to after conv2. Otherwise, it's just redefining the arguments for groups/bottleneck channels.
 
 前向代码如下
 
@@ -364,7 +403,7 @@ timm 中 regnet bottleneck 和 ResNet 中几乎一样，有如下区别
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.se(x)
-        x = self.conv3(x)
+        x = self.conv3(x)	# no activation
         if self.downsample is not None:
             # NOTE stuck with downsample as the attr name due to weight compatibility
             # now represents the shortcut, no shortcut if None, and non-downsample shortcut == nn.Identity()
@@ -372,6 +411,179 @@ timm 中 regnet bottleneck 和 ResNet 中几乎一样，有如下区别
         x = self.act3(x)
         return x
 ```
+
+## Swin Transformer
+
+最终还是要向这篇 ICCV 2021 best paper 发起进攻。我不仅想要知道 Swin 的实现细节，我更想了解其训练方法，因为 timm 中后期将之前很多网络按照 swin 的方式重新训了一次，都有提升。除此之外，我还想知道 swin 最具价值的思想
+
+### Swin 中的概念
+
+1. **PatchEmbed**
+
+   和 ResNet 中的 Stem 是一个概念，将初始图像进行下采样，所使用的是 `Conv2d(3, embed_dim, kernel_size=patch_size, stride=patch_size)`，并且加入了 post norm 维持数值稳定，还将输出张量变为 `NHWC` 布局
+
+2. **Relative Positional Bias**
+
+   怪不得看 SparseBEV 的时候觉得 SASA 眼熟，和 relative posisional bias 的形式是一模一样的。其目的就是在 attention 中加入位置的感知，也许距离近的权重更改更高一些，距离远的权重低一些
+   $$
+   Attn(Q,K,V)=Softmax(\frac{QK^T}{\sqrt d} + B)
+   $$
+   为了保持灵活性，B (bias) 是一个可学习的参数，并且对每一个 head 都不一样
+
+   创建这个 bias 的过程是值得学习的，我们的目的是：创建一个 bias matrix $(HW,HW,1)$，代表了 windows 中两两之间的 bias。我自己的实现如下，是一个二维的实现而没有展开到一维，运用了 **`meshgrid` & 索引**
+
+   ```python
+   # impl my relative bias
+   import torch
+   
+   def get_relative_position_index(win_h, win_w):
+       # get coordinates of center pixel
+       coord = torch.stack((torch.meshgrid(torch.arange(win_h), torch.arange(win_w))), dim=-1) # (H, W, 2)
+       coord = coord.reshape(-1, 2) # (H*W, 2)
+       offset = coord.unsqueeze(1) - coord.unsqueeze(0) # (HW, HW, 2)
+       offset[:, :, 0] += win_h - 1    # shift to non-negative
+       offset[:, :, 1] += win_w - 1
+       return offset
+   
+   win_h, win_w = 3, 3
+   num_heads = 2
+   rel_bias = torch.randn(2*win_h-1, 2*win_w-1, num_heads)
+   index = get_relative_position_index(3, 3)
+   bias = rel_bias[index[:, :, 0], index[:, :, 1]] # (HW, HW, num_heads)
+   ```
+
+3. **WindowAttention**
+
+   窗口注意力非常容易理解：将输入的特征图分解为窗口 `(num_windows * B, N, C)`，在每一个窗口内进行注意力计算。因为需要使用 relative positional bias，所以要将 `num_heads` 的维度单独分出来，之前的注意力可以直接合并到 batch 的维度
+
+   没有使用 `attn_mask` 来添加 bias，但实际上是可以一起做的，前向代码如下
+
+   ```python
+       def forward(self, x, mask: Optional[torch.Tensor] = None):
+           B_, N, C = x.shape
+           qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)	 # (3, B, num_heads, N, C)
+           q, k, v = qkv.unbind(0)
+   
+           q = q * self.scale
+           attn = q @ k.transpose(-2, -1) # (B, num_heads, N, N)
+           
+           # relative positional bias
+           attn = attn + self._get_rel_pos_bias()
+           
+           if mask is not None:	# shift attn mask
+               num_win = mask.shape[0]
+               attn = attn.view(-1, num_win, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
+               attn = attn.view(-1, self.num_heads, N, N)
+           # attend
+           attn = self.softmax(attn)
+           attn = self.attn_drop(attn)
+           x = attn @ v
+   
+           x = x.transpose(1, 2).reshape(B_, N, -1)
+           x = self.proj(x)
+           x = self.proj_drop(x)
+           return x
+   ```
+
+   这里对比了一些 torch 的常用操作：`split, chunk, unbind`，以及 `einops`。前面三个操作是将某一个维度进行分开，split 是传入一个 `split_size`，chunk 传入分离数量，相当于传入均匀的 `split_size`，并且最后一个 size 为自动调整的，而 unbind 相当于 `chunk(dim_size)`。einops 在对于形状的操作是最方便的
+
+4. **ShifedWindowAttention**
+
+   所谓的滑动窗口，就是将 window 划分斜上滑动一段距离 `shift_size`，这个操作是使用的 `torch.roll` 完成的
+
+   ```python
+   import torch
+   
+   x = torch.arange(16).view(4, 4)
+   # roll
+   y = torch.roll(x, (-1, -1), dims=(0, 1))
+   
+   # results
+   tensor([[ 0,  1,  2,  3],
+           [ 4,  5,  6,  7],
+           [ 8,  9, 10, 11],
+           [12, 13, 14, 15]])
+   ----
+   tensor([[ 5,  6,  7,  4],
+           [ 9, 10, 11,  8],
+           [13, 14, 15, 12],
+           [ 1,  2,  3,  0]])
+   ```
+
+   窗口活动过后不能按照平常的 window attention 完成，因为有拼接的部分，所以需要制作 attention mask 来处理便宜到右下角的图像。其实现使用了 python built-in  `slice` 来巧妙完成，可视化结果参考 [issue](https://github.com/microsoft/Swin-Transformer/issues/38#issuecomment-823810343)。简单总结：
+
+   1. 生成一个大的 mask 模板 (H, W)，其中 HW 代表**整个图片**的高宽
+
+   2. 对 mask 进行分区，总共分成 8 个子区域，当 window 数量为 4 个的时候示意图如下（实际上 windows 0 的区域在 H W 大的时候，比例会比较大）
+
+      <img src="Timm Image Backbone/image-20240107160029961.png" alt="image-20240107160029961" style="zoom:67%;" />
+
+      代码如下，利用了 sice 来对区域进行赋值操作
+
+      ```python
+                  img_mask = torch.zeros((1, H, W, 1))  # 1 H W 1
+                  cnt = 0
+                  for h in (
+                          slice(0, -self.window_size[0]),
+                          slice(-self.window_size[0], -self.shift_size[0]),
+                          slice(-self.shift_size[0], None)):
+                      for w in (
+                              slice(0, -self.window_size[1]),
+                              slice(-self.window_size[1], -self.shift_size[1]),
+                              slice(-self.shift_size[1], None)):
+                          img_mask[:, h, w, :] = cnt
+                          cnt += 1
+      ```
+
+   3. 使用 `window_partition` 将 mask 切分成 window size
+
+      ```python
+      # (1, H, W, 1) -> (nW, window_size, window_size, 1)
+      mask_windows = window_partition(img_mask, self.window_size)  # nW, window_size, window_size, 1
+      ```
+
+   4. 在每一个 window size 内部，不同子区域之间是不做注意力的，所以区域号不同的加入惩罚 `attn_mask = -100`
+
+      ```python
+      mask_windows = mask_windows.view(-1, self.window_area)	# (nW, HW)
+      attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)	# (nW, HW, HW)
+      # mask
+      attn_mask = attn_mask.masked_fill(attn_mask != 0, float(-100.0)).masked_fill(attn_mask == 0, float(0.0))
+      ```
+
+5. **PatchMerging**
+
+   是 Swin 中下采样的方式，将 2x2 的区域特征堆叠起来，然后用一个 Linear 转换维度。该方法替换了原始的卷积下采样
+
+   ```python
+       def forward(self, x):
+           B, H, W, C = x.shape
+           x = x.reshape(B, H // 2, 2, W // 2, 2, C).permute(0, 1, 3, 4, 2, 5).flatten(3)
+           x = self.norm(x)
+           x = self.reduction(x)	# linear project 4C->2C
+           return x
+   ```
+
+### 理解 Swin Transformer
+
+了解了 Swin 的基本概念，接下来就是组装他们。Swin 的架构直接上图就行了
+
+![image-20240107192040916](Timm Image Backbone/image-20240107192040916.png)
+
+同时再整理一下 timm 中统一的分类头
+
+```python
+def forward_head(self, x):
+    # x is direct output of Stage-4
+    x = self.norm(x)	# this norm is actually written in forward_features part
+    
+    # head
+    x = self.global_pool(x)	# nn.AdaptiveAvgPool2d(1)
+    out = self.linear(x)
+    return out
+```
+
+这里我加入了一个 LayerNorm，实际上这一层是在 `forward_features` 中的，但是在上面的示意图中不能展示出来，加在这里表示强调
 
 ## Concept
 
@@ -435,6 +647,8 @@ timm 中 regnet bottleneck 和 ResNet 中几乎一样，有如下区别
    ```
 
    如果定义了 `__init__` 方法，使用 dataclass 就没有意义
+   
+   还可以使用 `field(default_factory=func)` 来获得更复杂的初始化c
 
 ## 问题
 
@@ -472,8 +686,30 @@ timm 中 regnet bottleneck 和 ResNet 中几乎一样，有如下区别
 
    - 对于长的代码行并没有做太多的分行处理，尤其是 `if ... else`，timm 很喜欢写在一行
 
-6. timm 训练 resnet 的方法有哪些？
+6. **timm 训练 resnet 的方法有哪些？**对比 EVA, ConvNeXT, Swin, ResNet v1 v2, MAE
 
-   以 `.sw` tag 的训练方法 [discussion](https://github.com/huggingface/pytorch-image-models/discussions/1829) [_timm_hparams.md](https://gist.github.com/rwightman/943c0fe59293b44024bbd2d5d23e6303) [ResNet strikes back](https://arxiv.org/abs/2110.00476) [pytorch pretrained](https://pytorch.org/blog/how-to-train-state-of-the-art-models-using-torchvision-latest-primitives/)
+   以 `.sw` tag 的训练方法 [discussion](https://github.com/huggingface/pytorch-image-models/discussions/1829) [_timm_hparams.md](https://gist.github.com/rwightman/943c0fe59293b44024bbd2d5d23e6303) [ResNet strikes back](https://arxiv.org/abs/2110.00476) [pytorch pretrained](https://pytorch.org/blog/how-to-train-state-of-the-art-models-using-torchvision-latest-primitives/) [how to train your vits](https://arxiv.org/abs/2106.10270)
 
-7. activation 和 norm 的使用位置：norm 会频繁使用以维持数值稳定，但在 mlp 中基本不会使用，除非是在 feed forward network 当中。activation 在每一个 conv or linear 层过后都会有，除非是最后的输出层
+7. activation 和 norm 的使用位置：norm 会频繁使用以维持数值稳定，**在 ViT 中通常使用在最前面，即 pre-norm**，但 norm 在 mlp 中基本不会使用。activation 在每一个 conv or linear 层过后都会有，除非是最后的输出层
+
+   mlp 中基本上不带 norm 层，但是每一层 linear 过后基本上需要使用 dropout，但是大多数时候设置为 0.0🧐但是 drop path 用得更多，在 swin 和 convnext 中都有使用
+
+   ```python
+       def forward(self, x):
+           x = self.fc1(x)
+           x = self.act(x)
+           x = self.drop1(x)
+           x = self.fc2(x)
+           x = self.drop2(x)
+           return x
+   ```
+
+   rule: 
+
+   1. no activation if use residual!!! 为什么最后一层没有 act? 因为要使用残差连接，这更有利于残差学习。如果加入了激活层，有的值就直接被置零了，破坏了残差学习
+   2. it is ok not to use relu for each block output：mobilenet, transformers, regnetz (timm), efficientnet
+
+8. 卷积 backbone 和 transformer backbone 有什么必然的差别吗？为什么 Swin 的横空出世提升了 SOTA 这么多？
+
+   我认为 ConvNeXT 可能给出了答案：Swin 的成功仍然是 **Transformer 架构**的成功：更少的 activation layer，更少的 norm 并且使用 LayerNorm。另外一个关键点：**下采样的方式也非常重要！**在 ConvNeXT 中指出，只使用一个简单的 Conv2d 进行 stride 2 下采样会直接导致训练发散！但是在加入了 pre-norm 之后，训练就会变得稳定，并且提升了准确率。ConvNeXT 得出结论：**在分辨率改变前，使用一层 norm layer 是必要的，这会极大增强训练稳定性**。并且区别与 ResNet，下采样是不会参与到残差连接的结构当中的，这样的下采样方式能够显著提升表现
+

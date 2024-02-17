@@ -587,10 +587,10 @@ optim_wrapper = dict(
 
 - [ ] 分布式接口
 
-- [ ] 文件 io
+- [x] 文件 io
 
 - [ ] 如何使用模型进行推理
 
-- [ ] mixin 全局管理
+- [x] mixin 全局管理
 
-- [ ] mmcv 常用
+- [x] mmcv 常用

@@ -359,5 +359,28 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
    5. 配置网络，使得容器能够使用 host 网络。除了使用网络外，还能够让 docker 与 host X server 进行交流，使得像 matplotlib 这样的画图能够直接呈现在显示器上 
    6. 并给容器取名
    7. 指定 image id
-   
+
    如果是使用 wsl，这么配置甚至能够直接使用 matplotlib，直接在 window 中弹出可视化窗口
+
+5. 修改 docker 存储镜像的空间：
+
+   1. 找到 docker 配置文件，通常为 `/etc/docker/daemon.json `
+
+   2. 修改 `data_root`
+
+      ```python
+      {
+          "runtimes": {
+              "nvidia": {
+                  "path": "nvidia-container-runtime",
+                  "runtimeArgs": []
+              }
+          },
+          "data-root": "YOUR_DATA_PATH_HERE", # <--
+          "default-runtime": "nvidia"
+      }
+      ```
+
+   3. 把原来的 docker 位置移动到新的位置 `mv OLD_DATA_PATH NEW_DATA_PATH`
+
+   4. 重启 docker 服务 `sudo service docker restart` 或者 `sudo systemctl restart docker`
