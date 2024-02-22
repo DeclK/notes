@@ -79,7 +79,7 @@
    $$
    Attn(Q,K,V)=Softmax(\frac{QK^T}{\sqrt d} - \tau D)
    $$
-   其中 $\tau$ 是一个可学习的参数，控制感受野大小。可以看到 D 越小代表距离越小，此时在 softmax 中占比就越大；反之 D 越大代表距离越长，此时在 softmax 中占比就越小
+   其中 $\tau$ 是一个可学习的参数，对每个 query 的感受野能力进行控制。可以看到 D 越小代表距离越小，此时在 softmax 中占比就越大；反之 D 越大代表距离越长，此时在 softmax 中占比就越小。而 $\tau$ 越大则越强调近距离的 query，$\tau$ 越小则远近距离一视同仁
 
    对于不同的 head 采取不同的 $\tau$ 就能让不同的 head 有不同的感受野能力，之前我简单地把 $\tau$ 看做是一个维度为 `num_head` 的可学习参数，但这样的理解是错误的，因为 $\tau$ 在训练完过后就成为了定值，与样本无关了。确定的理解是 $\tau$ 是由 query 生成的，每一个 query 都会生成 `num_head` 个 $\tau$ 值，这样就能够和样本本身关联起来，例如如果遇到大车，那么 $\tau$ 值就会相应变小，以获得更大的感受野
 
@@ -94,7 +94,7 @@
 
 7. Adaptive Mixing
 
-   其实就是不同的维度做一个 mixing，然后再用 linear 投射到指定维度罢了。但为什么 mixing 要使用 query 生成矩阵？是否另外用一个可学习的 query 去做效果也是一样的？答案是否定的，作者做了实验，如果使用 static query 去生成矩阵效果会差很多，这就说明了 query 中包含了 mixing 所需要的信息。这个信息到底是什么？query 随着 decoder 层数的加深，会获得越来越清晰的空间信息（box）和时间信息（velocity），并且这些信息是与当前样本相关的。基于这些条件信息去做聚合肯定比 static query 效果更好
+   其实就是不同的维度做一个 mixing，然后再用 linear 投射到指定维度罢了。但为什么 mixing 要使用 query 生成矩阵？是否另外用一个可学习的 query 去做效果也是一样的？答案是否定的，作者做了实验，如果使用 static query 去生成矩阵效果会差很多，这就说明了 query 中包含了 mixing 所需要的信息。这个信息到底是什么？query 随着 decoder 层数的加深，会获得越来越清晰的空间信息（box），并且这些信息是与当前样本相关的。基于这些条件信息去做聚合肯定比 static query 效果更好
 
    ```python	
    # M: (B*Q, G, C, C)
@@ -122,7 +122,7 @@
 
    transformer 可以大致地分为四个部分：
 
-   1. Inputs，包括输入的特征图谱，可学习的 query 以及 positional embedding
+   1. Inputs，包括输入的特征图谱，可学习的 query 以及 positional embedding (reference points)
    2. Encoder，包括 self attention 以获得 encoded feature map
    3. Decoder，包括 self attention & cross attention & decode head 以获得预测结果
    4. Loss
@@ -213,5 +213,34 @@ SparseBEV 几乎是将 query 的信息全部释放出来：
     > The batch size used when training detectors is usually small (1 or 2) due to limited GPU memory, and thus BN layers are usually frozen as a typical convention.
 
     这是有道理的。至于 freeze stages 还是以实验结果为准。在 EVA 的 [issue](https://github.com/baaivision/EVA/issues/60) 里提到，对于大的模型还是以 end to end 调整所有参数最好，但是需要调整超参数。似乎只有 R50 会冻结 stem & 第一层，甚至有时候第一层都不会冻结 [detrex deformable detr](https://github.com/IDEA-Research/detrex/blob/main/projects/deformable_detr/README.md)
-    
+
 15. 当使用 multi node 时可能存在的 `collect_results` bug，参考 [discussion](https://github.com/open-mmlab/mmengine/discussions/584)
+
+16. 在 SparseBEV 中 denoising 只对 bbox center 进行噪声扰动，对其他部分进行扰动似乎会掉点（结论来自与作者的沟通）
+
+17. 在 SparseBEV 中 velocity 是 detached，也就是没有梯度的，所以基本初始化的 velocity 是 0，不太清楚之后层中的 velocity 是否能够正确的预测？应该只能靠猜的吧 
+
+    并且 velocity 显然在一开始的时候为 0，那么就没有一个较好的引导作用，这在之后应该是一个可优化的点（Kalman Filter?）如果给每一个 time stamp 单独开辟一个 query，就需要解决目标匹配问题...
+
+18. `Tensor.clone()` 会回传梯度到原来的 tensor，并且如果对 clone 过后的 tensor 进行更改的话，梯度就会消失
+
+    ```python
+    import torch
+    def fun(x):
+        return x.sum()
+    
+    a = torch.tensor([1., 2., 3.], requires_grad=True)
+    b = a.clone()
+    b[0] = -1
+    loss = fun(b)
+    loss.backward()
+    print(f'a.grad: {a.grad}')
+    print(f'b.grad: {b.grad}')
+    
+    # a.grad: tensor([0., 1., 1.])
+    # b.grad: None
+    ```
+
+19. Group 在 SparseBEV 当中的具体意义？和 head 有什么分别
+
+20. 花式索引的逆向思维
