@@ -136,7 +136,7 @@ class Attention(nn.Module):
         return rearrange(out, '(b x y) ... -> b x y ...', x = height, y = width)
 ```
 
-而改变输入成为 grid patch 也非常简单，即使用 einops 中的 `Rearrange` 即可，但我认为他的注释错误，这样的方法应该先做的 grid-like attention，然后才是 block-like attention，不过我感觉就算交换位置也无妨
+而改变输入成为 grid patch 也非常简单，即使用 einops 中的 `Rearrange` 即可
 
 ```python
 block = nn.Sequential(

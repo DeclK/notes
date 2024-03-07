@@ -13,7 +13,7 @@ date: 2021-07-12 14:36:42
 
 # Linux
 
-## Install Linux Subsystem
+## Install WSL & zsh
 
 安装一个双系统可能对于初学者来讲是比较友好的，随着对 Linux 的了解越来越多，更多的 Linux 使用转移到了服务器上，对双系统的需求越来越少。并且 windows 现在支持了 linux 子系统（WSL），也可以直接使用 docker，这样安装双系统就显得是一个很复杂的选项了。我之前就算安装了双系统，现在也将其删除了，释放了 100G 空间，删除参考：[bilibili](https://www.bilibili.com/video/BV1Ba411z75z/)，再贴一个 [WSL](https://docs.microsoft.com/en-us/windows/wsl/install) 官网
 
@@ -183,6 +183,56 @@ date: 2021-07-12 14:36:42
 
 14. 安装 foxit pdf reader，[Download Link](https://www.foxitsoftware.cn/pdf-reader/)
 
+## Typora scripts
+
+🤔🤨🧐
+
+```python
+from pathlib import Path
+import os
+import re
+
+licence_dir = '/usr/share/typora/resources/page-dist/static/js'
+licence_dir = Path(licence_dir)
+
+# check if the directory exists
+if not licence_dir.exists():
+    raise Exception('cannot find the directory')
+
+# change the permission
+print(f"Doing sudo chmod 777 -R for {str(licence_dir)}, might need to enter password")
+os.system('sudo chmod 777 -R ' + licence_dir)
+
+prefix = 'LicenseIndex'
+
+licence_dir = Path(licence_dir).iterdir()
+
+licence_file = None
+for file in licence_dir:
+    if file.name.startswith(prefix):
+        licence_file = file
+
+print(f"Found the licence file: {licence_file.name}")
+if licence_file is None:
+    raise Exception('cannot find licence file')
+
+print("Overwriting the licence file...")
+# read file content
+with open(licence_file, 'r') as f:
+    content = f.read()
+
+# replace the pattern
+target = 'e.hasActivated="true"==e.hasActivated'
+replacement = 'e.hasActivated="true"=="true"'
+content = re.sub(target, replacement, content)
+
+# write the content to original file
+with open(licence_file, 'w') as f:
+    f.write(content)
+
+print("Done!")
+```
+
 # Windows
 
 实验室有一个空的主机，比较老，想要重新清理一下自己用。我并没有选择重装整个系统，而是选择重置，即恢复出厂设置
@@ -214,4 +264,3 @@ Office Tool plus [使用方法](https://www.coolhub.top/archives/11)：
 4. 在之后使用过程中可能遇到许可证问题，可以使用工具箱中的**修复Office许可证问题**。此时需要一个 [KMS 地址](https://www.coolhub.top/tech-articles/kms_list.html)，填入即可
 
 好用的 windows terminal: [github](https://github.com/microsoft/terminal)
-

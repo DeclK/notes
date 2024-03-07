@@ -117,7 +117,7 @@ tutorial 3 中有例子
 
 
 
-occupancy 占用率：一个 SM 里面激活 warp 与最大可容纳 warp 树木的比值
+occupancy 占用率：一个 SM 里面激活 warp 与最大可容纳 warp 数目的比值
 
 延迟隐藏计算，需要多少warp去做
 

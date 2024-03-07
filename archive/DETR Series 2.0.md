@@ -106,7 +106,7 @@ Deformable Attention 可以说跟 Attention 相差很大，基本上没什么联
 2. 给定 reference points for query，通过 reference points + sampling offsets 获得采样点位置
 3. 给定 value，通过采样点和 attention weights 获得最终输出
 
-其中需要考虑 multi-scale value 的情况，规定 reference points 在各个 scale 的采样点相同（有没有可能直接增加采样点是一样的效果），可简答理解为如下图，其特征形状为 (B, N1+N2+N3+N4, C)
+其中需要考虑 multi-scale value 的情况，规定 reference points 在各个 scale 的采样点相同（有没有可能直接增加采样点是一样的效果），可简答理解为如下图，其特征形状为 (B, N1+N2+N3+N4, C)（2024/01/05更新，需要加入 query pos & reference points & self attn）
 
 <img src="DETR Series 2.0/image-20230403214527125.png" alt="image-20230403214527125" style="zoom:50%;" />
 
@@ -344,7 +344,7 @@ operation_order=("self_attn", "norm", "cross_attn", "norm", "ffn", "norm")
 
 ### Box Refinement
 
-Box refinement算法是一种迭代微调策略，它类似于 Cascade R-CNN 方法，可以在每个解码器层上对边界框进行微调，所以在创建的 `self.box_embed & self.class_embed` 是各自独立的，不共享参数
+Box refinement 算法是一种迭代微调策略，它类似于 Cascade R-CNN 方法，可以在每个解码器层上对边界框进行微调，所以在创建的 `self.box_embed & self.class_embed` 是各自独立的，不共享参数
 
 ### Look Forward Twice
 
@@ -357,6 +357,8 @@ Box refinement算法是一种迭代微调策略，它类似于 Cascade R-CNN 方
 由于 two stage 的出现，所有的 reference points 由2维的点，变成了4维的选框，这在 deformable attention 里有做简要处理，但重点仍然还是选框的中心
 
 代码中的 valid ratios 应该可以移除，甚至可能是有害的，并且代码里有一些 bug 没有修复，先除以后乘以，基本上抵消了
+
+更新：valid ratios 并不能移除！[The reference points in the Deformable DETR](https://github.com/open-mmlab/mmdetection/issues/8656)
 
 ### Mixed Query Selection
 
@@ -377,7 +379,7 @@ Denoising 思想非常简单：将经过噪声处理的 gt 作为 query，输入
 5. 创建 `input_query_label & input_query_box`：
 
    1. `input_query_label` 形状为 $(B, dn\_groups \times2\times pad\_size, C)$，其中 `pad_size` 是一个 batch 所有样本中 gt 数量的最大值，`C` 为 embed dim (= 128)，使用一个 `nn.Embed` 进行转换
-   2. `input_query_batch` 形状为 $(B, dn\_groups \times2\times pad\_size, 4)$，作为可变注意力的 reference points
+   2. `input_query_box` 形状为 $(B, dn\_groups \times2\times pad\_size, 4)$，作为可变注意力的 reference points
 
 6. 创建 attention mask，因为 gt 噪声不能被真正的 query 所看见，但是 gt 噪声可以看见真正的 query，各个 gt 噪声 groups 之间不能相互看见，最后的 mask 形状可如图所示
 

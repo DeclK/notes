@@ -120,14 +120,58 @@ git config --global core.quotepath false
 
 有些时候我们不想把某些文件纳入版本控制中，可在主目录下建立 .gitignore 文件，常用规则如下
 
-1. 以斜杠"/"开头表示目录；"/"结束的模式只匹配文件夹以及在该文件夹路径下的内容，但是不匹配该文件；"/"开始的模式匹配项目根目录；如果一个模式不包含斜杠，则它匹配那么将会同时忽略同名的文件和目录
+1. 以斜杠"/"开头表示忽略根目录下的某个文件夹下的内容，不会忽略子文件夹；以"/"结束的模式，会忽略任意位置的某个文件夹，子文件夹也会忽略。如果一个模式不包含斜杠，则它匹配那么将会同时忽略同名的文件和目录
+
 2. 以星号"*"通配多个字符，即匹配多个任意字符；使用两个星号表示匹配任意中间目录，比如a/**/z可以匹配 a/z, a/b/z 或 a/b/c/z等
 
-```gitignore
-/node_modules	# 忽略目录
-node_modules	# 忽略 node_modules 文件和目录
-*.log			# log 不需要提交的任意包含后缀名为log的文件
-```
+    ```gitignore
+    /node_modules	# 忽略根目录下的 node_modules 文件夹
+    node_modules	# 忽略 node_modules 文件和文件夹
+    *.log			# 不提交包含后缀名为log的文件
+    ```
+
+3. 我们有时候希望忽略大部分文件，但仅对小部分文件进行保留，可以使用反选操作 `!`
+
+   采用下面的文件结构作为例子
+
+   ```txt
+   - root dir
+   	- folder
+   		-file_1
+   		-file_2
+   		-subfolder
+   			-file_3
+   	file_0
+   ```
+
+   下面是一些常见用法
+
+   ```gitignore
+   # ignore all files, folders and subfolders
+   *
+   # do not ignore file in the root folder
+   !file_0
+   
+   # do not ignore the folder in the root folder 
+   !folder
+   
+   # do not ignore the folder and the file
+   !folder
+   !folder/*
+   
+   # do not ignore the folder and the subfolder files
+   !folder
+   !folder/**
+   ```
+
+   反选操作有一个规则：当所选文件或者文件夹的父文件没有被忽略时，反选操作才会有效，例如下面的操作是不会有效的
+
+   ```gitignore
+   # won't work, because folder is ignored
+   !folder/file
+   ```
+
+   也告诉我们，folder 和 file 的跟踪是分开来看的
 
 ### git add
 
@@ -181,11 +225,35 @@ node_modules	# 忽略 node_modules 文件和目录
 
 ### git stash
 
-TODO
+git stash 使用场景：当你正在某个分支进行开发，忽然想要切换到其他分支，但是当前分支的工作区的开发并未完成，你不想要提交一个 commit，这个时候就需要使用 stash
+
+`git stash` 可以直接将工作区的修改存储到暂存区，经过 stash 过后你会发现之前修改的文件都变回了未更改的内容。并且，你可以进行多次的存储：stash -> modify -> stash again -> modify again ->...
+
+`git stash save 'message'` 可以给每一次 stash 进行命名
+
+`git stash list` 可以查看所有的 stash
+
+`git stash pop` 会释放最近一次的 stash 所存储的更改，你会看到最前保存的更改又回到了文件当中
+
+`git stash apply stash@{index}` 会将指定 index stash 所存储的内容释放
+
+`git stash drop stash@{index}` 会删除指定 index stash 所存储的内容
 
 ### git rebase
 
-TODO
+rebase 一种较危险的 merge 操作，会更换节点的基底
+
+```txt
+# before rebase
+--A--B--M (master branch)
+     |
+     C--D (feature branch)
+
+#(at feature branch) git rebase master
+--A--B--M--C'--D'
+```
+
+在 rebase 的过程中需要处理 C, D 与 M 之间的提交冲突。由于在变基过后无法追溯代码分支与合并过程，所以增加了追溯问题的难度
 
 ## 分支与冲突
 
