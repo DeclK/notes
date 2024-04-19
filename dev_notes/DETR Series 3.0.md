@@ -39,6 +39,10 @@
 
    ![image-20240104151705157](DETR Series 3.0/image-20240104151705157.png)
 
+   **下面是我自己理解所画的图**
+
+   ![image-20240308105509741](DETR Series 3.0/image-20240308105509741.png)
+
 5. **De-Noising**
 
    Denoising 思想非常简单：将经过噪声处理的 gt 作为 query，输入到 decoder 当中去重建 gt，其关键步骤如下：
@@ -176,3 +180,7 @@ def dino_forward(self, img, gt_instances):
    ```
 
    如果要 look forward twice 为什么不直接取消 detach，这样带来的梯度可能会不稳定
+   
+1. https://github.com/IDEA-Research/DINO/issues/17 ablation 中 AP 低于最终结果解释，忘记了初始化权重了，这句初始化直接提了1个点，应该好好看下
+
+3. https://github.com/IDEA-Research/DINO/issues/78 ablation 中 optimized dn-detr 解释，dynamic dn groups + hyperparameter (num queries) + deformable decoder

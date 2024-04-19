@@ -28,7 +28,7 @@ ubuntu 直接使用 `apt install git` 使用阿里云镜像
 
 首先要理解的是，在windows 中 git bash 的基本操作命令和 Linux  terminal 是一样的。在 Linux 中 git 是集成到 terminal 当中的
 
-### git  config
+### git config
 
 配置用户名和邮箱
 
@@ -221,7 +221,7 @@ git config --global core.quotepath false
 
 `git checkout filename` 能够让文件回到最近一次 add 或者 commit 时的状态
 
-`git checkout commit_id` 能够直接将工作区切换到指定版本，相比于 `git reset --hard` 是一种更安全的切换版本命令
+`git checkout commit_id` 能够直接将工作区切换到指定版本。这是一种 detached head 状态，git 会将 HEAD 指针指向该 commit_id，你可以对文件做一些修改，然后提交一个新的 commit，最后通过 `git switch -c new_branch` 生成一个新的分支。所以 git checkout commit_id 类似于创建一个临时的分支，相比于 `git reset --hard` 是一种更安全的切换版本命令
 
 ### git stash
 
@@ -279,7 +279,9 @@ rebase 一种较危险的 merge 操作，会更换节点的基底
 
 `git switch branch_name` 使用 git switch 来切换分支
 
-`git switch -c branch_name origin/branch_name` 创建分支并复制远程的分支到本地
+`git switch --guess branch_name` 切换到远程分支，因为 git clone 默认只显示主分支，其他远程分支被隐藏起来了。实际上 `--guess` 其实是默认选项，所以只使用 `git swtich branch_name` 就足够了
+
+但是有时候 remote 分支没有被拉到本地来，我们需要使用 `git fetch origin branch_name` 来获取远端分支
 
 ### git merge
 

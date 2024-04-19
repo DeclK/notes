@@ -188,6 +188,8 @@ SparseBEV 几乎是将 query 的信息全部释放出来：
 
 4. 为什么要对 decoder 使用 shared params？
 
+   作者实验是涨点的，大约 0.5 个点
+
 5. SparseBEV 没有使用 encoder 来进一步对特征进行加强，在 DETR 系列中都有一个 encoder 来提取 neck 输出的特征
 
 6. 采样还有没有更好的方案？我不想根据 query 乱采样，我想要在时空上采样最有用的特征，contrastive sampling
@@ -244,3 +246,44 @@ SparseBEV 几乎是将 query 的信息全部释放出来：
 19. Group 在 SparseBEV 当中的具体意义？和 head 有什么分别
 
 20. 花式索引的逆向思维
+
+    有了花式索引可以随心所欲地进行 gather & scatter
+
+    布尔索引是布尔形式的花式索引，布尔索引需要对 axis 上的每一个点确认 True or False，所以布尔索引的形状一定是和被索引张量的形状一样。所以当你有一个条件来生成布尔索引张量是最好的选择
+
+    ```python
+    import torch
+    
+    a = torch.arange(12).view(3, 4)
+    b = torch.tensor([True, False, True])
+    c = torch.tensor([True, False, False, True])
+    print(a[b, c])
+    # equal with
+    print(a[[0, 2], [0, 3]])
+    
+    # bool index with 2d
+    a = torch.arange(12).view(2, 2, 3)
+    d = torch.randn((2, 3)) > 0
+    print(d)
+    print(a[:, d])
+    # equal with
+    index = d.nonzero()
+    print(a[:, index[:, 0], index[:,1]])
+    
+    # tensor([ 0, 11])
+    # tensor([ 0, 11])
+    # tensor([[False, False,  True],
+    #         [False,  True,  True]])
+    # tensor([[ 2,  4,  5],
+    #         [ 8, 10, 11]])
+    # tensor([[ 2,  4,  5],
+    #         [ 8, 10, 11]])
+    ```
+
+21. 为什么选择在计算 xyz 的 L1 损失时，还原到 pc_range 坐标系中？
+
+22. 多维坐标转到一维，这个过程需要熟悉，在并行计算时候会需要。在 SparseBEV 上用于计算 index
+
+23. Online & offline 的 load 区别是什么？
+
+    观察到，似乎使用 offline 的时候会一卡一卡的...

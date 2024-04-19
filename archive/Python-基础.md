@@ -214,7 +214,7 @@ for path in sys.path:
 # ...MORE
 ```
 
-一般 `sys.path` 列表的第一个即为执行 python 文件时所在的目录 (pwd)
+一般 `sys.path` 列表的第一个即为包含输入脚本的目录，也就是被执行的 .py 文件所在的文件夹，而不是执行脚本的文件夹 (pwd)
 
 #### if \_\_name\_\_ = '\_\_main\_\_'
 

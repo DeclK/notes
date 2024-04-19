@@ -157,7 +157,7 @@ Remote Development 是一个 VSCode 远程开发全家桶，强烈推荐😀！�
 sudo chmod 666 /var/run/docker.sock
 ```
 
-或者将自己的用户加入 docker group 即可，参考 [菜鸟教程](https://www.runoob.com/note/51562)
+或者将自己的用户加入 docker group 即可，参考 [菜鸟教程](https://www.runoob.com/note/51562) or [troubleshoot](https://github.com/microsoft/vscode-docker/wiki/Troubleshooting)
 
 ```shell
 sudo groupadd docker     #添加docker用户组
@@ -165,6 +165,8 @@ sudo gpasswd -a $USER docker     #将登陆用户加入到docker用户组中
 newgrp docker     #更新用户组
 docker ps    #测试docker命令是否可以使用sudo正常使用
 ```
+
+有时候 vscode 连接到的是跳板机，还需要再通过一次 ssh 连接，可以参考 [How to jump to an IP address when connected to a remote server on VS Code?](https://stackoverflow.com/questions/62133771/how-to-jump-to-an-ip-address-when-connected-to-a-remote-server-on-vs-code)
 
 ### VSCode 免密登录
 
@@ -176,7 +178,13 @@ docker ps    #测试docker命令是否可以使用sudo正常使用
    ssh-keygen -t rsa
    ```
 
-2. 将 `id_rsa.pub` 复制到服务器主机 `~/.ssh` 文件夹下，将 `id_rsa.pub` 的内容加入到 `authorized_keys` 中
+2. 将 `id_rsa.pub` 复制到服务器主机 `~/.ssh` 文件夹下，将 `id_rsa.pub` 的内容加入到 `authorized_keys` 中，一个简单的方式是使用 `ssh-copy-id` 命令
+
+   ```shell
+   ssh-copy-id user@remote-host
+   ```
+
+   或者使用如下方式
 
    ```shell
    cat id_rsa.pub >> authorized_keys
@@ -291,4 +299,3 @@ sudo apt-get install libxcb-xinerama0 libxcb-xinerama0-dev libsm6
 但是该方案仍然不稳定，其原理是从本地下载插件到 `~/.config/Code/CachedExtensionVSIXs`，然后再从 cached extension vsix 下载到远端。通常不稳定的原因是网络原因（网络原因也包含 docker 和本地的网络连接问题，可尝试重启 docker & vscode）
 
 综上：首先尝试从本地下载，然后尝试重启网络/docker，并通过 OUTPUT-> windows 查看输出信息。以上均无反应，则使用 VXIS 安装，只需要在本地查看好版本，然后去应用市场下载对应版本即可
-
