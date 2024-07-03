@@ -297,6 +297,45 @@ rebase 一种较危险的 merge 操作，会更换节点的基底
 
 可以使用 `git diff HEAD` 来查看哪些文件有改变，或者有冲突，查看单个文件的话可以直接 `git diff (--staged) file`
 
+## Git Submodule
+
+当我们的 git 项目依赖于第三方项目的时候，可以通过 git submodule 来跟踪和使用第三方项目，而不把直接把三方项目的代码加入到自己的 repo 当中
+
+### 添加&删除子模块
+
+`git submodule add 3rd_party_repo_url [local_path/costum_name]`，该命令可以直接将三方 repo 拉到本地，并且给你的当前仓库增加一个 `.gitsubmodules` 文件。使用 `local_path` 就可以指定你拉取到你当前项目的那个位置，并且还可以更改三方 repo 的名字
+
+删除子模块的操作会繁琐一些，看来 git 认为你添加了一个子模块过后就不应该删除它
+
+```shell
+git submodule deinit -f a/submodule
+rm -rf .git/modules/a/submodule
+git rm -f a/submodule
+```
+
+### 拉取子模块
+
+通常你添加了一个 git submodule 过后，它会记录该 submodule 的 commit id。当你拉取你自己的项目时，不会自动将子模块拉取下来，你需要使用 `git submodule update --init [submodule_name]` 来获取子模块，并且子模块的 commit id 是与之前记录的是一致的。如果不加 `submodule_name` 会默认拉取所有的子模块
+
+### 跟踪分支
+
+我们有时候想要使用三方项目的某个 commit id，或者某个分支，我们通过以下方法完成
+
+1. 追踪 commit id，进入 submodule，使用 `git checkout commit_id` 来更改
+
+2. 追踪 branch，修改 `.gitsubmodules` 中的配置
+
+   ```.gitsubmodules
+   [submodule "sub_repo"]
+   	path = path/to/sub_repo
+   	url = git@...
+   	branch = branch_name
+   ```
+
+   配置完后使用 `git submodule sync` 使得改动生效
+
+通常来说都会使用追踪 commit id 的方法来导入子模块，但有时候我们需要更新这个子模块为最新的 commit，此时需要使用 `git submodule update --remote` 来与远程的最新 commit 保持一致。而如果你设置了追踪的某个 branch，则会追踪该分支的最新 commit
+
 ## 远程仓库
 
 ### 添加远程仓库 github or gitee

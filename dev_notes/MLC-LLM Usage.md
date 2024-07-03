@@ -311,7 +311,206 @@ q = q.permute_dims(0, 2, 1, 3)  # [b, h, s, d]
        --device cuda -o dist/libs/RedPajama-INCITE-Chat-3B-v1-q4f16_1-cuda.so
    ```
 
+## llm_chat.cc
+
+理清 llm_chat.cc 的调用逻辑，理清之后需要验证两件事情：
+
+1. batch verify 是否符合我们的期望
+2. 如何 pop kv cache
+
+### Concept
+
+- Reload 似乎不是一个常用的函数，只会在初始化 `ChatModule` 的时候使用，reset chat 倒是在之后重启会话会经常用到
+
+- Init & Init functions 功能
+
+- `FunctionTable`
+
+  是一个巨大的 struct 结构体，使用了 `_InitFunctions & _TryInitKVState` 两个方法，将 python 中用 TIR 所写的一些张量函数以及一些在 tvm 里预先定义好的 global function 放到一块
+
+  **在之后使用 `ft_.xx_funtion` 直接调用这些函数**
+
+  **这一块难道不应该单独放一个文件吗？模块化的表达或许会更好一些**
+
+  并且 mlc_llm 的同学喜欢使用 `_` 下划线来标志该变量是一个类成员，而不喜欢使用 `this->` 来表明
+
+- `class LLMChat`
+
+  这个就是该文件的最重要最核心的主类
+
+  在类的末尾定义了一堆成员，可以在类的方法中直接使用，包含上面提到的 `FunctionTable`，如果看到啥也没有的地方
+
+  - `GetInputTokens` 获得 tokens, vector of ints
+
+  - `GetInputTokenNDArray` 通过 vector of ints，获得一个 NDArray tensor
+
+  - `PrepareBeforeEmbedding`，reset chat，append message to conversations，最后调用 `GetInputTokens` 获得 token ids (vector of ints)
+
+  - `EmbedStep`，使用 `PrepareBeforeEmbedding` 获得 token ids，然后使用 `GetInputTokenNDArray` 转换成 NDArray，最后使用 `ft_.embed_func_` 来进行词嵌入
+
+    **Shape: (B, N, C)**, batch 应该只能是 1
+
+    这里还使用 `auto tend = std::chrono::high_resolution_clock::now();` 进行了计时，计算 embedding time
+
+  - `ForwardEmbeddings`
+
+    `Downcast` 是用于类型转换 `Downcast<NDArray>` 就是将返回类型转为 NDArray 类型
+
+    这里直接调用了 `ft_.prefill_with_embed_func_` 完成 prefill 操作，而 `ft_.prefill_with_embed_func_` 实际上在所有的模型中都没有被定义
+
+  - `ForwardTokens`
+
+    **这是前向的核心调用方法**
+
+    该方法使用一个 if 判断，分别调用 prefill 和 decode
+
+    ```c++
+    if (input_tokens.size() > 1 &&ft_.prefill_func_defined())
+    ```
+
+    核心代码
+
+    ```c++
+    IntTuple seq_ids_tuple({0});
+    // get input shape
+    ShapeTuple input_len_shape{input_len};
+    
+    // prepare kvcache
+    ft_.kv_cache_begin_forward_func_(kv_cache_, seq_ids_tuple, input_len_shape);
+    
+    // reshape input data
+    input_data = ft_.nd_view_func_(input_data, input_len_shape);
+    
+    // embed function
+    auto embed = ft_.embed_func_(input_data, params_);
+    
+    // reshape embed shape
+    ShapeTuple embedding_shape = {1, input_len, GetHiddenSizeFromEmbedding(embed)};
+    embed = ft_.nd_view_func_(embed, embedding_shape);
+    
+    // prefill or decode
+    ret = ft_.prefill_func_(embed, kv_cache_, params_); // ret = ft_.decode_func_(embed, kv_cache_, params_)
+    
+    // end kv cache
+    ft_.kv_cache_end_forward_func_(kv_cache_);
+    ```
+
+    在其中调用了 kv cache 相关的方法，这里也总结一下他们的作用：
+
+    1. `ft_.kv_cache_begin_forward_func_` 实际上调用的是 `rnn_state.cc` 中的 `BeginForward` 方法。该方法会更新三个类成员
+
+       1. `cur_batch_size = seq_ids.size()`
+       2. `cur_append_lengths = append_lengths`
+       3. `cur_seq_ids = seq_ids`
+
+       通常来说，我们会固定 batch size 为 1，所以重点就是更新了 `append_lengths` 这个方法
+
+    2.  `ft_.kv_cache_end_forward_func_`，该方法是调用的 `paged_kv_cache.cc` 中的 `EndForward` 方法。该方法会更新对应 `seq_id` 的 `seq_length` 指针
+
+       ```c++
+       auto it = seq_map_.find(seq_id);
+       it->second.seq_length += seq_length;
+       ```
+
+       除此之外还调整了 `available_history_num`
+
+       ```c++
+       if (seq_length > 1) {
+       // We cannot rollback the prefill input
+       it->second.available_history_num = 0;
+       } else {
+       it->second.available_history_num =
+           std::min(it->second.available_history_num + 1, max_history_ - 1);
+       }
+       ```
+
+       这里认为 `seq_length > 1` 就是在进行 `prefill`，所以会直接设置 `available_history_num` 为 0，该设置会阻止 `PopN` 方法来对 kv cache 的位置进行回退
+
+  - `PrefillWithEmbedStep`
+
+    这个函数明显是希望调用 `ForwardEmbeddings` 来完成 prefill，但是我们所定义的模型里面并没有 `prefill_with_embed` 的接口，所以这个函数应该是不会被用到的
+
+- tvm python 和 C++ 的相互调用
+
+  这是理解如何使用 tvm 的关键一步，由于 python 和 C++ 之间能够相互调用，所以在看代码的时候会变得非常混乱
+
+  这里通过 4 个文件来完成这个过程的理解
+
+  1. in mlc `kv_cache.py`
+  2. in tvm `paged_kv_cache.cc`
+  3. in tvm `kv_state.cc`
+  4. in mlc `llm_chat.cc`
+
+  最先接触到的即为 `kv_cache.py` 中对于 `PagedKVCache` 的 python 定义，我们就以此为起点，说明如果创建一个 kv cache，并且如何完成对 kv cache 的操作
+
+  在 **`kv_cache.py`** 中完成了创建 kv cache 的操作，使用的是调用 C++ `vm.builtin.paged_attention_kv_cache_create_reduced`，该函数在 **`paged_kv_cache.cc`** 中底部。调用该方法所传入的参数都是使用 python 构建的 TIR function，这些 function 将成为 C++ 中的 `PagedAttentionKVCacheObj` 的 `PackedFunc` 成员
+
+  但这些 kv cache packed function 都是为了在 kv cache 内部使用，而不会暴露给外部函数。真正暴露给外部使用的接口为 `PagedAttentionKVCacheObj` 中成员函数 `BeginForward & EndForward AttentionWithFusedQKV` 等等
+
+  这些核心成员函数通过 **`kv_state.cc`** 中的**注册机制** `TVM_REGISTER_GLOBAL & set_body_typed & set_body_method` 完成注册。注册完成过后就能够被 C++ 和 python 任意调用。如果使用 `set_body_method` 方法注册，则在调用的时候需要传入 kv cache object 本身，不然你对象都没创建，怎么调用其方法？而使用 `set_body_typed` 方法则是直接使用 lambda 函数将 kv cache object 直接显式作为参数传入
+
+  最后这些注册完的函数将在 **`llm_chat.cc`** 中使用，使用方式是将其存储在 `FunctionTable` 中
+
+  ![image-20240514211503384](MLC-LLM Usage/image-20240514211503384.png)
+
+  简而言之：
+
+  1. `set_body_method` 需要传入对象作为第一个参数
+  2. `set_body_typed` 采用 lambda 函数显式传入参数
+  3. `TVM_REGISTER_GLOBAL` 注册的函数能够被 python 和 C++ 任意调用
+  4. python TIR function in KV Cache is not meant to be used by users, but to build APIs. The APIs are actually something you want to use
+
+  再从文件的角度来分析
+
+  1. in mlc `kv_cache.py`
+
+     定义基础 TIR Function
+
+  2. in tvm `paged_kv_cache.cc`
+
+     构建 KV Cache class & API
+
+  3. in tvm `kv_state.cc`
+
+     注册 API
+
+  4. in mlc `llm_chat.cc`
+
+     使用 API
+
+- `picojson` 能够处理 json 文件，通过 key 来获得其中 value，然后使用 `.get<type>` 来对 value 进行转换
+
+- `conversation` 用于存储对话和生成的 token string。在 huggingface transformers 中 `add_bos_token` 可以设置在 tokenizer 里面，但是在 mlc_llm 里是设置在 `conversation` 里面。但是在新版的 conversation 里面又没有设置 add bos token 的选项了
+
+## Install from source
+
+由于自己需要对 C++ 文件做一些修改，所以需要从源码进行编译
+
+可以使用 pip 来安装 tvm，然后再按照源码编译的方式安装 `mlc_llm`
+
+```shell
+# clone from GitHub
+git clone --recursive https://github.com/mlc-ai/mlc-llm.git && cd mlc-llm/
+# create build directory
+mkdir -p build && cd build
+
+# generate build configuration
+## choose only cuda related to be true
+## ROCm Vulkan Metal OpenCL to be false
+python ../cmake/gen_cmake_config.py
+
+# build mlc_llm libraries
+cmake .. && cmake --build . --parallel $(nproc) && cd ..
+```
+
+mlc_llm 和 tvm 的版本关系是强绑定的，最好都使用最新版本的！或者都使用最新版本的 build from source
+
+可以尝试关闭 flash infer 的编译，因为这个编译所使用的时间很长，包也比较重
+
 ## Question
 
 - mlc-llm 似乎没有 tvm 的 auto tune 功能，而是选择使用手工实现 tir，似乎又回到了手工设计算子的时代 [[Question] performance optimization](https://github.com/mlc-ai/mlc-llm/issues/1800)。现在 AutoTune 这个功能已经不是其最大的卖点了！
 - mlc container on Orin [github](https://github.com/dusty-nv/jetson-containers/tree/dev/packages/llm/mlc)
+- tvm ndarray 使用方法
+- tvm build & function
+- 我希望给 attention 传入定制的 mask，如何完成该操作？

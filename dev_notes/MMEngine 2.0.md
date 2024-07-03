@@ -330,10 +330,21 @@ class Runner:
    另一个有趣的现象是，你无法实现下面的代码，因为无法生成 MRO 列表
 
    ```python
-   # Wrong
-   class C(A, B):
-       def __init__(self):
-           B.__init__(self)
+    class A(object):
+        def __init__(self):
+            print('init a')
+            super().__init__()
+
+    class B(A):
+        def __init__(self):
+            print('init b')
+            super().__init__()  # comment this line, you will see no A is initialized
+
+    # Wrong
+    class C(A, B):
+        def __init__(self):
+            B.__init__(self)
+
    # Correct
    class C(B, A):
        def __init__(self):
