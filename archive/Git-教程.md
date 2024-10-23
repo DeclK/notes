@@ -297,6 +297,8 @@ rebase 一种较危险的 merge 操作，会更换节点的基底
 
 可以使用 `git diff HEAD` 来查看哪些文件有改变，或者有冲突，查看单个文件的话可以直接 `git diff (--staged) file`
 
+对于某些文件我们想完全保留我们的改变，可以使用 `git checkout --ours path/to/conflicted-file`，同理也可以使用 `--theirs` 来完全保留 incoming 更改
+
 ## Git Submodule
 
 当我们的 git 项目依赖于第三方项目的时候，可以通过 git submodule 来跟踪和使用第三方项目，而不把直接把三方项目的代码加入到自己的 repo 当中

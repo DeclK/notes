@@ -112,6 +112,50 @@ date: 2021-07-25 22:52:02
   }
 ```
 
+如果需要设置任何字段的高亮，可以通过在 control pannel 中使用 `Inspect Editor Tokens and Scopes` 查看高亮字段，将上方的 `scope` 填为信息中的 `textmate scopes` 中的第一行一般就可以了
+
+<img src="VSCode note/image-20240902114422656.png" alt="image-20240902114422656" style="zoom: 80%;" />
+
+```json
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": "comment",
+                "settings": {
+                    "fontStyle": "italic",
+                    "foreground": "#7f8c8d"
+                }
+            },
+            {
+                "scope": "storage.type.class.doxygen.cpp",
+                "settings": {
+                    "foreground": "#7f8c8d",
+                    "fontStyle": "bold"
+                }
+            },
+            {
+                "scope": "variable.parameter.cpp",
+                "settings": {
+                    "foreground": "#7f8c8d",
+                    "fontStyle": "underline"
+                }
+            }
+        ]
+    },
+    "editor.semanticTokenColorCustomizations": {
+        "[Default Dark Modern]": {
+            "enabled": true,
+            "rules": {
+                "parameter": {
+                    "bold": false,
+                    "fontStyle": "",
+                    "foreground": "#8CDCFC"
+                },
+            }
+        }
+    },
+```
+
 ### 连接到远程服务器
 
 由于要跑一些模型，自己的电脑显卡根本跑不动，那就~~白嫖~~连接到实验室的服务器​
