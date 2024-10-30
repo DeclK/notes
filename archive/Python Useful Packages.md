@@ -55,7 +55,17 @@ file.parents[0]	# 上级 abc
 file.parents[1]	# 上上级 .
 ```
 
-对 `file` 获得父级目录时，仅对所输入的字符串进行操作 `abc/file.py`，如果想要获得绝对路径下的父级目录，请先使用 `.resolve()` 获得绝对目录
+对 `file` 获得父级目录时，仅对所输入的字符串进行操作 `abc/file.py`，如果想要获得绝对路径下的父级目录，请先使用 `.resolve()` 获得绝对目录。对于一些相对路径的解析，其根目录为执行 python 命令时所在的文件夹，而不是该 python 文件所在的文件夹
+
+```python 
+# at folder /home/test execute command:
+# python /any/ohter/places/test.py
+from pathlib import Path
+print(Path('.').resolve())
+# '/home/test'
+```
+
+这和 python 的 site-packages (sys.path) 扫描路径是不一致的，需要注意。sys.path 将默认以该 python 文件所在的目录为第一扫描目录
 
 ### 子路径扫描
 

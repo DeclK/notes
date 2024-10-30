@@ -2,7 +2,7 @@
 
 ## 命令
 
-推荐 [tldr](https://gitee.com/jiabujiabaiyuweitangjinzuoma/tldr) 项目，能够快速上手命令，把 repo 里的 md 移动到 `~/.cache/tldr` 之下即可。我下载在 git bash 下了
+推荐 [tldr](https://tldr.sh/) 项目，能够快速上手命令，把 repo 里的 `pages` 文件夹移动到 `~/.cache/tldr` 之下即可
 
 ## Shell 编程
 

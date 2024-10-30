@@ -28,7 +28,7 @@ ubuntu 直接使用 `apt install git` 使用阿里云镜像
 
 首先要理解的是，在windows 中 git bash 的基本操作命令和 Linux  terminal 是一样的。在 Linux 中 git 是集成到 terminal 当中的
 
-### git  config
+### git config
 
 配置用户名和邮箱
 
@@ -221,7 +221,7 @@ git config --global core.quotepath false
 
 `git checkout filename` 能够让文件回到最近一次 add 或者 commit 时的状态
 
-`git checkout commit_id` 能够直接将工作区切换到指定版本，相比于 `git reset --hard` 是一种更安全的切换版本命令
+`git checkout commit_id` 能够直接将工作区切换到指定版本。这是一种 detached head 状态，git 会将 HEAD 指针指向该 commit_id，你可以对文件做一些修改，然后提交一个新的 commit，最后通过 `git switch -c new_branch` 生成一个新的分支。所以 git checkout commit_id 类似于创建一个临时的分支，相比于 `git reset --hard` 是一种更安全的切换版本命令
 
 ### git stash
 
@@ -279,7 +279,9 @@ rebase 一种较危险的 merge 操作，会更换节点的基底
 
 `git switch branch_name` 使用 git switch 来切换分支
 
-`git switch -c branch_name origin/branch_name` 创建分支并复制远程的分支到本地
+`git switch --guess branch_name` 切换到远程分支，因为 git clone 默认只显示主分支，其他远程分支被隐藏起来了。实际上 `--guess` 其实是默认选项，所以只使用 `git swtich branch_name` 就足够了
+
+但是有时候 remote 分支没有被拉到本地来，我们需要使用 `git fetch origin branch_name` 来获取远端分支
 
 ### git merge
 
@@ -294,6 +296,47 @@ rebase 一种较危险的 merge 操作，会更换节点的基底
 如果对于 git 中 recursive 3-way merge 算法感兴趣，可以参看 [维基百科](https://en.wikipedia.org/wiki/Merge_(version_control))
 
 可以使用 `git diff HEAD` 来查看哪些文件有改变，或者有冲突，查看单个文件的话可以直接 `git diff (--staged) file`
+
+对于某些文件我们想完全保留我们的改变，可以使用 `git checkout --ours path/to/conflicted-file`，同理也可以使用 `--theirs` 来完全保留 incoming 更改
+
+## Git Submodule
+
+当我们的 git 项目依赖于第三方项目的时候，可以通过 git submodule 来跟踪和使用第三方项目，而不把直接把三方项目的代码加入到自己的 repo 当中
+
+### 添加&删除子模块
+
+`git submodule add 3rd_party_repo_url [local_path/costum_name]`，该命令可以直接将三方 repo 拉到本地，并且给你的当前仓库增加一个 `.gitsubmodules` 文件。使用 `local_path` 就可以指定你拉取到你当前项目的那个位置，并且还可以更改三方 repo 的名字
+
+删除子模块的操作会繁琐一些，看来 git 认为你添加了一个子模块过后就不应该删除它
+
+```shell
+git submodule deinit -f a/submodule
+rm -rf .git/modules/a/submodule
+git rm -f a/submodule
+```
+
+### 拉取子模块
+
+通常你添加了一个 git submodule 过后，它会记录该 submodule 的 commit id。当你拉取你自己的项目时，不会自动将子模块拉取下来，你需要使用 `git submodule update --init [submodule_name]` 来获取子模块，并且子模块的 commit id 是与之前记录的是一致的。如果不加 `submodule_name` 会默认拉取所有的子模块
+
+### 跟踪分支
+
+我们有时候想要使用三方项目的某个 commit id，或者某个分支，我们通过以下方法完成
+
+1. 追踪 commit id，进入 submodule，使用 `git checkout commit_id` 来更改
+
+2. 追踪 branch，修改 `.gitsubmodules` 中的配置
+
+   ```.gitsubmodules
+   [submodule "sub_repo"]
+   	path = path/to/sub_repo
+   	url = git@...
+   	branch = branch_name
+   ```
+
+   配置完后使用 `git submodule sync` 使得改动生效
+
+通常来说都会使用追踪 commit id 的方法来导入子模块，但有时候我们需要更新这个子模块为最新的 commit，此时需要使用 `git submodule update --remote` 来与远程的最新 commit 保持一致。而如果你设置了追踪的某个 branch，则会追踪该分支的最新 commit
 
 ## 远程仓库
 

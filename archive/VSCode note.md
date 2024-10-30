@@ -112,6 +112,50 @@ date: 2021-07-25 22:52:02
   }
 ```
 
+如果需要设置任何字段的高亮，可以通过在 control pannel 中使用 `Inspect Editor Tokens and Scopes` 查看高亮字段，将上方的 `scope` 填为信息中的 `textmate scopes` 中的第一行一般就可以了
+
+<img src="VSCode note/image-20240902114422656.png" alt="image-20240902114422656" style="zoom: 80%;" />
+
+```json
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": "comment",
+                "settings": {
+                    "fontStyle": "italic",
+                    "foreground": "#7f8c8d"
+                }
+            },
+            {
+                "scope": "storage.type.class.doxygen.cpp",
+                "settings": {
+                    "foreground": "#7f8c8d",
+                    "fontStyle": "bold"
+                }
+            },
+            {
+                "scope": "variable.parameter.cpp",
+                "settings": {
+                    "foreground": "#7f8c8d",
+                    "fontStyle": "underline"
+                }
+            }
+        ]
+    },
+    "editor.semanticTokenColorCustomizations": {
+        "[Default Dark Modern]": {
+            "enabled": true,
+            "rules": {
+                "parameter": {
+                    "bold": false,
+                    "fontStyle": "",
+                    "foreground": "#8CDCFC"
+                },
+            }
+        }
+    },
+```
+
 ### 连接到远程服务器
 
 由于要跑一些模型，自己的电脑显卡根本跑不动，那就~~白嫖~~连接到实验室的服务器​
@@ -157,7 +201,7 @@ Remote Development 是一个 VSCode 远程开发全家桶，强烈推荐😀！�
 sudo chmod 666 /var/run/docker.sock
 ```
 
-或者将自己的用户加入 docker group 即可，参考 [菜鸟教程](https://www.runoob.com/note/51562)
+或者将自己的用户加入 docker group 即可，参考 [菜鸟教程](https://www.runoob.com/note/51562) or [troubleshoot](https://github.com/microsoft/vscode-docker/wiki/Troubleshooting)
 
 ```shell
 sudo groupadd docker     #添加docker用户组
@@ -167,6 +211,7 @@ docker ps    #测试docker命令是否可以使用sudo正常使用
 ```
 
 Update 2024-09-21，如果使用 WSL 打开 docker 遇到问题 `cannot attach to the container with name/id`，可以尝试下 [issue](https://github.com/microsoft/vscode-remote-release/issues/5674) 中的方法，勾选 `Dev › Containers: Execute In WSL`，我通过这个方法解决了😏
+有时候 vscode 连接到的是跳板机，还需要再通过一次 ssh 连接，可以参考 [How to jump to an IP address when connected to a remote server on VS Code?](https://stackoverflow.com/questions/62133771/how-to-jump-to-an-ip-address-when-connected-to-a-remote-server-on-vs-code)
 
 ### VSCode 免密登录
 
@@ -178,7 +223,13 @@ Update 2024-09-21，如果使用 WSL 打开 docker 遇到问题 `cannot attach t
    ssh-keygen -t rsa
    ```
 
-2. 将 `id_rsa.pub` 复制到服务器主机 `~/.ssh` 文件夹下，将 `id_rsa.pub` 的内容加入到 `authorized_keys` 中
+2. 将 `id_rsa.pub` 复制到服务器主机 `~/.ssh` 文件夹下，将 `id_rsa.pub` 的内容加入到 `authorized_keys` 中，一个简单的方式是使用 `ssh-copy-id` 命令
+
+   ```shell
+   ssh-copy-id user@remote-host
+   ```
+
+   或者使用如下方式
 
    ```shell
    cat id_rsa.pub >> authorized_keys
@@ -293,4 +344,66 @@ sudo apt-get install libxcb-xinerama0 libxcb-xinerama0-dev libsm6
 但是该方案仍然不稳定，其原理是从本地下载插件到 `~/.config/Code/CachedExtensionVSIXs`，然后再从 cached extension vsix 下载到远端。通常不稳定的原因是网络原因（网络原因也包含 docker 和本地的网络连接问题，可尝试重启 docker & vscode）
 
 综上：首先尝试从本地下载，然后尝试重启网络/docker，并通过 OUTPUT-> windows 查看输出信息。以上均无反应，则使用 VXIS 安装，只需要在本地查看好版本，然后去应用市场下载对应版本即可
+
+比较难搞的是有时候在市场没有你想要的版本，这个时候就只能手动输入链接，以 jupyter notebook 为例
+
+```shell
+# jupyter
+https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ms-toolsai/vsextensions/jupyter/2024.1.1/vspackage
+
+# copilot 
+https://marketplace.visualstudio.com/_apis/public/gallery/publishers/GitHub/vsextensions/copilot/1.181.0/vspackage
+```
+
+可以看到变化的只有两个部分：1. publisher; 2. extension name; 3. version
+
+```shell
+https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{"the_publishers"}/vsextensions/{"the_extension_name"}/{"the_version"}/vspackage
+```
+
+### Debug Python/C++
+
+现在接触的代码越来越复杂，很多时候都是 python 调用 C++ 代码。对于 python 代码的调试，我经常使用 pdb 来完成，但是对于 C++ 代码的调试变得极其困难。还好 vscode 目前对 C++ 的 debug 支持友好，并且有现成的 [python c++ debugger](https://marketplace.visualstudio.com/items?itemName=benjamin-simmonds.pythoncpp-debug) 插件，支持我们进行跨语言调试
+
+在打开一个 `launch.json` 过后可以直接输入你想要的 debugger，vscode 会自动提示
+
+![image-20240519155123498](VSCode note/image-20240519155123498.png)
+
+这里选择 `Python C++ Debugger Defaul`，会自动生成一个默认 config
+
+```json
+        {
+            "name": "Python C++ Debugger",
+            "type": "pythoncpp",
+            "request": "launch",
+            "pythonConfig": "default",
+            "cppConfig": "!!pick 'default (win) Attach' or 'default (gdb) Attach'"
+        }
+```
+
+根据提示，我们需要修改 `cppConfig`，由于我们使用了 Linux，所以选择 `'default (gdb) Attach'`
+
+配置好过后就可以对当前的 python file 进行调试，如果当前程序调用了 C++ 代码（并加了断点），则会自动跳入 C++ 代码进行断点调试
+
+除此之外，还有更多个性化设置，例如我想要选择指定的 python 文件并且传入参数进行调试。我们可以直接生成一个 python debugger config，然后配置 `PythonLaunchName` 指向这个配置即可
+
+```json
+        {
+            "name": "Python C++ Debugger",
+            "type": "pythoncpp",
+            "request": "launch",
+            "pythonConfig": "custom",
+            "pythonLaunchName": "Python Debugger: Current File",
+            "cppConfig": "default (gdb) Attach"
+        },
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "my_python_program.py",
+            "console": "integratedTerminal",
+            "args": ["--image-path", "bug_image.jpg",
+                     "--model-path", "resnet.pth"]
+        }
+```
 

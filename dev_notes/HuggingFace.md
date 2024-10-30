@@ -354,6 +354,14 @@ huggingface 还提供了 streaming datasets，这样就不需要将数据集完�
 
 下面两章节使用了 request 去爬一些 github issues 作为数据，简单创建了一个数据集，然后使用一个 auto tokenizer & model 来进行文字编码，使用 FAISS 算法来进行语义搜索
 
+
+
+### Load_dataset
+
+- 有两种不同的数据集表达方式：1. 数据集本身（e.g. csv files, txt files ...）；2. 一个数据集脚本（e.g. a python script）。不太清楚如何通过脚本来装载数据集
+- data_files & data_dir
+- 一个不错的方法：将数据集下载到本地，链接到项目文件夹中，使用 dataset card 中默认的 load 方法就能够完成
+
 ## 第六章 Tokenizer Lib
 
 当 corpus (语料库) 之间的差异太大了，对应的 tokenizer 显然差异也很大，例如英文语料库和日文语料库，里面对应的分词肯定不一样

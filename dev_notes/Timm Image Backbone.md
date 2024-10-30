@@ -648,7 +648,7 @@ def forward_head(self, x):
 
    如果定义了 `__init__` 方法，使用 dataclass 就没有意义
    
-   还可以使用 `field(default_factory=func)` 来获得更复杂的初始化c
+   还可以使用 `field(default_factory=func)` 来获得更复杂的初始化
 
 ## 问题
 

@@ -41,7 +41,7 @@
 
 4. **核函数要求**
 
-   - **可以向核函数传递非指针变量**（如 int N），其内容对每个线程可见（这个变量将存储在哪儿？）
+   - **可以向核函数传递非指针变量**（如 int N），其内容对每个线程可见
    - 除非使用统一内存编程机制（将在第 13 章介绍），否则**传给核函数的数组（指针）必须指向设备内存**
    - **核函数不可成为一个类的成员**。通常的做法是用一个包装函数调用核函数，而将包装函数定义为类的成员
 
@@ -112,8 +112,43 @@ CHECK(cudaDeviceSynchronize());
 
 CUDA 提供了名为 CUDA-MEMCHECK 的工具集，具体包括 memcheck、 racecheck、initcheck、 synccheck 共 4 个工具。它们可由可执行文件 cuda-memcheck 调用，这里不做整理
 
-
-
 ## Question
 
 1. 可以向核函数传递非指针变量（如 int N），其内容对每个线程可见，那这个变量将存储在哪儿？
+
+2. `(void**)` & `static_cast<void**>` & `reinterpret_cast<void**>`
+
+   在使用 `cudaMalloc` 时需要传入 type 为 `void**` 双重指针，在代码里使用了一个强转 `(void**)`，我想尝试使用 `static_cast` 去做这个转换会报错，而使用 `reinterpret_cast` 就不会报错，说明二者有显著区别
+
+   > From GPT
+   >
+   > #### `static_cast`
+   >
+   > - **Purpose**: Used for well-defined type conversions.
+   > - Use Cases
+   >   - Converting between numeric types (e.g., `int` to `float`).
+   >   - Converting pointer types up and down a class hierarchy (with base and derived classes).
+   >   - Converting to `void*` from any pointer type, and vice-versa.
+   >
+   > #### `reinterpret_cast`
+   >
+   > - **Purpose**: Used for low-level reinterpreting of bit patterns.
+   > - Use Cases
+   >   - Converting any pointer type to any other pointer type, even when they are unrelated.
+   >   - Converting between pointer and integer types.
+
+   总结看来:
+
+   1. `static_cast` 是更安全的类型转换方式，也是最常用的类型转换方式，能够进行数值和指针的转换。但是在进行指针转换时会有一定要求，需要其为父子类关系或者其中一个为空指针
+   2. `reinterpret_cast` 是更强制也更不安全的指针转换，本质上是直接告诉编译器，把这个类型看做一个 different type，无视 type system 的规则
+
+   我询问了为什么会有 `reinterpret_cast` 这样的功能，似乎这样的转换看起类很少发生，GPT says:
+
+   > 1. **Interfacing with Hardware**:
+   >    - Directly manipulating memory addresses for hardware registers or peripherals may require converting between pointer types that reflect the device's memory layout.
+   > 2. **Network Programming**:
+   >    - Converting between data representations for network protocols might require treating blocks of memory as different types for bit manipulation.
+   >
+   > ...
+
+   看来对于不同硬件/协议之间没办法使用常规的类型转换完成，利用 `reinterprete_cast` 作为中间桥梁来进行更细致的非常规操作
