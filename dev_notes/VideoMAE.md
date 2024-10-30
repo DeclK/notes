@@ -41,3 +41,5 @@
 - TSN Temporal segment networks for action recognition in videos
 
   如何进行动作识别
+
+- action detection dataset AVA

@@ -51,7 +51,7 @@ using namespace std;
 using std::cout;
 
 // using can also used for class alias
-using test Add	// the same with: typedef Add test
+using test = Add	// the same with: typedef Add test
 ```
 
 命名空间还有3个特点：
@@ -420,4 +420,4 @@ TODO：字符串的规则比较多，后续如果有需要，清晰整理
 
    4. C-style 转换 `(Type)`，参考 [What is the difference between static_cast and reinterpret_cast?](https://stackoverflow.com/questions/6855686/what-is-the-difference-between-static-cast-and-reinterpret-cast)
 
-      > A C-style cast of the form `(T)` is defined as trying to do a `static_cast` if possible, falling back on a `reinterpret_cast` if that doesn't work. It also will apply a `const_cast` if it absolutely must.
+      > xxxxxxxxxx Rectangle class area :Triangle class area :c++

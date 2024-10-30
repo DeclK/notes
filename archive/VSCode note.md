@@ -166,6 +166,8 @@ newgrp docker     #更新用户组
 docker ps    #测试docker命令是否可以使用sudo正常使用
 ```
 
+Update 2024-09-21，如果使用 WSL 打开 docker 遇到问题 `cannot attach to the container with name/id`，可以尝试下 [issue](https://github.com/microsoft/vscode-remote-release/issues/5674) 中的方法，勾选 `Dev › Containers: Execute In WSL`，我通过这个方法解决了😏
+
 ### VSCode 免密登录
 
 完成以下步骤即可：

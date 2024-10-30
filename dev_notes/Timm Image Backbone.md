@@ -713,3 +713,7 @@ def forward_head(self, x):
 
    我认为 ConvNeXT 可能给出了答案：Swin 的成功仍然是 **Transformer 架构**的成功：更少的 activation layer，更少的 norm 并且使用 LayerNorm。另外一个关键点：**下采样的方式也非常重要！**在 ConvNeXT 中指出，只使用一个简单的 Conv2d 进行 stride 2 下采样会直接导致训练发散！但是在加入了 pre-norm 之后，训练就会变得稳定，并且提升了准确率。ConvNeXT 得出结论：**在分辨率改变前，使用一层 norm layer 是必要的，这会极大增强训练稳定性**。并且区别与 ResNet，下采样是不会参与到残差连接的结构当中的，这样的下采样方式能够显著提升表现
 
+9. FFN 在 transformer 中的意义
+
+   花了很大的精力去理解 attention 的意义，而实际上 FFN 的意义也同样重要。**Attention 实际上是 token 之间相互交流，通过加权 value 来更新自己的过程**，但这个过程可能缺少了对过程的整合。因为 value 来自于各个 head & 各个 token，可能会相当凌乱，哪些特征是重要特征，哪些不是，这需要通过一个带激活的 MLP 层来完成整合。这一个过程能够由带门控的 GRU MLP 单元更好地完成。原来的 ReLU 激活函数能够很好地过滤特征，而 GRU 门控单元不仅能过滤特征，还能更灵活地对特征进行缩放
+

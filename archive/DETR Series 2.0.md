@@ -360,6 +360,8 @@ Box refinement 算法是一种迭代微调策略，它类似于 Cascade R-CNN �
 
 更新：valid ratios 并不能移除！[The reference points in the Deformable DETR](https://github.com/open-mmlab/mmdetection/issues/8656)
 
+这是因为由于卷积下采样的原因，导致不是每一次 feature map 都是等比例的缩小，而这也导致图像的有效区域将在 feature map 中的比例也在变化。我们最终是为了计算每一个 level 的 feature map 在所有 level 的 feature map 的位置 `(all_level_pixels, num_level, 2)`，这就需要进行缩放
+
 ### Mixed Query Selection
 
 也很简单，就是只要 proposal 的位置作为 reference points，不用 proposal 作为 query。真正的 content query 依然是 learnable parameters

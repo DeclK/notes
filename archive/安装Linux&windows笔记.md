@@ -64,7 +64,7 @@ date: 2021-07-12 14:36:42
 4. 打开个人目录下的配置文件:  `~/.zshrc` 
 
    找到 `auto_update` 相关行，将注释去掉，则可禁用 ohmyzsh 自动检查更新。可通过命令 `upgrade_oh_my_zsh` 手动升级
-   
+
 5. 如果由于 git 文件太大，oh-my-zsh 会比较卡顿，可以使用 `git config --add oh-my-zsh.hide-dirty 1` 来禁止其读取文件变化信息，如果还觉得慢则用 `git config --add oh-my-zsh.hide-status 1`
 
 ## Install Ubuntu

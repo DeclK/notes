@@ -86,3 +86,16 @@ docker pull pytorch/pytorch:1.11.0-cuda11.3-cudnn8-devel
 ```
 
 注意一定要下载 **devel** 版本的镜像才包含 CUDA
+
+## Proxy
+
+直接使用脚本一件开启代理，参考 [zhihu](https://zhuanlan.zhihu.com/p/153124468)
+
+```shell
+#!/bin/zsh
+host_ip=$(cat /etc/resolv.conf |grep "nameserver" |cut -f 2 -d " ")
+export ALL_PROXY="http://$host_ip:7890"
+```
+
+
+

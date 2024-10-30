@@ -198,3 +198,15 @@ class RepConv(nn.Module):
             self.__delattr__('id_tensor')
 ```
 
+## 补充
+
+1. RT-DETR 是优于 DINO 的目标检测器，不管是速度还是精度。我认为原因在于 DINO 的 encoder 使用了 deformable attention，这样的 attention 缺少全局特征的交互，所以在 epoch 增加后，DINO 就不再涨点了，但是 RT-DETR 仍然能够涨。在 issue 中也发布了 RT-DETR 的训练日志 [log](https://github.com/lyuwenyu/RT-DETR/issues/8)，可以发现，在 epoch 12 的时候，RT-DETR 的效果和 DINO 12 epoch 的效果相同 (49.2 v.s. 49.5)，在 24 epoch 的时候就能大幅超越了 (51.3 v.s. 50.6)，并且 RT-DETR 在单个 epoch 运行时间上有着显著的优势（大概只要 DINO 一半的时间）。随着 epoch 达到 72 时，达到了 53.1 的 AP
+
+   事实上 RT-DETR 的出现恰好证明了 DINO 的 encoder 是低效的，而另一个证明 DINO 的 encoder 差的论文就是 VitDet
+
+   VitDet 所使用的 Backbone 其效果大概跟 IN-22K 预训练的 backbone 差不多。在 DINO 中使用了 ViTDet 的 backbone，所获得的效果为 55.0 & 57.5 (ViT-B &  ViT-L)，在 VitDet 论文当中所获得结果为 51.6 & 55.6，但是 ViTDet 使用 cascade mask rcnn 结构过后结果为 56.0 & 59.6，基本上就是全面超过了 ViTDet-DINO，而这个结果大概和 Swin-L-DINO 对齐 (55.8 & 58.5)。而在 ViTDet 中是没有使用 transformer encoder 这样的结构的，FPN 的多尺度特征直接由 ViT 输出，没有进一步的学习。这说明 DINO transformer encoder 对于小 backbone 而言是有效的（例如 r50），这能补充一些语义信息，但是对于大的 backbone 而言（或者说学特征比较鲁棒的 backbone 而言），这些信息已经自足，不需要进一步的多尺度交互。但是训练时间上二者有很大的区别，DINO 在收敛速度上极快，因为有了 denoising & dynamic anchor 等技术加持，让训练更好的检测网络成为大众可上手的事情
+
+   MAE 是一个训练门槛“不高”的技术 [MAE Finetune](https://github.com/facebookresearch/mae/blob/main/FINETUNE.md) [a100 train vit-base](https://github.com/facebookresearch/mae/issues/113#issuecomment-1214301372)
+
+2. R50 在 transformer 中大概是 Tiny 的大小 (25M)，R101 是 Small (50M)，而 Base 一般为 100M 左右的参数量，Large 为200~300M 左右的参数量
+3. 另一个理解：为什么两阶段是有效的。我的结论是，两阶段中，第一阶段为第二阶段提供了更好的先验，能够将集中注意力去处理前景框。这些集中的注意力应该能够提供更高的召回率，尤其对小样本的召回率更好。并且由于 RT-DETR 的存在，两阶段的速度问题也都被解决了

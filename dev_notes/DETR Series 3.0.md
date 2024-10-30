@@ -27,6 +27,8 @@
 
    如果不使用两阶段，就直接使用一个 `nn.Embedding(num_query, dim)` 作为随机的初始 anchor 替代，其中 dim = 4 代表 `(x,y,h,w)`，注意初始化的时候控制下初始值，要符合 box 值域
 
+   补充 2024/06/22：dynamic anchor 所使用的 positional embedding 是每次更新的，而 deformable detr 中所使用的 positional embedding 是不会更新的
+
 3. **Box Refinement**
 
    Box refinement 算法是一种迭代微调策略，它类似于 Cascade R-CNN 方法，可以在每个解码器层上对边界框进行微调，并且 `self.box_embed & self.class_embed` 是各自独立的，不共享参数

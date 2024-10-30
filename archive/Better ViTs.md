@@ -163,6 +163,24 @@ block = nn.Sequential(
 
 - MBConv 所使用的必要性？
 
+  Conv 是简单的特征提取器，权重即为 query，而 feature map 就是 key。卷积通过 query 和 key 进行矩阵乘法提取出对应的特征，该特征即为最终的输出，不需要其他的 value。这或许是由于视觉任务中这些特征已经能够满足分类任务，不需要额外的 value 特征
+
+  个人认为 MBConv 所完成的主要功能即为降采样，其他功能的必要性不是特别清楚，因为抽取特征的过程主要在 attention，不过得益于 SE 的加入，在降采样的时候对 channel 进行了加权处理，所以下采样的结果会更好
+
+  Conv 1x1: 升维，获得更多的特征
+
+  Conv 3x3: 获得 3x3 window 的 depth wise 特征，同时进行了降采样
+
+  SE: 对 channel 进行加权
+
+  Conv 1x1: 降维，获得更大感受野的特征结果
+
+  以下是对 attention 中的 qkv 一个简单的比喻，帮助我来理解卷积过程
+
+  - query: has any angle?
+  - key: has angle or not
+  - value: is ear
+
 ## EVA
 
 ### Layout

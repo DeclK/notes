@@ -758,7 +758,7 @@ void printBook( struct Books *book )
 }
 ```
 
-### typedef
+### typedef & using
 
 可以使用它来为类型取一个新的名字。**typedef** 仅限于为类型定义符号名称，**#define** 不仅可以为类型定义别名，也能为数值定义别名，比如您可以定义 1 为 ONE
 
