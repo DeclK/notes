@@ -256,10 +256,128 @@ if (tid == 0)
 
 - 优化 reduce 线程利用率
 
-  TODO：如何思考利用率的提升原理？
-
-  TODO：为什么计算精度提升了？
-
-  TODO：静态全局内存如何优化？
+  之前的 reduce 代码，每一次都是折半 reduce，所以会有很多线程都是空闲的，线程利用率非常低
+  $$
+  (\frac{1}{2}+\frac{1}{4}+\frac{1}{8}+...+\frac{1}{128}) \div7≈\frac{1}{7}
+  $$
+  其实我们可以指定一些空间，然后所有的线程都往这些空间里累加数据，然后再对这些固定空间进行折半 reduce，这样的话线程利用率就大大提高了
   
-  TODO：如何使用跨 blockDim 的方式改写 reduce?
+  我使用以下示意图来直观表示为什么这样做会更快
+  
+  <img src="CUDA Programming 5/image-20241119174035300.png" alt="image-20241119174035300" style="zoom:80%;" />
+  
+  左侧就是我们之前的方式，右侧是优化过后的方式。我们假设 GPU 只能 launch 一个 block，并且数据量足够的多，此时就能清楚地计算时延。可以明显的看到在 half reduce 的时间显著的减少了，因为数据提前进行了累加，只需要对单个 block 的数据进行 half reduce
+  
+  ```c++
+  void __global__ optimized_reduce(const real *d_x, real *d_y, const int N)
+  {
+      const int tid = threadIdx.x;
+      const int bid = blockIdx.x;
+      extern __shared__ real s_y[];
+  
+      real y = 0.0;
+      const int stride = blockDim.x * gridDim.x;
+      for (int n = bid * blockDim.x + tid; n < N; n += stride)
+      {
+          y += d_x[n];    // sum(d[:, bid, tid])
+      }
+      s_y[tid] = y;
+      __syncthreads();
+  
+      for (int offset = blockDim.x >> 1; offset >= 32; offset >>= 1)
+      {
+          if (tid < offset)
+          {
+              s_y[tid] += s_y[tid + offset];
+          }
+          __syncthreads();
+      }
+  
+      y = s_y[tid];
+  
+      thread_block_tile<32> g = tiled_partition<32>(this_thread_block());
+      for (int i = g.size() >> 1; i > 0; i >>= 1)
+      {
+          y += g.shfl_down(y, i);
+      }
+  
+      if (tid == 0)
+      {
+          atomicAdd(d_y, y);
+      }
+  }
+  ```
+  
+  运行一下程序得到结果
+  
+  ```shell
+  Time = 0.647755 ms.
+  sum = 123007480.000000.
+  ```
+  
+  相比于之前的结果 1.8 ms 提升了非常多，而且精度也提升了非常多，因为如此一来我们进行原子相加的次数也显著减少了，而原子操作是低精度的操作
+  
+  教材使用了两个 kernel 来直接避免使用 atomicAdd 操作，只需要把上面的 `atomicAdd` 改成如下部分
+  
+  ```c++
+      if (tid == 0)
+      {
+          d_y[bid] = y;
+      }
+  ```
+  
+  即，把每个 block reduce 得到的结果放回全局内存，此时我们通过两个 kernel launch
+  
+  ```c++
+  reduce_cp<<<GRID_SIZE, BLOCK_SIZE, smem>>>(d_x, d_y, N);
+  reduce_cp<<<1, 1024, sizeof(real) * 1024>>>(d_y, d_y, GRID_SIZE);
+  ```
+  
+  第一次将数组归约到 `GRID_SIZE` 大小，第二次归约为1
+  
+  ```shell
+  Time = 0.653058 ms.
+  sum = 123000064.000000.
+  ```
+  
+  可以看到精度进一步提升！因为我们没有使用任何的原子操作
+  
+  最后提一下教材中说：不要让一个线程去处理相邻的数据，这样一定会导致非合并访问，GPT 解释如下
+  
+  > CUDA architecture achieves optimal performance when memory access is coalesced, meaning consecutive threads access consecutive memory addresses. If a single thread accesses scattered, non-coalesced data (such as neighboring elements), it can lead to inefficient memory access patterns and reduced performance.
+  
+  现在对合并访问有更直观的理解：consecutive threads access consecutive memory
+  
+- 使用静态全局内存优化 reduce
+
+  之前都是使用动态全局内存，会比静态全局内存更慢，教材选择直接分配一块静态的全局内存给 `d_y`，这样节省了内存的分配与释放
+
+  ```c++
+  __device__ real static_y[GRID_SIZE];
+  ```
+
+  可以在 kernel 中直接使用该变量，但为了不更改之前的代码我们可以使用 `cudaGetSymbolAddress` 来将这块内存的指针指向我们定义好的变量
+
+  ```c++
+  real *d_y;
+  CHECK(cudaGetSymbolAddress((void**)&d_y, static_y));
+  ```
+
+  该操作将再次优化 10%
+
+  ```shell
+  Time = 0.576535 ms.
+  sum = 123000064.000000.
+  ```
+
+## Question
+
+- 为什么教材中使用了两次 kernel launch 获得的精度比之前要高
+
+  > 这是因为，在使用两个核函数时，将数组 `d_y` 归约到最终结果的计算也使用了折半求和，比直接累加（使用原子函数或复制到主机再累加的情形）要稳健
+
+  总之就是原子函数和 CPU 大数计算都有较大的误差
+
+- 如何使用跨 blockDim 的方式改写 reduce? 这是教材留下的思考题
+
+- 显然当我们拥有很多的数据的时候，会有一些 block 在等待中，此时 atomicAdd 会在干什么呢？
