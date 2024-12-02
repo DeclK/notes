@@ -346,13 +346,14 @@ AnyNetX_E 的搜索空间相比原始的 AnyNet 下降了7个数量级。论文�
 
 论文一开始使用如下的线性公式来限制宽度和深度
 $$
-u_j=w_0+w_a·j
+u_j=w_0+w_a·j \ \ \ \ \ for \ 0 \le j \le d
 $$
 其中 $u_j$ 是第 j 个 block 的宽度（j 是拉通所有 stage 来数的），$w_0,w_a$ 是超参数
 
 为了将这个线性公式量化，论文使用一个 $w_m$ 来作为一个宽度因子（width multiplier）
 $$
 u_j=w_0·w_m^{s_j}\\
+s_j=\log_{w_m}{\frac{u_j}{w_0}}=\log_{w_m}{\frac{w_0+w_a·j}{w_0}}
 $$
 真正的量化就是对 $s_j$ 进行上下取整，获得真正的每一个深度的宽度
 $$
@@ -383,8 +384,8 @@ $w_m$ 我理解为一个“阶梯”因子，例如当 $w_m=2$ 时，每一个�
 
 个人认为造成上述原因有两点：
 
-1. RegNet 缩小搜索空间的标准一直都是 EDF，而 EDF 只有对误差的评估，没有对模型参数、速度进行评估。在之后的实验也看到 RegNet 在较小参数下可能表现略逊于 EfficientNet。但是如果所比较的方式为相同激活值（activations）的条件下，RegNet 是胜出的，这也是为什么 RegNet 的速度远快于 EfficientNet
-2. 分辨率的提升带来准确率的提升是不争的事实，我猜测是训练方式的问题，导致了模型无法在多分辨率下泛化
+1. RegNet 缩小搜索空间的标准一直都是 EDF，而 EDF 只有对误差的评估，没有对模型参数、速度进行评估。在之后的实验也看到 RegNet 在较小参数下可能表现略逊于 EfficientNet。但是如果所比较的方式为相同激活值（activations）的条件下，RegNet 是胜出的，这也是为什么 RegNet 的速度远快于 EfficientNet。如果将参数、速度考虑进去的话，使用 g = 1 在小模型中将会是更有效的搜索方向
+2. 分辨率的提升带来准确率的提升是不争的事实，我猜测是训练方式的问题，导致了模型无法在多分辨率下泛化。一个证据就是：timm 中用更高分辨率输入到 [regnety_040](https://huggingface.co/timm/regnety_040.ra3_in1k) 模型中，准确率变高了
 
 论文还在 X block 中加入了 SE layer，由该 block 组成的模型称为 RegNetY，效果更好了
 
