@@ -369,6 +369,36 @@
 
     1. ++i pre-increment，因为 ++ 先出来，所以会先 i+1 然后再赋值
     2. i++ post-increment，因为 i 先出来，所以会先赋值再 i+1，并且由于 ++ 靠后，所以不能作为左值 (l-value)
+  
+- Deconstructor
+
+  > In C++, when you’re implementing a destructor, you typically need to focus on managing dynamic memory to prevent memory leaks. The other members that are not dynamically allocated, they are automatically cleaned up when the instance goes out of scope.
+
+  根据 GPT 的回答，我们的 deconstructor 写作
+
+  ```c++
+  template <typename T>
+  GapBuffer<T>::~GapBuffer() {
+      // TODO: implement this destructor (~1 line long)
+      delete [] _elems;
+  }
+  ```
+
+- initialization list 的两种表现
+
+- `std::move` 带来的麻烦，可以用 `std::unique_ptr` or `std::vector` 进行解决
+
+  C++ 一直都需要注意 dynamic resources 的管理，即使是使用 `std::vector` 也需要注意。对于自身带有 dynamic resources 的类，vector 本身也是没办法进行管理的。所以总而言之 RAII (smart pointers) is all you need，不使用 `new & delete` 就是智能指针诞生的重要原因之一，能更好地管理这种动态内存
+
+- Variadic Templates
+
+- Perfect forwarding
+
+  -  common r-values
+
+- fold expression
+
+  [理解C++折叠表达式（Fold Expression） - 知乎](https://zhuanlan.zhihu.com/p/670871464)
 
 ## Question
 
