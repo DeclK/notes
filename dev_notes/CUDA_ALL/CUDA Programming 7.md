@@ -16,11 +16,12 @@
 
 Other zhihu references:
 
-- [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts)
+- [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts), and its gemm code [github](https://github.com/reed-lau/cute-gemm)
 - [CUTLASS CuTe实战(一)-基础](https://zhuanlan.zhihu.com/p/690703999)
 - [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624)
   - [github](https://github.com/zeroine/cutlass-cute-sample)
 - [cutlass cute 101](https://zhuanlan.zhihu.com/p/660379052)
+- A collective repo which gathers a lots of blogs and kenel impl [CUDA-Learn-Notes](https://github.com/DefTruth/CUDA-Learn-Notes), not suitable for system learning, can be used for look-up table if you are trying to seek for some topic
 
 ## Install & Hello World
 
@@ -102,15 +103,17 @@ $$
 
 蓝色部分的矩阵乘积结果，由绿色和黄色部分的矩阵的点积和得到。`gemm_device` 所采用的就是这样朴素的思维，比不过 cuBLAS 也是情有可原的，下面具体地讨论整个过程，即：如何将数据分配到各个 block/warp/thread 当中，并进行计算，此处参考 [cutlass cute 101](https://zhuanlan.zhihu.com/p/660379052) [0x_gemm_tutorial.md](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/0x_gemm_tutorial.md)
 
-TODO: what does this code trying to do?
+- What does this code trying to do?
 
-TODO: function utility
+  这基本上就是在教你如何用并行的思维去处理矩阵乘法。我先从逻辑视角完成这件事情，然后再将这些逻辑映射到代码当中，看下代码的具体实现
 
-- Tensor
+  为了简单起见，我们首先定义问题为最简单的矩阵乘法：$C = AB$，他们形状分别为 `A(M,K) & B(K,N), C(M,N)`，为了让问题更加具象化，我们以 `M=N=5120, K=4096` 为例子（这也是 cutlass 代码例子中所使用的数值）
 
-  slicing a tensor
+  一个不错的划分视角是以矩阵 $C$ 为核心：我们将矩阵 C 进行划分，以 $(128,128)$ 的方块作为划分单位，去单独求解每一个方块中的矩阵乘法结果。从 CUDA 编程的角度来讲：我们让一个 block 去处理一个 $(128,128)$ 的矩阵乘法结果
 
-- mode and major
+  TODO: 插图
+
+  好，现在就可以集中精力来处理每一个 block 应当如何计算了
 
 - CTA Cooperative Thread Array
 
@@ -118,6 +121,14 @@ TODO: function utility
 
   - `CtaTiler`. A CuTe [tiler concept](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md#composition-tilers) that determines how to extract a tile of data from the problem shape.
   - At the highest level, the work is distributed across CTAs. In principle, each CTA's tile could come from the input tensors in many different ways. Many [CuTe `Tiler`s](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md#composition-tilers) could be used to tile the data, but for these cases it is sufficient to simply use the shape of the desired CTA tile.
+
+- zipped_divide
+
+  本来想就看下 zipped_divide，但可以顺手把 logical divide 给学了，都在 [layout algebra](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md) 里面
+
+- drawing from each level: how gemm is divided from block to thread, and we have different layout to deal with computation (global mem & shared mem)
+
+- From a bigger picture: an intuitive way to think about layout algebra, where is the bottleneck to understanding the process?
 
 Key functions
 
@@ -151,7 +162,7 @@ Key functions
 
 Everything is layout in cutlass: problem layout, block layout, thread layout, memory layout, **use layout algebra to solve them in a unified view**
 
-## Concepts
+## CUTE Tutorials
 
 - [CUDA MODE lecture 15](https://www.bilibili.com/video/BV1QZ421N7pT?spm_id_from=333.788.videopod.episodes&p=15)
 - [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts)
@@ -159,13 +170,15 @@ Everything is layout in cutlass: problem layout, block layout, thread layout, me
 
 主要总结 Concepts
 
-- CUTE layout algebra
-- 
+- [layout algebra](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md)
+- tensor
+- algorithms
 
 ## CUTLASS in Practice
 
+- improve cutlass gemm  [zhihu](https://zhuanlan.zhihu.com/p/707715989) [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts)
 - pick up cutlass examples: interested in all kinds of gemm and kernel fusion
-- [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624) [github](https://github.com/zeroine/cutlass-cute-sample)
+- [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624) [github](https://github.com/zeroine/cutlass-cute-sample) this gives examples on optimze gemm and fusing kernel, and most importantly, it gives examples on how to use ncu & nsys to analyize the performance
 - cutlass in flash attention
 
 ## Questions
@@ -176,4 +189,10 @@ Everything is layout in cutlass: problem layout, block layout, thread layout, me
 - What are the basic tools? and maybe basic types?
 - when using `cmake .. -DCUTLASS_NVCC_ARCHS=86` does this equal to `cmake .. -DCUTLASS_NVCC_ARCHS=80`
 - CUTLASS assert functions
+- dynamic & static difference
+- what is nested tensor mode
+- why do we try to divide the K dimension into smaller k?
+- sgemm_2 is 3ms faster than sgemm_1 (15ms v.s. 18 ms), still 5ms to go from 10ms (cuBLAS), how to exceed it? [zhihu](https://zhuanlan.zhihu.com/p/707715989)
+- what is mode and major
 
+  seems like mode refers to axis...
