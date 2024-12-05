@@ -48,7 +48,7 @@ mkdir build && cd build
 cmake .. -DCUTLASS_NVCC_ARCHS=86
 ```
 
-似乎应该使用 `-DCUTLASS_NVCC_ARCHS=80`? 即使我的 compute capacity 是86
+似乎应该使用 `-DCUTLASS_NVCC_ARCHS=80`? 即使我的 compute capacity 是86。Another tip: 我尝试在 WSL 上进行 cmake，结果卡住了 `(pid, sts) = os.waitpid(self.pid, wait_flags)`，应该是多线程在 WSL 上不太管用，把 unit test 取消编译就好 ` cmake .. -DCUTLASS_NVCC_ARCHS=86 -DCUTLASS_ENABLE_TESTS=OFF`
 
 在运行完过后可以看到 `build/Makefile` 中会有许多我们可 build 的文件，其中 `examples` 下的所有文件都可以在里面搜到 (e.g. `00_basic_gemm`)，而我要使用的就是 `sgemm_1` 
 
@@ -316,29 +316,134 @@ $$
 
 [layout](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/01_layout.md)
 
-- IntTuple
+- Dynamic and static int
+
+  在介绍 layout 之前先简要介绍下 cutlass 中表示 int 的方式。有两种，一种就是 dynamic int，另一种是 static int
+
+  ```c++
+  int{2};   // dynamic
+  2;		  // also dynamic
+  Int<2>{}; // static
+  _2{};	  // equal with Int<2>{}, using cute::_2 = cute::Int<2> 
+  ```
+
+- What is Layout?
+
+  > A `Layout` is a pair of (`Shape`, `Stride`). Semantically, it implements a mapping from any coordinate within the Shape to an index via the Stride. 
+  >
+  > In CuTe, `Layout` is a first class citizen.
+
+  正如上面所说，layout 是由 shape 和 stride 组成的 pair，而 shape 和 stride 本身是 tuple (IntTuple to be exact)，layout 提供了一套抽象，能够很好地描述 multi-dimensional array 的排布，并且方便我们对排布进行变换和操作。当你去 print 一个 cutlass layout 时，就会获得  `shape:stride` 这样的表示
+
+  那么这就引出了接下来的问题：what is shape and stride?
+
+- Shape & Stride
+
+  Shape 其实没什么好介绍的，就是描述 layout 的形状的。和 pytorch 中的 tensor.shape 类似，不同的是 Shape 也可以嵌套: `(make_shape(2, make_shape (2,2))`，这样我们就有一个形状 `(2, (2, 2))` 的 shape。其实嵌套的 shapr or stride 没什么 fancy 的东西，通常用来表示 sub layout/tensor，在我们在进行 tiling or dividing 的时候会比较有用，你其实就把嵌套的括号打开，把这个看作一个多维 tensor 也 OK 的
+
+  Stride 可以说是描述 layout 排布的关键所在，它告诉了我们元素之间的间隔到底是多少。我们可以表示一个 column-major 的矩阵如下
+
+  ```c++
+  // Shape :  (4,2)
+  // Stride:  (1,4)
+    0   4
+    1   5
+    2   6
+    3   7
+  ```
+
+  而表示一个 row-major 的矩阵只需要将 stride 反过来即可
+
+  ```c++
+  // Shape :  (4,2)
+  // Stride:  (2,1)
+    0   1
+    2   3
+    4   5
+    6   7
+  ```
+
+  在 cutlass 中也称 column-major 为 LayoutLeft，而 row-major 为 LayoutRight。如果你在构建 layout 的时候不指定 stride，将默认使用 LayoutLeft。用一个更加通用的表示 LayoutLeft
+
+  ```c++
+  // Shape : (x1, x2, x3, ..., xn)
+  // LayoutLeft: (1, x1, x1·x2, ..., x1·x2·x3·...·xn-1)
+  ```
 
 - Creation & Use
 
-- Shapes & Strides
+  可以使用 `make_layout & make_shape & make_tuple` 来创建 layout
 
-- Print 
+  ```c++
+  Layout s8 = make_layout(Int<8>{});
+  Layout s2xs4 = make_layout(make_shape(Int<2>{},Int<4>{}));
+  Layout s2xd4_a = make_layout(make_shape (2,4), make_stride(12, 1}));
+  ```
 
-  `print_layout`
+  创建完 layout 过后可以通过 cutlass 内建方法来查看 layout 的一些性质：rank, depth, shape, stride, size
 
-  `print_latex` to see layout more visually
+- **Coordinates & Index Conversion/Mapping**
 
-- Coordinates & Index Conversion
+  Coordinates & Index Conversion 可以说就是 layout 最重要的核心逻辑！一共有两种类型的 Mapping:
 
-  Natural coordinate
+  1. the map from an input coordinate to the corresponding natural coordinate via the `Shape`
+  2. the map from a natural coordinate to the index via the `Stride`
 
-  1-D coordinate
+  上面出现了两个新的概念：
 
-  
+  1. input coordinate
+  2. natural coordinate
 
-> In CuTe, `Layout` is a first class citizen, is natively hierarchical to naturally represent functions beyond row-major and column-major, and can similarly be indexed with a hierarchy of coordinates.
+  coordinate 对我来说是熟悉的，其实就是 tensor 的索引，或者说空间中的坐标，加一个 natural 就变得比较迷惑了。个人理解：与其说是 natural coordinate 不如说是 natural layout，因为 coordinate 本身没有什么好变化的，只有当 coordinate 配合 stride 时才有更多的区分。**而 natural layout 其实就是 LayoutLeft**！
 
+  那么什么是 input coordinate? 个人理解：其实是 cutlass 对 natural coordinate 的拓展，或者说泛化。对于一个 n-D shape 的 coordinate，可以转换为其他维度的 coordinate。在 tutorial 中举了一个 3-D shape `(3, (2, 3))` 的 coordinate 在 2-D 和 1-D coordinate 之间的转换
 
+  | 1-D  | 2-D     | Natural     |      | 1-D  | 2-D     | Natural     |
+  | ---- | ------- | ----------- | ---- | ---- | ------- | ----------- |
+  | `0`  | `(0,0)` | `(0,(0,0))` |      | `9`  | `(0,3)` | `(0,(1,1))` |
+  | `1`  | `(1,0)` | `(1,(0,0))` |      | `10` | `(1,3)` | `(1,(1,1))` |
+  | `2`  | `(2,0)` | `(2,(0,0))` |      | `11` | `(2,3)` | `(2,(1,1))` |
+  | `3`  | `(0,1)` | `(0,(1,0))` |      | `12` | `(0,4)` | `(0,(0,2))` |
+  | `4`  | `(1,1)` | `(1,(1,0))` |      | `13` | `(1,4)` | `(1,(0,2))` |
+  | `5`  | `(2,1)` | `(2,(1,0))` |      | `14` | `(2,4)` | `(2,(0,2))` |
+  | `6`  | `(0,2)` | `(0,(0,1))` |      | `15` | `(0,5)` | `(0,(1,2))` |
+  | `7`  | `(1,2)` | `(1,(0,1))` |      | `16` | `(1,5)` | `(1,(1,2))` |
+  | `8`  | `(2,2)` | `(2,(0,1))` |      | `17` | `(2,5)` | `(2,(1,2))` |
+
+  那么这些维度的 coordinate 之间是怎么转化的呢？很显然他们应该都有一个相同的 id，使得他们本质是等价的，这个 id 就是 **index**
+
+  计算 index 的方式很简单：就是 coordinate 和 stride 的内积 (inner product)
+
+  ```c++
+  // Shape: (M, N, K)
+  // Stride: (1, M, MN), LayoutLeft/natural layout
+  // Coord: (i, j, k)
+  index = i*1 + j*M + k*MN
+  ```
+
+  这个公式就能够完成从 coordinate 到 index 的映射，并且通过这个关系，我们也能够在多个维度之间转换得到等价的坐标
+
+  NOTE: 其实 stride 的定义可以非常灵活，例如之前定义过 layout
+
+  ```c++
+  Layout s2xd4_a = make_layout(make_shape (2,4), make_stride(12, 1}));
+  // (2,4):(12,1)
+  ```
+
+  显然这个 stride 非常地不 natural，所计算得到的 index 远远超过了 natural layout 中最大的 index
+
+- Congruent
+
+  所谓的 congruent 就是指的 shape 和 stride 他们 tuple profiles 是一样的。换句话说：shape 有几个维度，stride 就有几个维度
+
+  ```c++
+  (2, 2):(1, 2) // congruent
+  (2, 2):(3)	// not congruent
+  ```
+
+- Print
+
+  cutlass cute 提供了一些 print 函数帮助我们查看 layout 信息，例如 `print_layout & print_latex`
 
 ### Layout Algebra
 
@@ -457,5 +562,3 @@ Other reference
   cp_async_wait<0>();      // Sync on all (potential) cp.async instructions
   __syncthreads();         // Wait for all threads to write to smem
   ```
-
-  

@@ -158,16 +158,23 @@ date: 2021-07-12 14:36:42
 8. 安装 MiSans 字体，ttf 字体可以通过直接双击文件进行安装。安装好字体过后可以修改 typora 的渲染字体
 
    ```css
-   # file base.user.css, to change code font
-   body {
-   font-family: "JetBrains Mono";
+   /* referene: https://zhuanlan.zhihu.com/p/684183797 */
+   /* Change Code Font */
+   .CodeMirror-wrap .CodeMirror-code pre {
+      font-family: "JetBrains Mono"
    }
-   
-   # file github.css
-   body {
-       font-family: "Open Sans","MiSans", "Helvetica Neue", Helvetica, Arial, 'Segoe UI Emoji', sans-serif;
-       color: rgb(51, 51, 51);
-       line-height: 1.6;
+
+   /* Change Inline Code Font */
+   .md-fences,
+   code,
+   tt {
+      border: 1px solid #e7eaed;
+      background-color: #f8f8f8;
+      border-radius: 3px;
+      padding: 0;
+      padding: 2px 4px 0px 4px;
+      font-size: 0.9em;
+      font-family: "JetBrains Mono";
    }
    ```
 
