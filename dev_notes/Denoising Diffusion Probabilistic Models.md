@@ -105,13 +105,23 @@
 
   https://en.wikipedia.org/wiki/Chain_rule_(probability)
 
-- Markov Chain
+- Markov Chain Monte Carlo (MCMC)
 
 - Reparameterization trick
 
   https://en.wikipedia.org/wiki/Reparameterization_trick
 
 - [Lil's log on diffusion](https://lilianweng.github.io/posts/2021-07-11-diffusion-models)
+
+- How does variational inference connected with ELBO?
+
+  [Evidence lower bound - Wikipedia](https://en.wikipedia.org/wiki/Evidence_lower_bound#Variational_Bayesian_inference)
+
+  These words are extremely important to anwer the question: what does these parameter is trying to model? and how to compute these values actually
+
+  > This defines a family of joint distributions pθ over (X,Z). It is very easy to sample (x,z)∼pθ: simply sample z∼p, then compute fθ(z), and finally sample x∼pθ(⋅|z) using fθ(z).
+
+  In general, it's impossible to perform the integral pθ(x)=∫pθ(x|z)p(z)dz, forcing us to perform another approximation.
 
 ## Question
 
@@ -130,4 +140,7 @@
 - How to optimize the first term of VAE $E_{z\sim q_{\phi}(z|x)}[\log{p_{\theta}(x|z)}]$​
 
   we use the network to produce the mean of of gaussian, what about variance?
+  
+- Why it is hard to compute the $p_\theta(x)$
 
+  [my-chat](https://chatgpt.com/share/675726ae-8364-800a-b33d-0ed508bc3eaf)
