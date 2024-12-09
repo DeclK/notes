@@ -16,7 +16,8 @@
 ## Notaions in Probability
 
 - $x\sim p(·)$ 代表着 $x$ 是一个随机变量服从于概率分布 $p$，在论文中，也常常用该 notation 来表示在 $p$ 分布中采样 $x$
-- $E_{x\sim p(x)}$ 代表着求解变量 $x$ 的期望，并且该变量服从概率分布 $p(x)$，有时候也会用 $E_{p(x)}$ 来简写该过程
+- $E_{x\sim p(x)}$ 代表着求解变量 $x$ 的期望，并且该变量服从概率分布 $p(x)$，有时候也会用 $E_{p(x)}$​ 来简写该过程
+- $N(x;\mu, \sigma^2)$ 来表示一个高斯分布，其中随机变量为 $x$，其均值和方差分别为 $\mu, \sigma^2$，有时候也会省略掉 $x$，直接写作 $N(\mu, \sigma^2)$。对于一个多维高斯分布使用如下 notation: $N(x;\mu,\Sigma)$，其中 $x,\mu$ 都是多维向量，而 $\Sigma$ 为协方差矩阵 (covariance matrix)
 
 ## An intuitive perspective of DDPM
 
@@ -90,9 +91,43 @@
 
 - VAE (Variational Auto Encoder) & Diffusion Model
 
-  
+- What does posterior mean?
+
+  This is from Bayesian stuff, also we need to know what kind of hypothesis does Bayesian gives (normally gaussian, but can change into what?)
+
+- What does marginalize mean?
+
+- How to understand latent variable?
+
+  From the Understanding Diffusion Models: A Unified Perspective gives an intuitive philosophy
+
+- Chain of rules in probability
+
+  https://en.wikipedia.org/wiki/Chain_rule_(probability)
+
+- Markov Chain
+
+- Reparameterization trick
+
+  https://en.wikipedia.org/wiki/Reparameterization_trick
+
+- [Lil's log on diffusion](https://lilianweng.github.io/posts/2021-07-11-diffusion-models)
 
 ## Question
 
 - 为什么在 inference 采样的时候还要加入随机噪声？
+
+  采样，just like sampling when generating tokens
+
+- In the [material](https://arxiv.org/pdf/2208.11970), there are some p is $p_\theta(·)$, but some wihout $\theta$, juse $p(·)$, how to differenciate them?
+
+  It seems that the $p(·)$ without the $\theta$​ means it is a prior distribution, which means we defined it manually at the very beginning, or let's say it is out hypothesis
+
+- Explaining the square root in the $\sqrt{\alpha_t}$ when doing linear gaussian modeling
+
+  This is to maintain the variance structure of origianl distribution
+
+- How to optimize the first term of VAE $E_{z\sim q_{\phi}(z|x)}[\log{p_{\theta}(x|z)}]$​
+
+  we use the network to produce the mean of of gaussian, what about variance?
 
