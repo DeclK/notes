@@ -420,3 +420,71 @@ git push -f origin master
 现在 git 和很多 IDE 都有联动，可以直接在 IDE 中方便的操作 git，甚至将 git 可视化，可以直观看到你对文件的修改
 
 以 pycharm 和 vscode 为例，只要在你的项目文件夹下有 .git 文件即可，如果没有则使用 git init 新建 
+
+## Gitlab
+
+如何在本地搭建 gitlab 服务器进行代码管理，参考 [link](https://developer.aliyun.com/article/922952) [CSDN](https://blog.csdn.net/BThinker/article/details/124097795)
+
+1. 查询可用的 gitlab docker 镜像，并进行安装，我这里直接使用 `docker pull gitlab/gitlab-ce` 就会默认 pull 最新的 gitlab 镜像
+
+2. 运行 gitlab 容器
+
+   ```shell
+   docker run -d \
+   -p 10008:80 \
+   -p 10009:443 \
+   -p 10010:22 \
+   --restart always \
+   --name gitlab \
+   --hostname gitlab.example.com \
+   -v /home/gitlab/etc/gitlab:/etc/gitlab \
+   -v /home/gitlab/var/log/gitlab:/var/log/gitlab \
+   -v /home/gitlab/var/opt/gitlab:/var/opt/gitlab \
+   --privileged=true \
+   gitlab/gitlab-ce
+   ```
+
+   解释下其中的参数：
+
+   - `-d` 表示后台运行容器，并返回容器 id
+   - `-p` 是将容器内的端口映射到主机端口，例如 `-p 10008:80` 表示将容器内的 80 端口映射到 10008 端口，对于主机端口没有特别要求，一般随意指定空闲端口即可
+   - `--restart` 容器自启动
+   - `--priviledged` 获得主机 root 权限
+   - `-v` 是挂载数据卷，如果没有这些路径，会自动创建
+   - `--hostname` 代表主机名，可加可不加，仅作为一个标识：之后我们可将配置该名字作为访问域名
+
+3. 修改 `gitlab.rb` 文件
+
+   需要使用 sudo 权限 `sudo vim /home/gitlab/etc/gitlab/gitlab.rb`，主要修改下 ip、端口、时区
+
+   ```shell
+   external_url 'http://172.17.0.1'			# using ifconfig to see your own ip
+   # external_url 'http://gitlab.example.com'	# using specified domain name
+   gitlab_rails['gitlab_ssh_host'] = '172.17.0.1'
+   gitlab_rails['gitlab_shell_ssh_port'] = 10010 
+   gitlab_rails['time_zone'] = 'Asia/Shanghai'
+   ```
+
+   进入 docker 修改 `gitlab.yml` 中的 `host & port` 为自己的 ip（在实验过后发现端口并不是必须修改的，默认80即可）
+
+   ```shell
+   docker exec -it gitlab bash
+   vi /opt/gitlab/embedded/service/gitlab-rails/config/gitlab.yml
+   ```
+
+   <img src="Git-教程/image-20250115185915152.png" alt="image-20250115185915152" style="zoom:67%;" />
+
+4. 在 gitlab 容器中重启服务 `gitlab-ctl restart`，然后 exit 即可。通过 10008 端口在浏览器中访问即可 http://172.17.0.1:10008
+
+5. 以初始 root 用户进行登录，初始密码通过 `sudo cat /home/gitlab/etc/gitlab/initial_root_password` 可以查看。登录过后可以修改密码。之后可以通过这个 root 用户添加正常的普通用户
+
+6. 更改域名
+
+   因为不想每一次都使用 ip 和端口去登录，根据自己的摸索可以用下面的方式做到：
+
+   1. 将自己的域名添加到 `/etc/hosts` 当中，这个域名可以是任意的，不需要是注册域名，这里相当于做了一个简单的映射，通过这个域名就能够直达我们的 gitlab docker service。但是这个域名的名字是有要求的，经过多次测试，我发现使用 `gitlab.xxx.com` 是能够通过的，否则将面临 `HTTP 502: Waiting for GitLab to boot` 问题
+   2. 修改端口只能在创建 docker 容器的时候更改，可以将 host 和 container 的端口保持一致 `80, 443, 22`，这三者分别为 http & https & ssh 服务端口，这样就不需要每次登录的时候都输入端口了
+   3. 通过修改上述 `gitlab.yml` 中的 `host & ssh_host` 更改域名
+   4. （可选）通过修改上述 `gitlab.rb` 中的 `external_url` 更改域名。我发现即使不更改也不影响功能
+   
+   由于实在没精力搞 ssl 证书了，故到此结束！
