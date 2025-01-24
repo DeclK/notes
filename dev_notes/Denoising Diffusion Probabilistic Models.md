@@ -87,15 +87,90 @@
 
 - 课程还介绍了 Stable Diffusion & DALL-E，我就不整理了
 
-## Maths
+## From ELBO to VAE
 
-- VAE (Variational Auto Encoder) & Diffusion Model
+[ELBO wiki](https://en.wikipedia.org/wiki/Evidence_lower_bound)我能够从 EM algorithm 比较顺利地切入到 VAE 当中
 
-- What does posterior mean?
+- EM algorithm
 
-  This is from Bayesian stuff, also we need to know what kind of hypothesis does Bayesian gives (normally gaussian, but can change into what?)
+- Variational Auto Encoder
 
-- What does marginalize mean?
+  VAE 可以说是在早期的图像生成领域中很常用的方法，如果理解了 VAE 相信理解 diffusion model 也是更简单的
+
+## From VAE to Diffusion
+
+
+
+## Fundamental Maths
+
+总结理解 VAE & Diffusion model 所需要的基础数学，主要就是贝叶斯理论（Bayesian Theorem）以及相关的概率论基础
+
+- Bayesian Theorem [wiki](https://en.wikipedia.org/wiki/Bayes%27_theorem)
+
+  > Bayes' theorem (alternatively Bayes' law or Bayes' rule, after [Thomas Bayes](https://en.wikipedia.org/wiki/Thomas_Bayes)) gives a mathematical rule for inverting [conditional probabilities](https://en.wikipedia.org/wiki/Conditional_probability), allowing one to **find the probability of a cause given its effect.**
+
+  上面就是 wiki 的第一句话，是对贝叶斯理论的高度总结：find the probability of a cause given its effect，给定这些现象来寻找原因。这个功能是一个非常强大的功能，但其公式却相当的简单
+  $$
+  P(A|B) = \frac{P(B|A)P(A)}{P(B)}
+  $$
+  这里的 A 和 B 都是任意的随机事件，并且 P(B) 不为 0。这里的 A 和 B 看起来非常的抽象，如何对应到实际应用当中？在现实中，A 通常用来表示 Hypothesis，即我们的假设，B 通常用来表示 Evidence，即发生的现象，所以也通常看到下方的字母表示
+  $$
+  P(H|E) = \frac{P(E|H)P(H)}{P(E)}
+  $$
+  为了更进一步理解，我们将这几个概率表示的意义写作如下：
+
+  1. $P(H)$，Prior，先验。我们通常称 hypothesis 为先验
+  2. $P(E)$，Evidence。名称没有变化
+  3. $P(E|H)$，Likelihood，似然。基于 hypothesis 所得出的事件概率即为似然
+  4. $P(H|E)$​，Posterior，后验。基于 evidence 所更新的 hypothesis 
+
+  此时贝叶斯公式的功能变得更加具象起来：根据事实来更新我们的假设。那么这个假设到底是什么？事实又是什么？用一个更加具象的例子表示：
+  $$
+  P(\theta|X) = \frac{P(X|\theta)P(\theta)}{P(X)}
+  $$
+  这下子符号似乎看起来更熟悉了：$\theta$ 就是模型参数，$X$ 就是数据样本，我们的任务就是用模型来估计样本的分布。其中我们用 $\theta$ 来表示了我们的模型参数，**其实这是一个 over simplification，其中还包含了我们的建模假设**，例如：这个模型是一个高斯分布，且数据的分布符合高斯分布，高斯分布的参数为 $\theta$。所以我们能够非常轻松地根据这个假设计算得到 $P(X|\theta)$​，直接根据高斯分布来算就行了
+
+  理解这个公式最常举的例子就是抛硬币的例子：
+
+  我们将上述的变量都进行具体的定义
+
+  - $\theta$ 是一个随机变量，其决定了硬币为正面的概率
+  - $X$ 是实验结果，我们的实验结果为抛10次硬币，有7次为正面，3次为反面
+
+  首先我们需要有一个初始猜测：$\theta$ 到底是个什么分布？由于一开始我们没有任何信息，不如假设为最简单的 uniform distribution (均匀分布) $P(\theta)=1, \theta\in [0,1]$
+
+  我们可以很容易根据我们的假设计算得到我们的 likelihood 
+  $$
+  P(X|\theta) = C_{10}^7·\theta^7(1-\theta)^3
+  $$
+  OK，现在比较难的是求得 $P(X)$，这里需要使用全概率公式，不过好在我们也能够求到
+  $$
+  P(X) = \int_0^1P(X|\theta)P(\theta)d\theta
+  $$
+  最后求得 $P(X)≈0.1$，是一个常数。所以将所有的结果导入到贝叶斯公式当中，就可以得到
+  $$
+  P(\theta|X) = \frac{C_{10}^7·\theta^7(1-\theta)^3·1}{0.1}
+  $$
+  可以看到，现在我们的 $\theta$ 被更新为了一个 [beta distribution](https://en.wikipedia.org/wiki/Beta_distribution)，相比于之前的 uniform distribution 改动不小。如果实验量足够多，那么我们所算出的 $\theta$ 应该趋近于一个 delta 分布，收敛到 $\frac{heads}{trials}$​ 这个值，并且无论你的初始 $P(\theta)$ 是多少，都会收敛到最终这个分布上。所以这给我一个启发：
+
+  无论初始 $P(\theta)$ 分布是怎样的，所收获到的 $P(X|\theta)$ 更新都是一样的，这是由我们的建模所决定的，即我们的模型假设：$\theta$ 决定了硬币为正面的概率。并且如果更新的 likelihood 足够强，那么将完全覆盖之前的先验，以 likelihood 为基准
+
+  另外再提一点：我们在计算 $P(X)$ 的时候能使用这个全概率公式，仍然是在我们的模型假设之下的。可以看到我们的模型假设基本上贯穿了所有的计算过程，一个错误的模型假设，即使计算再多的参数，也无法获得好的后验概率
+
+  这是一个非常非常简单的例子，简单到我想问：为什么不一开始我们就算 $\frac{heads}{trials}$ 这个值作为我们最终的 $\theta$ 分布呢🤔 但是有几个重要的启发
+
+  1. $P(X)$ is really hard to calculate
+  2. Binominal distribution is too simple
+
+  Prompt: a very weird shaped dice that you can not easily know what is the outcome when you flip it 
+
+  <img src="Denoising Diffusion Probabilistic Models/image-20250124160132877.png" alt="image-20250124160132877" style="zoom:50%;" />
+
+- Joint distribution and conditional distribution
+
+  
+
+- Marginalize
 
 - How to understand latent variable?
 
@@ -144,3 +219,11 @@
 - Why it is hard to compute the $p_\theta(x)$
 
   [my-chat](https://chatgpt.com/share/675726ae-8364-800a-b33d-0ed508bc3eaf)
+  
+- What is variational?
+
+  变分这个概念似乎非常
+
+- 什么是生成模型，什么是判别模型，他们的概念是什么？
+
+- 求解 $P(X)$ 的方式除了上述的全概率公式，是否还存在 MCMC 的方法？
