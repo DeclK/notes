@@ -89,13 +89,19 @@
 
 ## From ELBO to VAE
 
-[ELBO wiki](https://en.wikipedia.org/wiki/Evidence_lower_bound)我能够从 EM algorithm 比较顺利地切入到 VAE 当中
+[ELBO wiki](https://en.wikipedia.org/wiki/Evidence_lower_bound) 我能够从 EM algorithm 比较顺利地切入到 VAE 当中
 
-- EM algorithm
+- Before ELBO, why latent variable?
+
+  我们为什么要提出隐变量的概念？这个问题的回答是从文章 [Understanding Diffusion Models: A Unified Perspective](https://arxiv.org/pdf/2208.11970) 中得到启发
+
+- ELBO
 
 - Variational Auto Encoder
 
   VAE 可以说是在早期的图像生成领域中很常用的方法，如果理解了 VAE 相信理解 diffusion model 也是更简单的
+
+  个人的一句话理解，VAE 就是使用随机梯度的方法优化 ELBO
 
 ## From VAE to Diffusion
 
@@ -155,16 +161,43 @@
 
   无论初始 $P(\theta)$ 分布是怎样的，所收获到的 $P(X|\theta)$ 更新都是一样的，这是由我们的建模所决定的，即我们的模型假设：$\theta$ 决定了硬币为正面的概率。并且如果更新的 likelihood 足够强，那么将完全覆盖之前的先验，以 likelihood 为基准
 
-  另外再提一点：我们在计算 $P(X)$ 的时候能使用这个全概率公式，仍然是在我们的模型假设之下的。可以看到我们的模型假设基本上贯穿了所有的计算过程，一个错误的模型假设，即使计算再多的参数，也无法获得好的后验概率
+  另外再提一点：我们在计算 $P(X)$ 的时候能使用这个全概率公式，仍然是在我们的模型假设之下的。可以看到我们的模型假设贯穿了所有的计算过程，一个错误的模型假设，即使计算再多的参数，也无法获得好的后验概率
 
-  这是一个非常非常简单的例子，简单到我想问：为什么不一开始我们就算 $\frac{heads}{trials}$ 这个值作为我们最终的 $\theta$ 分布呢🤔 但是有几个重要的启发
+  这是一个非常非常简单的例子，简单到通常会直接算 $\frac{heads}{trials}$ 作为硬币为正的概率。过于简单的例子将掩盖掉两个问题
 
-  1. $P(X)$ is really hard to calculate
-  2. Binominal distribution is too simple
+  1. **$P(X|\theta)$ is actually really hard to model**
+  2. **$P(X)$ is actually really hard to calculate**
 
-  Prompt: a very weird shaped dice that you can not easily know what is the outcome when you flip it 
+  我询问了 DeepSeek，希望其举一个例子来说明为什么这两个问题在实际应用中非常难解。DeepSeek 给出的例子是引入了隐变量，让问题变得更加复杂
 
-  <img src="Denoising Diffusion Probabilistic Models/image-20250124160132877.png" alt="image-20250124160132877" style="zoom:50%;" />
+  > 假设我们有两种硬币，**硬币1**的正面概率为 $p_1$，**硬币2**的正面概率为 $p_2$，且每次抛硬币前会以概率 $\alpha$ 选择硬币1，以 $1-\alpha$ 选择硬币2。我们观察到 n 次抛掷的结果 $X={x_1,x_2,...,x_n}$（例如10次中有7次正面），但**不知道每次抛的是哪个硬币**。我们的目标是推断参数 $θ=(p1,p2,α)$
+
+  此时我们需要获得 $P(X|\theta)$​ 就不是那么容易的事儿了！可用公式表达为
+  $$
+  P(X|\theta) = \sum_{z_1=1}^2 \sum_{z_2=1}^2 \cdots \sum_{z_n=1}^2 \left[ \prod_{i=1}^n P(x_i|z_i, \theta) P(z_i|\theta) \right].
+  $$
+  式子中的各个概率计算如下：
+  $$
+  P(z_i=1|\theta) = \alpha, \quad P(z_i=2|\theta) = 1-\alpha, \\
+   P(x_i|z_i=1,\theta) = p_1^{x_i}(1-p_1)^{1-x_i}, \\
+   P(x_i|z_i=2,\theta) = p_2^{x_i}(1-p_2)^{1-x_i}.
+  $$
+  可以看到，我们需要将所有可能的**隐变量组合积分掉**，才能获得最终的 $P(X|\theta)$，这个计算复杂度是随着实验次数 n 而指数上升的，按照我们的条件则需要计算 $2^{10}$ 项 。那么如果我们还要对这个式子进行全概率公式的积分，计算复杂度就更大了
+  $$
+  P(X) = \int_{p_1} \int_{p_2} \int_{\alpha} P(X|\theta) P(\theta) \, d\alpha \, dp_1 \, dp_2
+  $$
+  即使采用数值积分，对于高维空间的积分成本也是非常高的，例如用网格法则需要 $O(k^3)$
+
+  最后自己再高度总结一下导致这两个困难的原因：
+
+  1. 当模型包含隐变量时，似然的计算涉及高维求和或积分，导致计算量指数爆炸
+
+  2. 当参数空间维度增加或模型复杂时，$P(X)$ 的解析解不可得。高维会显著增加计算复杂度，而即使是低维有的式子的解析解仍然不可解，例如你无法对高斯分布求解定积分
+     $$
+     P(X) = \int_{0}^{b} \int_{-a}^{a} \left[ \prod_{i=1}^n \frac{1}{\sqrt{2\pi\sigma^2}} e^{-\frac{(z_i-\mu)^2}{2\sigma^2}} \right] d\sigma^2 d\mu.
+     $$
+
+  为了解决上述问题，就需要近似方法了😏其中就包含变分推断和 MCMC 方法，而变分推断就是 VAE 的理论基础
 
 - Joint distribution and conditional distribution
 
@@ -220,9 +253,7 @@
 
   [my-chat](https://chatgpt.com/share/675726ae-8364-800a-b33d-0ed508bc3eaf)
   
-- What is variational?
-
-  变分这个概念似乎非常
+- 什么是变分 variational？
 
 - 什么是生成模型，什么是判别模型，他们的概念是什么？
 
