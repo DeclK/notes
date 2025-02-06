@@ -293,7 +293,10 @@ OK，现在所有元素都到齐了，可以愉快地用梯度下降进行优化
 
 ## From VAE to Diffusion
 
-
+- Inference process (q process) is known, which gives equations of $x_t, x_{t-1},x_0, \epsilon$
+- Markov chain is assumed
+- Optimizing ELBO -> how to model & sample & train
+-  how to unify the first term (reconstruction) in ELBO with third term (denoising) 
 
 ## Fundamental Maths
 
@@ -397,9 +400,7 @@ OK，现在所有元素都到齐了，可以愉快地用梯度下降进行优化
 
 - Marginalize
 
-- How to understand latent variable?
-
-  From the Understanding Diffusion Models: A Unified Perspective gives an intuitive philosophy
+  
 
 - Chain of rules in probability
 
