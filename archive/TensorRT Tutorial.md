@@ -505,7 +505,9 @@ nsys 其原理是去追踪程序运行时的一些 API，根据这些 API 调用
 
 > Effect: Launch the application using the given arguments. Start collecting immediately and end collection when the application stops. Trace CUDA, OpenGL, NVTX, and OS runtime libraries APIs. Collect CPU sampling information and thread scheduling information. 
 
-同时 `-o` 代表输出文件名，`-f` 代表强制输出，都可以不加。最终会生成一个 `.nsys-rep` 文件，把其放入 nsys-ui 中就能方便查看运行时
+同时 `-o` 代表输出文件名，`-f` 代表强制输出，都可以不加。最终会生成一个 `.nsys-rep` 文件，把其放入 nsys-ui 中就能方便查看运行时，通常这部分会折叠起来，寻找 CUDA HW 应该能看到
+
+![image-20250212154934260](TensorRT Tutorial/image-20250212154934260.png)
 
 在默认参数中 `--trace` 被设置为跟踪 `cuda, opengl, nvtx, osrt` 这四个 API，一般足够用了
 

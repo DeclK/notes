@@ -40,7 +40,48 @@
 
 - Dynamic Quantization
 
-- 
+- per-token & per-tensor & per-channel & per-block
+
+  之前在 SmoothQuant 了解到了前三个量化方法，现在又多了一个 per-block，per-block 是在 per-token 的基础上再对 token 进行了分组，进一步减少了 scales 数量
+
+  ```python
+  # matrix A(M, N)
+  import torch
+  
+  # per-tensor, scales (1,)
+  scales = torch.max(A) / 127
+  
+  # per-token, scales (M,)
+  scales = torch.max(A, dim=1) / 127 
+  
+  # per-channel, scales (N,)
+  scales = torch.max(A, dim=0) / 127
+  
+  # per-block, scales (M // block_size,)
+  A_ = reshape(A, "(m b) N -> m (b N)", b = block_size)
+  scales = torch.max(A_, dim=1)
+  ```
+
+  对于 K & V 的量化不能使用 per-channel 量化，因为 reduction dimension 就是 channel dimension，最后无法通过该 per-channel scale 对计算结果反量化。
+
+- Results on 3080Ti
+
+  Problem size
+
+  ```python
+  batch_size = 1
+  seq_len = 2560
+  num_heads = 16
+  head_dims = 64
+  ```
+
+  sage attention 不计算 triton kernel 之间的间隙的话，是非常快的，基本上只要 0.31 ms (0.0)
+
+  torch flash attention2 0.52 ms
+
+  flashinfer attention 0.42 ms
+
+  贴一个 nsys 图像
 
 ## Question
 

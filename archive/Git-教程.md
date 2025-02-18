@@ -82,6 +82,7 @@ git config --global --unset http.proxy
 
 ```shell
 git config --global url."https://gitclone.com/".insteadOf https://
+git config --global --unset url."https://gitclone.com/".insteadOf
 ```
 
 可以使用 `git config --list` 查看当前的配置，如果需要重新配置的话，可以编辑 `~/.gitconfig`

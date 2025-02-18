@@ -4,7 +4,7 @@
 
 smooth quant 是目前 dynamic quantization 的主流方法，在 W8A8 上能够有效保留模型精度，之前只是听别人讲解过，现在需要自己来深入理解下
 
-## Concept
+## Paper
 
 - SmoothQuant is a PTQ solution to enable 8-bit weight, 8-bit activation (W8A8) quantization for LLMs
 
@@ -31,6 +31,7 @@ smooth quant 是目前 dynamic quantization 的主流方法，在 W8A8 上能够
   所谓量化就是将高比特的浮点值压缩为一个低比特值，这个值可以是浮点也可以是 int。我们通常在实践中使用的量化公式如下
   $$
   Q(W) = \Delta·\text{Round}(\frac{W}{\Delta}) \\ \Delta = \frac{\max{(|W|)}}{2^{N-1}}
+  \\ \text{most cases we use: } \Delta = \frac{\max{(|W|)}}{2^{N-1}-1}
   $$
   其中 $\Delta$ 就是我们常说的 scale，而 $Round(\frac{W}{\Delta})$ 就是我们需要保存的量化权重。我们在计算 $\Delta$ 的时候有好几种粒度，论文有清楚的图示来表示这三种粒度的量化方式
   
@@ -109,6 +110,26 @@ smooth quant 是目前 dynamic quantization 的主流方法，在 W8A8 上能够
 
   <img src="SmoothQuant/image-20250113164059597.png" alt="image-20250113164059597" style="zoom:80%;" />
 
+## Coding
+
+- How to calculate W8A8
+
+- 达到论文中声称的 1.5x speed up，其中的量化和反量化都是在哪些地方完成的？
+
+  在下面这张图中，连续的 int8 量化是否有反量化的发生？否则是如何实现仅有 INT8 的存在的，他们的 scales 是需要进行传递的吗？
+
+  <img src="SmoothQuant/image-20250211143734355.png" alt="image-20250211143734355" style="zoom:80%;" />
+
+- 如何衡量由于 quant & dequant 所带来的额外计算量，应该有一个临界点，当计算量很小的时候，quant & dequant 所带来的收益将小于 fp16 计算
+
+- accumulator 很重要...不可能用 int8 去存储 int8 gemm 中的东西
+
+## ImageNet
+
+- Download dataset
+
+  
+
 ## Question
 
 - 将 activation 的量化难度转移到 weight，有点像 AWQ 的思路，其是根据 activation 的大小来对权重进行缩放。二者似乎是并行的方法，如果进行叠加会有意义吗？
@@ -119,4 +140,36 @@ smooth quant 是目前 dynamic quantization 的主流方法，在 W8A8 上能够
   $$
   Err(Q(w·s)\frac{x}{s}) = \Delta·\text{RoundErr}(\frac{w·s}{\Delta})·x·\frac{1}{s}
   $$
+
+- 为什么 int8 需要计算量比较大的时候才能发挥优势？能否通过参数直接推导出这个临界计算量？
+
+  ```shell
+  # small amount of computation
+  SEQ_LEN =  1024
+  C1 =  896
+  C2 =  896
+  w8a8b8o8:
+  Average inference time: 0.03092975997924805 ms
+  fp16:
+  Average inference time: 0.03977686309814453 ms
   
+  # medium amount of computation
+  SEQ_LEN =  1024
+  C1 =  1024
+  C2 =  4096
+  w8a8b8o8:
+  Average inference time: 0.07712290954589844 ms
+  fp16:
+  Average inference time: 0.17219020080566405 ms
+  
+  # large amount of computation
+  SEQ_LEN =  1024
+  C1 =  2048
+  C2 =  8192
+  w8a8b8o8:
+  Average inference time: 0.2231982421875 ms
+  fp16:
+  Average inference time: 0.6151588134765625 ms
+  ```
+
+  以上为 [torch-int](https://github.com/Guangxuan-Xiao/torch-int) 在 3080 上的 profile 结果，这个项目已经是3年前的 repo（now I'm in 2025），能够跑起来已经不错了，可能目前有更好的 kernel 进行加速。不过这证实了用 int8 加速 ViT-Large 完全没问题的

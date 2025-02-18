@@ -648,8 +648,63 @@ def forward_head(self, x):
    ```
 
    如果定义了 `__init__` 方法，使用 dataclass 就没有意义
-   
+
    还可以使用 `field(default_factory=func)` 来获得更复杂的初始化
+
+3. dataclass as argument parser input
+
+   在 huggingface 中提供了 `HfArgumentParser`，可以通过解析 dataclass 来方便构建 input arguments 的过程
+
+   ```python
+   from dataclasses import dataclass
+   from transformers import HfArgumentParser
+   
+   # 定义参数类
+   @dataclass
+   class ModelConfig:
+       model_name: str
+       num_layers: int = 4
+       dropout: float = 0.1
+   
+   # 解析命令行参数
+   parser = HfArgumentParser(ModelConfig)
+   model_config = parser.parse_args_into_dataclasses()[0]
+   
+   # 使用参数
+   print(f"模型名称: {model_config.model_name}, 层数: {model_config.num_layers}")
+   ```
+
+   `HfArgumentParser` 接受 `ArgumentParser` 的 kwargs 输入（e.g. `description="..."`），并且还可以处理多个 dataclass 来构建参数输入，这极大方便了参数管理
+
+   ```python
+   from transformers import HfArgumentParser, TrainingArguments
+   
+   @dataclass
+   class DataConfig:
+       dataset_path: str
+       batch_size: int = 16
+   
+   # 同时解析自定义参数和 TrainingArguments
+   parser = HfArgumentParser((DataConfig, TrainingArguments))
+   data_config, training_args = parser.parse_args_into_dataclasses()
+   
+   print(f"数据集路径: {data_config.dataset_path}")
+   print(f"学习率: {training_args.learning_rate}")
+   ```
+
+   还可以添加 help description 以及 list inputs
+
+   ```python
+   from typing import List
+   
+   @dataclass
+   class ModelArgs:
+       layers: List[int]
+       model_name: str = field(metadata={"help": "model name"})
+   
+   parser = HfArgumentParser(ListArgs)
+   args = parser.parse_args_into_dataclasses()[0]
+   ```
 
 ## 问题
 
