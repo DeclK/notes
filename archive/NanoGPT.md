@@ -149,6 +149,10 @@ TODO: Scaling laws from OpenAI & Chinchilla
 
 ### Llama
 
+通过 NanoGPT 可以对 GPT 的整个训练和推理过程有清晰的认知，但是随着技术的发展，还诞生了不少新的结构，包括 KVCache, GQA, RoPE, RMSNorm, SwiGLU。可从下图获得简单对比
+
+<img src="NanoGPT/image-20250211210240094.png" alt="image-20250211210240094" style="zoom:80%;" />
+
 - 在给定计算资源 (training budget) 的条件下，最好表现的模型不是参数量最大的模型，而是较小模型在更多的数据上训练后，效果更好。结果出自 Chinchilla
 
   These efforts are based on the assumption that more parameters will lead to better performance. However, recent work from Hoffmann et al. (2022) shows that, for a given compute budget, the best performances are not achieved by the largest models, but by smaller models trained on more data.
