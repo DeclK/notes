@@ -522,6 +522,281 @@ Other reference
 - [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts), not checked
 - [CUTLASS CuTe实战(一)-基础](https://zhuanlan.zhihu.com/p/690703999), not checked
 
+## Learn Cutlass with DeepSeek-R1
+
+我之前的学习路线是直接切入到了 cute 当中，在 cute 的学习中我对矩阵乘法的切分有了不错的认识。但我又发现一个事实，那就是 cute 的 example 实际上并不多，这说明大量的使用范围可能并不在 cute。对于这个观点，DeepSeek 给出了 cutlass 和 cute 之间的差异
+
+1. **CUTLASS 与 CUTE 的定位差异**
+
+| **维度**     | **CUTLASS**                      | **CUTE**                                 |
+| ------------ | -------------------------------- | ---------------------------------------- |
+| **抽象层级** | 高层模板库（GEMM/Conv 算子级）   | 底层编程模型（线程级数据流抽象）         |
+| **核心目标** | 提供高性能线性代数算子的通用实现 | 解耦数据布局与计算逻辑，实现极致灵活性   |
+| **典型应用** | 标准 GEMM/Conv2d/批处理场景      | 非规则算子（如 Attention）、硬件特性榨取 |
+| **代码关系** | CUTLASS 3.0+ 基于 CUTE 重构      | 作为 CUTLASS 的底层引擎，可独立使用      |
+
+2. **何时应该深入 CUTE？**
+
+   - **推荐使用 CUTE 的场景**
+
+     - **非标准数据布局**  
+
+       需要处理交错存储（interleaved）、块稀疏（block-sparse）等复杂内存模式时，CUTE 的 `Layout` 和 `Copy` 原子操作能简化跨步访问逻辑。
+
+     - **自定义计算模式**  
+
+       例如实现 Flash Attention 中的分块 Softmax 或 Mask 处理，CUTE 的 `TiledMMA` 和 `Pipeline` 能精确控制流水线。
+
+     - **硬件特性榨取**  
+
+       在 Hopper 架构上利用 TMA（Tensor Memory Accelerator）异步拷贝时，需通过 CUTE 的 `Copy_Atom` 显式管理数据传输。
+
+
+   - **CUTLASS 高层 API 更优的场景**
+
+     - **标准 GEMM/Conv**  
+
+       直接使用 `cutlass::gemm::device::Gemm` 等预定义模板，通过参数调整即可获得 90%+ 的硬件利用率。
+
+     - **快速原型开发**  
+
+       CUTLASS 的 `Epilogue` 机制能快速实现融合操作（如 ReLU + GEMM），无需深入线程级编排。
+
+这样看来 cute 应该是一种更加灵活（底层）的 CUDA 编程技术，所以说先对 cutlass 模板进行学习应该是更好的选择，更好上手。我给了 DeepSeek 一个 prompt，我有一定的 CUDA 基础，我想要在两天之内学习 cutlass，应该如何安排我的学习计划😏下面就跟着 DeepSeek 的总结开始学习，后面简称 DeepSeek-R1 为 DS
+
+### 模板元编程
+
+我首先让 DS 介绍下 cutlass 中的模版元编程，他给出了如下的优势
+
+1. 编译时多态：通过模板参数在编译时确定类型和算法，避免运行时分支。
+2. 零成本抽象：生成的代码直接针对硬件特性优化（如Tensor Core），无运行时开销。
+3. 组合式设计：通过嵌套模板参数组合线程块、Warp、指令集等层级的分块策略。
+
+这三个优点都非常的抽象，根本没办法理解。为什么要采用模板元编程的形式，而不直接采用 CUDA C++ 进行编程？接下来 DS 给出了非常具体的回答，基本解决疑惑。
+
+Cutlass 想要解决的一个重要问题：实现一个高效的 GEMM。在这个问题背后有很多复杂需求：
+
+1. 多数据类型：float & half & int
+2. 多硬件架构：Pascal（sm60）、Volta（sm70）、Ampere（sm80）
+3. 多分块策略：线程块分块大小（128x128 vs 256x64）
+
+**如果要使用传统的 CUDA C++ 编程，势必要使用大量的 if else 判断或者运行时多态（虚函数或指针函数）来完成如此多种类的 GEMM。**但是这样必然掉入到了低效陷阱中，运行时每次 if else 分支或者虚函数调用都会导致额外的开销，而且会导致代码膨胀问题，即所有的代码逻辑都被编译到了同一个二进制文件当中，并且很大部分的二进制文件都不会被执行
+
+```c++
+// 运行时通过分支选择逻辑
+__global__ void gemm_kernel(
+    int M, int N, int K,
+    void* A, void* B, void* C,
+    DataType dtype,     // 数据类型：float 或 half
+    Arch arch,          // 硬件架构：sm60/sm70/sm80
+    TileShape tile      // 分块策略：128x128 或 256x64
+) {
+    // 运行时分支判断数据类型
+    if (dtype == FLOAT) {
+        float* A_f = static_cast<float*>(A);
+        float* B_f = static_cast<float*>(B);
+        // 进一步判断硬件架构
+        if (arch == SM80) {
+            // 使用 Tensor Core 的代码
+            if (tile == TILE_128x128) { ... }
+            else { ... }
+        } else if (arch == SM60) { ... }
+    } else if (dtype == HALF) {
+        half* A_h = static_cast<half*>(A);
+        half* B_h = static_cast<half*>(B);
+        // 同样嵌套分支...
+    }
+}
+```
+
+**此时，模版元编程就派上用场，将各个选项作为模板的参数传入给模板，这样就能将模版进行实例化**
+
+```c++
+// 定义模板参数
+using Gemm = cutlass::gemm::device::Gemm<
+    half_t,                     // ElementA
+    cutlass::layout::RowMajor,  // LayoutA
+    half_t,                     // ElementB
+    cutlass::layout::ColumnMajor, // LayoutB
+    half_t,                     // ElementC
+    cutlass::layout::RowMajor,
+    cutlass::arch::OpClassTensorOp, // 使用 Tensor Core
+    cutlass::arch::Sm80,           // Ampere 架构
+    cutlass::gemm::GemmShape<128, 128, 32>, // 线程块分块
+    cutlass::gemm::GemmShape<64, 64, 32>    // Warp 分块
+>;
+
+// 编译器会生成一个专用的核函数：
+// - 使用 half 数据类型
+// - 启用 Tensor Core (mma.sync 指令)
+// - 分块策略 128x128x32
+// - 仅适用于 sm80 架构
+```
+
+这样做就解决了之前的花销问题，因为所有的分支在编译时会进行静态展开，没有任何的判断逻辑。除此之外，代码的可维护性也极大增加，我们可以专注于编写每一个不同特性的 gemm
+
+此时另一个问题产生了：模版元编程和模版编程有什么本质上的区别吗？这里 DS 分成了三个步骤来解释：
+
+1. 什么是元编程
+
+   **元编程（Metaprogramming）** 的本质是 **“编写能够生成代码的代码”**。它通过程序逻辑操纵另一段程序的结构，甚至改变编译器的行为。在 C++ 中，模板元编程利用模板系统在 **编译时** 完成这些操作，而不是运行时
+
+   类比解释：
+
+   - **普通编程**：你直接编写处理数据的代码（例如排序算法）。
+   - **元编程**：你编写一段代码，这段代码的 **输出是另一段代码**（例如生成特定硬件的优化排序算法）。
+
+2. 模版编程 vs 模版元编程
+
+   DS 针对这两个编程方式举了例子
+
+   **普通模板编程（Generic Programming）**
+
+   - 目标：实现类型无关的通用代码
+
+   - Example
+
+     ```c++
+     template <typename T>
+     T add(T a, T b) { return a + b; }
+     ```
+
+     编译器为 `add<int>` 和 `add<float>` 生成不同的函数。其本质是类型参数化，避免重复代码
+
+   **模板元编程（TMP）**
+
+   - 目标：在编译时计算值、生成代码或做决策
+
+   - Example 编译时的阶乘计算
+
+     ```c++
+     template <int N>
+     struct Factorial {
+         static const int value = N * Factorial<N-1>::value;
+     };
+     template <>
+     struct Factorial<0> { static const int value = 1; };
+     
+     int main() {
+         constexpr int fact_5 = Factorial<5>::value; // 编译时计算出120
+     }
+     ```
+
+     **关键**：编译器通过模板递归展开完成计算，生成的结果直接写入二进制。
+
+   通过上面两个例子能够很清楚地感知到二者的目标有显著区别。另一个显著区别则是：普通模板编程，模版所接受的是一个类 (like int, float...)；而模版元编程则接收的是一个具体类的具体值 (like 5, 6...)
+
+3. 为什么 cutlass 使用模版元编程
+
+   这下就彻底理解了为什么 cutlass 使用模板元编程了：**Cutlass 将硬件特性、算法策略和数据类型转化为编译时的“元参数”，生成高度定制的内核。**
+
+   DS 举了一个普通 CUDA C++ 实现 vs 模版元编程实现的例子
+
+   ```c++
+   __device__ void multiply(float* A, float* B, float* C, int K) {
+       for (int k = 0; k < K; ++k) {  // 动态循环，可能有分支开销
+           C[threadIdx.x] += A[k] * B[k];
+       }
+   }
+   
+   template <int K>
+   __device__ void multiply(float* A, float* B, float* C) {
+       if constexpr (K > 0) {
+           C[threadIdx.x] += A[K-1] * B[K-1];
+           multiply<K-1>(A, B, C); // 编译时递归展开
+       }
+   }
+   
+   // 显式实例化模板（K=64）
+   template __device__ void multiply<64>(float*, float*, float*);
+   
+   ```
+
+   **普通 CUDA C++ 实现的问题**：循环次数 `K` 在运行时确定，编译器无法自动展开。而模版元编程就可以在编译时直接展开循环，从而降低开销
+
+### ThreadBlock/Grid 层次结构
+
+这个在之前的学习中已经比较熟悉，不再进行整理
+
+### 数据流模式
+
+`kSplitKSerial` vs `kParallel`
+
+### Cuda Core & Tensor Core (FMA vs MMA)
+
+
+
+
+
+## Basic gemm
+
+使用 cutlass 中的 gemm，轻松达到 cublas 九成功力
+
+### include/cutlass/gemm/device/gemm.h
+
+理解这一个函数的功能，其实现逻辑
+
+这个 gemm.h 中就是 cutlass 暴露给我们的 device-level api，对标的就是 cublas api，相当于是一个 `__global__` kernel function，还不需要你指定 grid & block & shared memory
+
+```cpp
+  The intent is to provide a convenient mechanism for interacting with most plausible GEMM
+  configurations for each supported architecture. Consequently, not all parameters are exposed
+  to the top-level interface. Rather, sensible defaults at each level of the CUTLASS hierarchy
+  are selected to tradeoff simplicity of the interface with flexibility. We expect 
+  most configurations to be specified at this level. Applications with more exotic requirements 
+  may construct their kernels of interest using CUTLASS components at the threadblock, warp, 
+  and thread levels of abstraction.
+```
+
+翻译
+
+> **目的是为每个支持的架构提供一种便捷的交互机制，以便使用最合理的GEMM（通用矩阵乘法）配置**。因此，并非所有参数都开放给顶层接口，而是通过选择CUTLASS层次结构中每一级的合理默认值，在接口简洁性和灵活性之间进行权衡。我们预计大多数配置将在此层级指定。对于有特殊需求的应用，开发者可以利用CUTLASS在抽象层级（线程块级、warp级和线程级）提供的组件，自行构建所需的核心计算模块。
+>
+> （注：warp是NVIDIA GPU架构中的基本执行单元，通常包含32个并行线程，在此保留英文术语以准确反映CUDA编程模型的概念）
+
+可以看到模版当中很多都给定了默认值，所以在使用时只需要给定最基础的5个值，就能实例化一个 gemm class 出来
+
+```cpp
+  using CutlassGemm = cutlass::gemm::device::Gemm<float,        // Data-type of A matrix
+                                                  ColumnMajor,  // Layout of A matrix
+                                                  float,        // Data-type of B matrix
+                                                  ColumnMajor,  // Layout of B matrix
+                                                  float,        // Data-type of C matrix
+                                                  ColumnMajor>; // Layout of C matrix
+
+```
+
+而且 cutlass 还有更细粒度的组件，可以在下面的路径中找到：
+
+1. `include/cutlass/gemm/thread`
+2. `include/cutlass/gemm/warp`
+3. `include/cutlass/gemm/threadblock`
+
+### 模板部分特化
+
+
+
+### column major & row major & layout transpose
+
+使用巧妙的排布方式，来规避对矩阵进行 transpose，这就是 cute 的核心思想，layout algebra
+
+### Class Gemm
+
+### How to debug cutlass
+
+### Components in cutlass gemm
+
+OK，目前又遇到瓶颈了，我现在知道了 cutlass 的调用流程，主要看了 `include/cutlass/gemm/kernel/gemm.h`
+
+整个 gemm 计算被抽象在了这个 `gemm.h` 当中，使用 `Mma_ & Epilogue_ & ThreadblockSwizzle & SplitKSerial` 四个模板来决定。基本上就是利用这四个模板来进行组合，就能够完成一个比较高效 gemm 计算
+
+那么问题就来了：
+
+1. 这四个 component 到底有什么用呢？
+2. 这四个 component 的代码到底在哪里，各个部分代表着什么？
+3. 除了这四个 component 之外 cutlass 似乎还有其他的组件，如何使用这些组件来优化我们的 gemm or universal kernel
+4. cutlass 3.x 和 cutlass 2.x 之间的区别到底在哪些地方，这些 example 到底属于 cutlass3.x 还是 cutlass2.x?
+
 ## CUTLASS in Practice
 
 - improve cutlass gemm  [zhihu](https://zhuanlan.zhihu.com/p/707715989) [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts)

@@ -178,4 +178,8 @@ SM (**Streaming Multiprocessors**) 也是 GPU 硬件中的重要概念，注意�
 
   > Yes—before data from global memory can be used in computation, it must be loaded into registers; all GPU computations operate on data in registers, so even data requested from global memory is first moved into registers for use by the CUDA cores.
 
+  update 2025/02/20
+  
+  
+  
   
