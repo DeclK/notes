@@ -793,9 +793,52 @@ OK，目前又遇到瓶颈了，我现在知道了 cutlass 的调用流程，主
 那么问题就来了：
 
 1. 这四个 component 到底有什么用呢？
-2. 这四个 component 的代码到底在哪里，各个部分代表着什么？
+
+2. 这四个 component 的代码到底在哪里，各个部分代表着什么？**mapping the code to the gemm process is my next step**
+
 3. 除了这四个 component 之外 cutlass 似乎还有其他的组件，如何使用这些组件来优化我们的 gemm or universal kernel
+
+   这个问题还是过于宏大了，不太好回答，需要有具体问题（examples）的带入，否则无法获得反馈
+
 4. cutlass 3.x 和 cutlass 2.x 之间的区别到底在哪些地方，这些 example 到底属于 cutlass3.x 还是 cutlass2.x?
+
+   这个问题的根本原因在于引入了更高级的硬件特性，所以更核心的知识点在于学习硬件特性
+
+在回答问题之前，我还需要了解 GPU 流水线到底是什么意思，因为这一张图经常出现
+
+[cutlass/media/docs/efficient_gemm.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/efficient_gemm.md) 必须理解 efficient gemm 的关键原理
+
+<img src="CUDA Programming 7/software-pipeline.png" alt="ALT" style="zoom:80%;" />
+
+using cutlass gemm api v.s. using cute component
+
+the key is to understand how the gpu computing model is working, and how to make this gpu work efficiently.
+
+[cutlass/media/docs/ide_setup.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/ide_setup.md)
+
+[cutlass/media/docs/fundamental_types.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/fundamental_types.md)
+
+[cutlass/media/docs/gemm_api.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/gemm_api.md)
+
+[cutlass/media/docs/gemm_api_3x.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/gemm_api_3x.md)
+
+
+
+Stage1:
+
+learn gpu model with cutlass gemm (improved gemm kernel with cute)
+
+learn improved gpu hardware (Hopper) features
+
+learn important layer implementation: **quantization**, **flash attention 2**, layer norm
+
+compare your implementation with sota project integration (vllm, sage attention) focusing on quantization gemm
+
+Stage2:
+
+dive into sota projects
+
+we are going to explore all the tricks that these inference engine used (vllm, sglang, flashinfer)
 
 ## CUTLASS in Practice
 
@@ -803,6 +846,8 @@ OK，目前又遇到瓶颈了，我现在知道了 cutlass 的调用流程，主
 - pick up cutlass examples: interested in all kinds of gemm and kernel fusion
 - [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624) [github](https://github.com/zeroine/cutlass-cute-sample) this gives examples on optimze gemm and fusing kernel, and most importantly, it gives examples on how to use ncu & nsys to analyize the performance
 - cutlass in flash attention
+- understand cutlass scale mm in vllm
+- sage attention implementation (not much cutlass involved, but have a lot to do with flashinfer and vllm)
 
 ## Questions
 
