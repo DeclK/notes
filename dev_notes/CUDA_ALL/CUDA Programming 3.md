@@ -180,6 +180,4 @@ SM (**Streaming Multiprocessors**) 也是 GPU 硬件中的重要概念，注意�
 
   update 2025/02/20
   
-  
-  
-  
+  询问了 DeepSeek，用一个 CUDA code 计算了 register 使用数量。任何用于计算的数据都必须有一个寄存器来存储，不管这个数据是来自 shared memory 还是来自 global memory

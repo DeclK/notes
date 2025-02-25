@@ -840,6 +840,36 @@ dive into sota projects
 
 we are going to explore all the tricks that these inference engine used (vllm, sglang, flashinfer)
 
+# Efficient Gemm
+
+[cutlass efficient gemm doc](https://github.com/NVIDIA/cutlass/blob/main/media/docs/efficient_gemm.md)
+
+理解这个文档对理解 gemm 高效实现非常重要。同时能够建立良好的 GPU 运算模型
+
+## Pipelining
+
+流水线并行
+
+1. GEMM的块状计算需要每个线程维护多个累加器，这部分占据至少一半寄存器
+
+   按照 cutlass 的实例，是不是每一个线程至少需要维护 8x8 个 register 作为累加器？剩下的寄存器用于什么？需要确认这个假设是否是成立的。看来另一半寄存器用于从 shared memory 获取数据
+
+   如果一个线程需要大量的 register，那么 SM 利用率很容易就被 register 数量 bound 住。如果按照 cutlass 图中所示，我们按照 128 个 register 进行计算
+
+   在 3080 上一个 block 最多的 register 数量为 65536，如果一个 register 使用 128 个 register，那最多也就驻留 512 个 thread，而 3080   Maximum number of threads per block 为 1024，占用率非常低
+
+   而此时可以通过流水线，让计算流程持续发生：一半寄存器用于累加器，这部分是用作计算的 register；而另一半寄存器去获取数据，这部分寄存器不参与计算。
+
+2. 如何理解流水线延时掩藏？
+
+   这非常形象，假设有一个地方着火了，但是水源很远，不过一群人拿着盆子形成了一条流水线，由第一个人从水源处开始接水，然后不断地传递到着火点。有意思的是，当整个流水线完全开始运转时，从水源处输出了多少水，在同一时刻就会在着火点输出多少水（也可以把这个流水线想象成一条水管）。此时从水源处运输到着火点的时间似乎没有了，我们也就说这段时间被掩藏了起来。
+
+3. 为什么双缓存就够了，而不是使用三级缓存或者更多级？
+
+   我有一个比较形象的理解：如何理解流水线延时掩藏？这非常形象，假设有一个地方着火了，但是水源很远，不过一群人拿着盆子形成了一条流水线，由第一个人从水源处开始接水，然后不断地传递到着火点。有意思的是，当整个流水线完全开始运转时，从水源处输出了多少水，在同一时刻就会在着火点输出多少水（也可以把这个流水线想象成一条水管）。此时从水源处运输到着火点的时间似乎没有了，我们也就说这段时间被掩藏了起来。在这个模型之下，要隐藏运输水的条件有两个：1. 水足够多；2. 要有足够多的人和盆子。再类比到 GPU 当中，要掩藏时间的条件也是两个：1. 足够多的数据量；2. 足够多的存储（不是很确定第二条）？显然如果在 shared memory 和 register 很少的时候，不足以支撑流水线的建立，如何计算这个最小 shared memory 或者 register 呢？
+
+
+
 ## CUTLASS in Practice
 
 - improve cutlass gemm  [zhihu](https://zhuanlan.zhihu.com/p/707715989) [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts)
