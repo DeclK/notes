@@ -867,8 +867,68 @@ we are going to explore all the tricks that these inference engine used (vllm, s
 3. 为什么双缓存就够了，而不是使用三级缓存或者更多级？
 
    我有一个比较形象的理解：如何理解流水线延时掩藏？这非常形象，假设有一个地方着火了，但是水源很远，不过一群人拿着盆子形成了一条流水线，由第一个人从水源处开始接水，然后不断地传递到着火点。有意思的是，当整个流水线完全开始运转时，从水源处输出了多少水，在同一时刻就会在着火点输出多少水（也可以把这个流水线想象成一条水管）。此时从水源处运输到着火点的时间似乎没有了，我们也就说这段时间被掩藏了起来。在这个模型之下，要隐藏运输水的条件有两个：1. 水足够多；2. 要有足够多的人和盆子。再类比到 GPU 当中，要掩藏时间的条件也是两个：1. 足够多的数据量；2. 足够多的存储（不是很确定第二条）？显然如果在 shared memory 和 register 很少的时候，不足以支撑流水线的建立，如何计算这个最小 shared memory 或者 register 呢？
+   
+   我应该是把多级缓存和多级流水线搞混了！双缓存就能够满足流水线不受阻，只是需要调整每一次申请数据量的大小，如果一次申请的数据量太大，缓存就失去意义，所以切分 tile 是一个重要参数
+   
+   我重新构建了一个形象模型，把 global memory 比作一个大 house，而 shared memory 和 register 是小 house，代表了他们能存储数据量的多少。数据从 Global Memory 发出，放到了 transfer highway 上，数据在这条高速路上会以恒定的速度向前移动（光速），所以我把这个 transfer highway 看做一个恒定转速的履带，把数据放上去数据就开始运输，中途无法自己停止，除非运输到了存储结构当中。另外我把 bandwidth 标记为了这个 highway 的宽度，这代表了这条 highway 单位时间能够运输的最大数据量，这个宽度越大，代表带宽越大。我添加了一个 ish 在其后面，是因为 Bandwidth 是 Bytes per seconds，还需要考虑单位时间，仅标记为宽度不太严谨。计算核心 compute cores 只会从 register 中获取数据，并快速地进行消耗，当计算数据是从 global memory 发出时，距离非常远，有很长的延时 latency，但如果是从 shared memory 发出则更为方便，而一个最优情况是，global memory 不断地以最大带宽发送数据，直接传输到 compute cores 进行消耗，这样就能够掩藏掉中间的运输时间，不过这种情况很难发生，如果一旦数据运输到 compute core 但没有被使用，那么数据就会被浪费掉，因为 compute cores 无法对数据进行存储，此时就得重新让 global memory 发送数据，所以需要 shared memory 和 register 进行数据存放，与 compute cores 进行配合，保证计算所需数据持续被满足，并尽可能保持这条高速持续在运输数据。至此就能比较完整且形象地描述整个 GPU 存储/计算模型
+   
+   ![image-20250226104844732](CUDA Programming 7/image-20250226104844732.png)
 
 
+
+Bandwidth & Flops & Roofline 模型
+
+[zhihu](https://zhuanlan.zhihu.com/p/34204282)
+
+所谓“Roof-line”，指的就是由计算平台的算力和带宽上限这两个参数所决定的“屋顶”形态，如下图所示。
+
+- **算力**决定“屋顶”的高度（绿色线段）
+- **带宽**决定“房檐”的斜率（红色线段）
+
+<img src="CUDA Programming 7/v2-cafb93b9a31fca2d7c84951555762e59_1440w.jpg" alt="img" style="zoom:80%;" />
+
+1. **横坐标**：**算术强度（Arithmetic Intensity）**
+
+   - 定义：单位字节数据能完成的计算量（FLOPs/Byte），即：
+     $$
+     \frac{\text{total FLOPs}}{\text{total Bytes}}
+     $$
+
+2. **纵坐标**：**可达到的性能（FLOPS）**
+
+   - 表示硬件在特定算术强度下能达到的最大计算性能（单位如 TFLOPs）
+
+- 矩阵乘法（高算术强度）：每加载一个元素，参与多次计算。
+- 向量加法（低算术强度）：每加载一个元素，仅参与一次计算。
+
+1. **带宽受限区（Memory-Bound）**
+   - **条件**：算术强度 < 硬件平衡点。
+   - **性能公式**：性能=算术强度×显存带宽性能=算术强度×显存带宽。
+   - **优化方向**：减少数据访问量（如数据复用、分块计算、使用共享内存）。
+2. **计算受限区（Compute-Bound）**
+   - **条件**：算术强度 > 硬件平衡点。
+   - **性能公式**：性能=峰值算力性能=峰值算力。
+   - **优化方向**：提高计算效率（如使用Tensor Core、减少线程同步开销）。
+
+### Exercise: is attention memory bound or compute bound
+
+TODO: take A100 as example
+
+## Swizzle
+
+有两个不同的 swizzle
+
+### cute swizzle
+
+[reed swizzle](https://zhuanlan.zhihu.com/p/671419093) [killua swizzle](https://zhuanlan.zhihu.com/p/684250988)
+
+1. 为什么读一次 bank 必须要读 16 byte
+
+   一个 phase = 8 bank * 16 byte = 128 byte，这似乎就是一次内存访问事务的粒度，需要确认
+
+### cutlass threadblock swizzle
+
+前者更为复杂，后者更为直观
 
 ## CUTLASS in Practice
 
