@@ -718,7 +718,9 @@ using Gemm = cutlass::gemm::device::Gemm<
 
 这个在之前的学习中已经比较熟悉，不再进行整理
 
-### 数据流模式
+### SplitK & SlicedK
+
+
 
 `kSplitKSerial` vs `kParallel`
 
@@ -814,6 +816,8 @@ using cutlass gemm api v.s. using cute component
 
 the key is to understand how the gpu computing model is working, and how to make this gpu work efficiently.
 
+TODO：整理 kernel/gemm.h operator() 流程。由于 cutlass 是模板函数，其本意并不是想让你 debug 好用，所以最好当做 API 来使用。而学习 cute 才是完全 step by step 掌握 cutlass 编程精髓的核心
+
 [cutlass/media/docs/ide_setup.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/ide_setup.md)
 
 [cutlass/media/docs/fundamental_types.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/fundamental_types.md)
@@ -822,23 +826,15 @@ the key is to understand how the gpu computing model is working, and how to make
 
 [cutlass/media/docs/gemm_api_3x.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/gemm_api_3x.md)
 
+## Partition
 
+## MMA
 
-Stage1:
+## Epilogue
 
-learn gpu model with cutlass gemm (improved gemm kernel with cute)
+- 目前所有的数据都还在 accumulator 里面，还没有保存到全局内存当中，需要通过 epliogue 来把数据存放到全局内存。在把数据存到全局内存之前，我们还可以利用这些数据做一些额外的简单操作，操作完过后再存。这通常也能节省不少的数据搬运时间，否则还得再从全局内存中读出来，完成这些简单操作
 
-learn improved gpu hardware (Hopper) features
-
-learn important layer implementation: **quantization**, **flash attention 2**, layer norm
-
-compare your implementation with sota project integration (vllm, sage attention) focusing on quantization gemm
-
-Stage2:
-
-dive into sota projects
-
-we are going to explore all the tricks that these inference engine used (vllm, sglang, flashinfer)
+TODO: here is the next focus!!!!!!!
 
 # Efficient Gemm
 
@@ -926,18 +922,51 @@ TODO: take A100 as example
 
    一个 phase = 8 bank * 16 byte = 128 byte，这似乎就是一次内存访问事务的粒度，需要确认
 
+为了让读写的所有数据都分布在不同的 bank 当中
+
 ### cutlass threadblock swizzle
 
 前者更为复杂，后者更为直观
 
-## CUTLASS in Practice
+局部性：我们希望**相邻线程块处理的矩阵子块在全局内存中物理相邻**，这样就能提高 L2 缓存的命中率
+
+<img src="CUDA Programming 7/v2-98fbbda7966f798a1fed54be30a79477_1440w.jpg" alt="img" style="zoom: 50%;" />
+
+- **原始顺序**：线程块按行优先顺序执行 `(0,0) → (0,1) → (0,2)...`
+- **Swizzle后顺序**：线程块按Z字型顺序执行 `(0,0) → (1,0) → (0,1) → (1,1)...`
+
+这种调整让相邻线程块访问的A和B子块在全局内存中更接近，从而提高L2缓存命中率。更具体来说，当我们在执行 `(1,1)` 块时，其中所需要的数据，其实被前面的线程块已经使用过，所以数据可能都还在缓存中，从而命中。而按照原始顺序，在执行 `(0,3)` 的时候，其所需的 B 矩阵数据一定是没办法在缓存中找到的，因为之前都没有使用到
+
+## SplitK & SlicedK
+
+[reed's blog](https://zhuanlan.zhihu.com/p/667521327) 对此有一些介绍，一般用 sliced-k，split-k 只在特殊场景有效 (小 m & n，大 k)
+
+# CUTLASS in Practice
 
 - improve cutlass gemm  [zhihu](https://zhuanlan.zhihu.com/p/707715989) [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts)
 - pick up cutlass examples: interested in all kinds of gemm and kernel fusion
-- [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624) [github](https://github.com/zeroine/cutlass-cute-sample) this gives examples on optimze gemm and fusing kernel, and most importantly, it gives examples on how to use ncu & nsys to analyize the performance
+- [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624) [github](https://github.com/zeroine/cutlass-cute-sample) [zhihu](https://zhuanlan.zhihu.com/p/690703999)this gives examples on optimze gemm and fusing kernel, and most importantly, it gives examples on how to use ncu & nsys to analyize the performance
 - cutlass in flash attention
 - understand cutlass scale mm in vllm
 - sage attention implementation (not much cutlass involved, but have a lot to do with flashinfer and vllm)
+
+## Learning Stages
+
+Stage1:
+
+learn gpu model with cutlass gemm (improved gemm kernel with cute), **here is the next next focus**
+
+learn important layer implementation: **quantization**, **flash attention 2**, layer norm
+
+compare your implementation with sota project integration (vllm, sage attention) focusing on quantization gemm
+
+Stage2:
+
+dive into sota projects
+
+learn improved gpu hardware (Hopper) features （Later）
+
+we are going to explore all the tricks that these inference engine used (vllm, sglang, flashinfer)
 
 ## Questions
 
