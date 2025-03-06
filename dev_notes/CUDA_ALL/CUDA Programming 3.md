@@ -181,3 +181,11 @@ SM (**Streaming Multiprocessors**) 也是 GPU 硬件中的重要概念，注意�
   update 2025/02/20
   
   询问了 DeepSeek，用一个 CUDA code 计算了 register 使用数量。任何用于计算的数据都必须有一个寄存器来存储，不管这个数据是来自 shared memory 还是来自 global memory
+  
+  update 2025/03/06
+  
+  [cute 之 Copy抽象](https://zhuanlan.zhihu.com/p/666232173) 
+  
+  离计算单元Tensor Core和CUDA Core（图中分别标记为TC和CUDA）更近的存储结构为寄存器堆（图中标记为Register File），计算单元计算所需要的数据必须来自寄存器（Ampere及之前架构如此，Hopper架构的Tensor Core可以直接读取存储在shared memory数据进行计算），是GPU中最快的存储结构
+  
+  <img src="CUDA Programming 3/v2-0429920b4041feaf68e0d10bbf94b119_1440w.jpg" alt="img" style="zoom:50%;" />

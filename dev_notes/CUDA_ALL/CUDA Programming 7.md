@@ -4,24 +4,37 @@
 
 想必绝大部分在深度学习领域的人都听说过 [FlashAttention](https://github.com/Dao-AILab/flash-attention)，其是一个 fast & memory efficient 的 attention 实现。除此之外，也有非常多的人听说过 [FlashInfer](https://github.com/flashinfer-ai/flashinfer)，该项目也是一个用于加速 LLM serving 的 library。而你去查看他们的仓库时都会发现一个共同的 3rdparty 仓库：[CUTLASS](https://github.com/NVIDIA/cutlass)
 
-我的本意是想要将 FlashInfer 仓库进行深入的学习，但显然在这之前还有大量的 cutlass 知识需要做铺垫。所以我先进行 cutlass 的学习，再进行 flashinfer 的学习
+我的本意是想要将 FlashInfer 仓库进行深入的学习，但显然在这之前还有大量的 cutlass 知识需要做铺垫。所以我先进行 cutlass 的学习，再进行 flashinfer 的学习。通过学习 cutlass 的例子来掌握其用法，**掌握用法是最主要的需求，也是最直接的反馈**
 
-但问题在于：cutlass 似乎没有特别好的教材来帮助入门。目前我有一些切入口：
+TODO：将 cutlass 学习过程整理一下，我想看下我是如何从零到一地学习一个不了解且复杂的项目的
 
-1. CUDA MODE lecture 15 introduced cutlass a little bit
-2. CUTLASS examples
-3. CUTE tutorial
+## Learning Maps
 
-通过学习 cutlass 的例子来掌握其用法，**掌握用法是最主要的需求，也是最直接的反馈**
+Stage1:
 
-Other zhihu references:
+- learn gpu model with cutlass gemm (improved gemm kernel with cute)
+  - 学习 Epilogue 流程，把几个疑问解开✅
+  - 深度学习 basic gemm，把高度抽象代码与底层计算结合起来，知道每一个重要参数的意义以及使用方法
+  
+    TiledMMA & ThrMMA & Data 之间的关系，Learn from simple gemm (cute & reed)
+  - 完成 improved gemm 代码分析
+  
+- learn important layer implementation: **quantization**, **flash attention 2**, layer norm & RMSNorm, Activations (ReLU & SiLU & GeLU)
+  - fused quantization kernel: w4a16 kernel [awesome-cute](https://github.com/CalebDu/Awesome-Cute/tree/main)
+  - 自己构建一个 simple fused kernel (LayerNorm + Quant, Silu + Quant)
+  - 学习 flash attention cute 版本代码 + flash infer 代码理解，如何构建一个快速的、可定制的 attention kernel  
 
-- [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts), and its gemm code [github](https://github.com/reed-lau/cute-gemm)
-- [CUTLASS CuTe实战(一)-基础](https://zhuanlan.zhihu.com/p/690703999)
-- [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624)
-  - [github](https://github.com/zeroine/cutlass-cute-sample)
-- [cutlass cute 101](https://zhuanlan.zhihu.com/p/660379052)
-- A collective repo which gathers a lots of blogs and kenel impl [CUDA-Learn-Notes](https://github.com/DefTruth/CUDA-Learn-Notes), not suitable for system learning, can be used for look-up table if you are trying to seek for some topic
+- compare your implementation with sota project integration (vllm, sage attention) focusing on quantization gemm
+
+  - homework: layernorm + quantize fusion -> w8a8 gemm scaled
+
+- Stage1 文档总结，问题清算
+
+Stage2:
+
+- learn improved gpu hardware (Hopper) features
+
+- dive into sota projects (vllm, sglang, flashinfer)
 
 ## Install & Hello World
 
@@ -312,6 +325,31 @@ $$
 
 主要总结 Concepts
 
+无敌的文章，所有人的朝圣博客：reed 讲 cute 系列
+
+✅[cute 之 Layout](https://zhuanlan.zhihu.com/p/661182311)
+
+✅[cute Layout 的代数和几何解释](https://zhuanlan.zhihu.com/p/662089556)
+
+✅[cute 之 Tensor](https://zhuanlan.zhihu.com/p/663093816)
+
+✅[cute 之 MMA抽象](https://zhuanlan.zhihu.com/p/663092747)
+
+✅[cute 之 Copy抽象](https://zhuanlan.zhihu.com/p/666232173)
+
+- 理解 ldmatrix 的优越之处
+- 在 MMA 抽象和 Copy 抽象中，如何理解 TiledXXX 和 ThrXXX 之间的联系与区别。为何在最终传入 `cute::gemm & cute::copy` 的是 TiledXXX 而不是 ThrXXX
+
+✅[cute 之 简单GEMM实现](https://zhuanlan.zhihu.com/p/667521327)
+
+- 如何用 cute 实现 sliced-k & split-k & stream-k gemm
+
+✅[cute 之 GEMM流水线](https://zhuanlan.zhihu.com/p/665082713)
+
+✅[cute 之 Swizzle](https://zhuanlan.zhihu.com/p/671419093)
+
+[cute 之 高效GEMM实现](https://zhuanlan.zhihu.com/p/675308830)
+
 ### Layout
 
 [layout](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/01_layout.md)
@@ -449,6 +487,8 @@ $$
 
 Only focus on the [Divide](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md#division-tiling) and [Product](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md#product-tiling) section
 
+目前网上并没有很好的关于 Layout Algebra 的讲解，应该需要掌握，而且这个 topic 需要讨论很多情况，这些情况可能并不是我在实际应用场景中关心的，所以很难获得直观的反馈。所以先搁置掉，最后再来完整地学习该内容
+
 ### Tensor
 
 Basically the application of Layout
@@ -467,60 +507,15 @@ Functions that we can use
 >
 > The term "atom" in MMA atom is used metaphorically to describe a fundamental unit or building block of computation within this context.
 
-
-
-- CTA Cooperative Thread Array
-
-  The simplest of the tutorial examples covers the basics of partitioning the global memory into tiles across the CTAs (also called threadblocks in CUDA), partitioning the data tiles across the threads of each CTA, and writing a mainloop using `cute::copy` and `cute::gemm`.
-
-  - `CtaTiler`. A CuTe [tiler concept](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md#composition-tilers) that determines how to extract a tile of data from the problem shape.
-  - At the highest level, the work is distributed across CTAs. In principle, each CTA's tile could come from the input tensors in many different ways. Many [CuTe `Tiler`s](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md#composition-tilers) could be used to tile the data, but for these cases it is sufficient to simply use the shape of the desired CTA tile.
-
-- zipped_divide
-
-  本来想就看下 zipped_divide，但可以顺手把 logical divide 给学了，都在 [layout algebra](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cute/02_layout_algebra.md) 里面
-
-- drawing from each level: how gemm is divided from block to thread, and we have different layout to deal with computation (global mem & shared mem)
-
-- From a bigger picture: an intuitive way to think about layout algebra, where is the bottleneck to understanding the process?
-
-Key functions
-
-- `make_tensor`
-
-- `make_coord`
-
-- `make_gemm_ptr`
-
-- `make_smem_ptr`
-
-- `make_shape`
-
-- `make_strid`
-
-- `make_layout`
-
-- `size`
-
-- `local_tile`
-
-  what is `Step` trying to do?
-
-- `local_partition`
-
-  seems like there are reload functions of `local_partition`
-
-- `copy`
-
-- `gemm`
+N & T in mma，N 表示 normal，T 表示 Transposed **blas中约定normal矩阵为列优先，T表示transpose，即对列优先的矩阵进行转置则为行优先**
 
 Everything is layout in cutlass: problem layout, block layout, thread layout, memory layout, **use layout algebra to solve them in a unified view**
 
 Other reference
 
 - [CUDA MODE lecture 15](https://www.bilibili.com/video/BV1QZ421N7pT?spm_id_from=333.788.videopod.episodes&p=15) checked, pretty useful
-- [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts), not checked
-- [CUTLASS CuTe实战(一)-基础](https://zhuanlan.zhihu.com/p/690703999), not checked
+- [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts), checked extremely useful
+- [CUTLASS CuTe实战(一)-基础](https://zhuanlan.zhihu.com/p/690703999), checked useful!
 
 ## Learn Cutlass with DeepSeek-R1
 
@@ -816,25 +811,18 @@ using cutlass gemm api v.s. using cute component
 
 the key is to understand how the gpu computing model is working, and how to make this gpu work efficiently.
 
-TODO：整理 kernel/gemm.h operator() 流程。由于 cutlass 是模板函数，其本意并不是想让你 debug 好用，所以最好当做 API 来使用。而学习 cute 才是完全 step by step 掌握 cutlass 编程精髓的核心
+整理 kernel/gemm.h operator() 流程。由于 cutlass 是模板函数，其本意并不是想让你 debug 好用，所以最好当做 API 来使用。而学习 cute 才是完全 step by step 掌握 cutlass 编程精髓的核心
 
-[cutlass/media/docs/ide_setup.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/ide_setup.md)
-
-[cutlass/media/docs/fundamental_types.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/fundamental_types.md)
-
-[cutlass/media/docs/gemm_api.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/gemm_api.md)
-
-[cutlass/media/docs/gemm_api_3x.md at main · NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/blob/main/media/docs/gemm_api_3x.md)
-
-## Partition
+## Partition Tensor
 
 ## MMA
 
 ## Epilogue
 
 - 目前所有的数据都还在 accumulator 里面，还没有保存到全局内存当中，需要通过 epliogue 来把数据存放到全局内存。在把数据存到全局内存之前，我们还可以利用这些数据做一些额外的简单操作，操作完过后再存。这通常也能节省不少的数据搬运时间，否则还得再从全局内存中读出来，完成这些简单操作
-
-TODO: here is the next focus!!!!!!!
+- what is `semaphore`？
+- Epilogue 似乎又在完成 gemm 过程中的 partition tensor 部分，这两部分数据还需要一一对应吗？如果当前 partition 和 gemm partition 分的方法不一样，数据应该怎么对应上？C 应该代表了 epilogue 计算过程中所需要的数据吗？
+- Epilogue 只能够处理 element wise 的操作吗？
 
 # Efficient Gemm
 
@@ -881,7 +869,7 @@ Bandwidth & Flops & Roofline 模型
 - **算力**决定“屋顶”的高度（绿色线段）
 - **带宽**决定“房檐”的斜率（红色线段）
 
-<img src="CUDA Programming 7/v2-cafb93b9a31fca2d7c84951555762e59_1440w.jpg" alt="img" style="zoom:80%;" />
+<img src="CUDA Programming 7/v2-cafb93b9a31fca2d7c84951555762e59_1440w.jpg" alt="img" style="zoom: 33%;" />
 
 1. **横坐标**：**算术强度（Arithmetic Intensity）**
 
@@ -930,7 +918,7 @@ TODO: take A100 as example
 
 局部性：我们希望**相邻线程块处理的矩阵子块在全局内存中物理相邻**，这样就能提高 L2 缓存的命中率
 
-<img src="CUDA Programming 7/v2-98fbbda7966f798a1fed54be30a79477_1440w.jpg" alt="img" style="zoom: 50%;" />
+<img src="CUDA Programming 7/v2-98fbbda7966f798a1fed54be30a79477_1440w.jpg" alt="img" style="zoom: 33%;" />
 
 - **原始顺序**：线程块按行优先顺序执行 `(0,0) → (0,1) → (0,2)...`
 - **Swizzle后顺序**：线程块按Z字型顺序执行 `(0,0) → (1,0) → (0,1) → (1,1)...`
@@ -943,30 +931,30 @@ TODO: take A100 as example
 
 # CUTLASS in Practice
 
-- improve cutlass gemm  [zhihu](https://zhuanlan.zhihu.com/p/707715989) [Reed's zhihu posts](https://www.zhihu.com/people/reed-84-49/posts)
-- pick up cutlass examples: interested in all kinds of gemm and kernel fusion
-- [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624) [github](https://github.com/zeroine/cutlass-cute-sample) [zhihu](https://zhuanlan.zhihu.com/p/690703999)this gives examples on optimze gemm and fusing kernel, and most importantly, it gives examples on how to use ncu & nsys to analyize the performance
+- Reed's improve cutlass gemm 
+
+  - [cute gemm 优化](https://github.com/weishengying/cute_gemm) 根据 reed blog 的三方实现
+  - [reeds implementation](https://github.com/reed-lau/cute-gemm)
+
+- 进击的Killua's cute 实战
+
+  -  [CUTLASS CuTe实战(一)-基础](https://zhuanlan.zhihu.com/p/690703999) 
+  - [CUTLASS CuTe实战(二)-应用](https://zhuanlan.zhihu.com/p/692078624)
+  -  [github](https://github.com/zeroine/cutlass-cute-sample)
+
+  - [nsys & ncu examples](https://zhuanlan.zhihu.com/p/673282220)
+
 - cutlass in flash attention
+
+  [tiny-flash-attention](https://github.com/66RING/tiny-flash-attention/tree/main)	[使用cutlass cute复现flash attention](https://zhuanlan.zhihu.com/p/696323042)
+
+  [cute-flash-attention](https://github.com/luliyucoordinate/cute-flash-attention)
+
 - understand cutlass scale mm in vllm
+
+- pick up cutlass examples: interested in all kinds of gemm and kernel fusion
+
 - sage attention implementation (not much cutlass involved, but have a lot to do with flashinfer and vllm)
-
-## Learning Stages
-
-Stage1:
-
-learn gpu model with cutlass gemm (improved gemm kernel with cute), **here is the next next focus**
-
-learn important layer implementation: **quantization**, **flash attention 2**, layer norm
-
-compare your implementation with sota project integration (vllm, sage attention) focusing on quantization gemm
-
-Stage2:
-
-dive into sota projects
-
-learn improved gpu hardware (Hopper) features （Later）
-
-we are going to explore all the tricks that these inference engine used (vllm, sglang, flashinfer)
 
 ## Questions
 
@@ -1001,3 +989,5 @@ we are going to explore all the tricks that these inference engine used (vllm, s
   cp_async_wait<0>();      // Sync on all (potential) cp.async instructions
   __syncthreads();         // Wait for all threads to write to smem
   ```
+
+- Understand the layout algebra fundamental operations, can deduce basic operations by myself.
