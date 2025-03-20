@@ -49,3 +49,11 @@
   global -> shared memory & shared memory -> register 使用的是不同的 atom
   
   next: understand shared memory to register copying
+
+- `SM75_U32x4_LDSM_N`
+
+  每个线程一次加载 **4个32位元素**（如4个`float32`或8个`half16`），still 128 bit for one thread。但这里的 32x4 并不是指矩阵形状
+
+  为什么需要 mma？因为需要把 128 bit 的数据分配到不同的线程当中（see the mma latex layout）
+
+  <img src="CUDA Programming 8/image-20250320234644102.png" alt="image-20250320234644102" style="zoom:50%;" />
