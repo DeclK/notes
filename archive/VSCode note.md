@@ -341,7 +341,7 @@ sudo apt-get install libxcb-xinerama0 libxcb-xinerama0-dev libsm6
 
 ![image-20231103123206142](VSCode note/image-20231103123206142.png)
 
-但是该方案仍然不稳定，其原理是从本地下载插件到 `~/.config/Code/CachedExtensionVSIXs`，然后再从 cached extension vsix 下载到远端。通常不稳定的原因是网络原因（网络原因也包含 docker 和本地的网络连接问题，可尝试重启 docker & vscode）
+但是该方案仍然不稳定，有时候甚至会直接卡住，而不会选择从网络下载。其原理是从本地下载插件到 `~/.config/Code/CachedExtensionVSIXs`，然后再从 cached extension vsix 下载到远端。通常不稳定的原因是网络原因（网络原因也包含 docker 和本地的网络连接问题，可尝试重启 docker & vscode）
 
 综上：首先尝试从本地下载，然后尝试重启网络/docker，并通过 OUTPUT-> windows 查看输出信息。以上均无反应，则使用 VXIS 安装，只需要在本地查看好版本，然后去应用市场下载对应版本即可
 

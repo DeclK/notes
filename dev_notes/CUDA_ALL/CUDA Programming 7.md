@@ -14,15 +14,16 @@ Stage1:
 
 - learn gpu model with cutlass gemm (improved gemm kernel with cute)
   - 学习 Epilogue 流程，把几个疑问解开✅
-  - 深度学习 basic gemm，把高度抽象代码与底层计算结合起来，知道每一个重要参数的意义以及使用方法
+  - 深度学习 basic gemm，把高度抽象代码与底层计算结合起来，知道每一个重要参数的意义以及使用方法✅
   
     TiledMMA & ThrMMA & Data 之间的关系，Learn from simple gemm (cute & reed)
-  - 完成 improved gemm 代码分析
+  - 完成 improved gemm 代码分析✅
+  -
   
 - learn important layer implementation: **quantization**, **flash attention 2**, layer norm & RMSNorm, Activations (ReLU & SiLU & GeLU)
   - fused quantization kernel: w4a16 kernel [awesome-cute](https://github.com/CalebDu/Awesome-Cute/tree/main)
   - 自己构建一个 simple fused kernel (LayerNorm + Quant, Silu + Quant)
-  - 学习 flash attention cute 版本代码 + flash infer 代码理解，如何构建一个快速的、可定制的 attention kernel  
+  - 学习 flash attention cute 版本代码 + flashinfer 代码理解，如何构建一个快速的、可定制的 attention kernel
 
 - compare your implementation with sota project integration (vllm, sage attention) focusing on quantization gemm
 
@@ -348,7 +349,7 @@ $$
 
 ✅[cute 之 Swizzle](https://zhuanlan.zhihu.com/p/671419093)
 
-[cute 之 高效GEMM实现](https://zhuanlan.zhihu.com/p/675308830)
+✅[cute 之 高效GEMM实现](https://zhuanlan.zhihu.com/p/675308830)
 
 ### Layout
 
