@@ -189,19 +189,19 @@ Definition 2.11 & 2.13 保证了 composition 的合理性
    0 2 4
    1 3 5
    
-   # elements 0,1 using B1
+   #✅ elements 0,1 using B1
    x 2 4
    x 3 5
    
-   # elements 0,2,4 using B2
+   #✅ elements 0,2,4 using B2
    x x x
    1 3 5
    
-   # elements 0,2,4,6,8 using B3
+   #✅ elements 0,2,4,6,8 using B3
    x x x x x
    1 3 5
    
-   # elements 0,1,2,3,4 using B4
+   #❌ elements 0,1,2,3,4 using B4
    x x x
    x x 5
    ```
@@ -210,11 +210,32 @@ Definition 2.11 & 2.13 保证了 composition 的合理性
 
 上方我们一直都没有考虑到 A 的 stride，都是仅要求了 A 的 shape
 
+- 我需要使用 python 来表达出各种 layout algebra 的计算，来帮助自己进行理解以及实战演练。彻底理解 complement & composition & divide & product 的清晰作用。我看 swizzle 也就是用了一个 composition 就完成了 layout algebra 运算，所以这对理解 swizzle 至关重要
+
+## 图解 Efficient GEMM
+
+- 我需要将整个 gemm 进行图解来方便自己对过程进行把控和推导
+
 ## Question
 
 1. 为什么在修改 `static constexpr int kMmaEURepeatN = 1;` 过后 multi-stage gemm 结果出现了变化？改变 `kMmaPN = 4 * kMmaEURepeatN` 也会改变结果
 
+   观察到
+
+   ```c++
+     auto tCrB_view = s2r_thr_copy_b.retile_D(tCrB);  // (CPY, CPY_N, CPY_K), (8, 4, 2) = ((8, 1), 128/32, 32/16)
+                                                      // (CPY, CPY_N, CPY_K), (8, 8, 2) if set EURpeatN = 2, but tCrB is still (4, 8, 2)
+   ```
+
+   此时 `retile_D` 会造成 copy 产生错误，从而导致数据搬运损坏。那问题来了，为什么 cutlass 在这里不进行报错呢？将一个小的 shape `(4, 8, 2)` retile 为一个更大的 shape `(8, 8, 2)` 会有什么样的后果？仍然需要深入理解 layout algebra
+
+   
    为什么还要在 N 这个维度的 PermutationMNK 做扩展？在我看来这并没有什么意义，所带来的收益是什么？
+
+      PermutationMNK 这将改变 TiledCopy 进行划分的情况（如果 TiledCopy 使用 TiledMMA 来进行划分的话），但是不改变 TiledMMA 对数据的划分（如果只是简单扩张，没有真正地进行 permute），quote [github-issue](https://github.com/NVIDIA/cutlass/discussions/1345#discussioncomment-8485429)
+
+   > This doesn't actually affect the partitioning of input/output tensors because, by convention, only a single atom is ever partitioned out. It will affect the output of `tile_size` and `get_layoutC_MN` and `get_layoutC_TV` etc, which could affect any `TiledCopy` that rely on those partitioning patterns by being built on this TiledMMA.
+
 
 2. 在使用 `cp_async_wait` 之后是否一定要添加 `__syncthreads`？
 
@@ -237,4 +258,5 @@ Definition 2.11 & 2.13 保证了 composition 的合理性
    > From DeepSeek
    >
    > **`tCrA_view` 是 `tCrA` 的视图**，两者共享内存，`retile_D` 仅调整访问方式
-0 / 3
+
+5. copy 是异步进行的，但是每一次 copy 应该是使用线程的。那么当在发射多个 copy 命令的时候，是否会发生线程不够的情况？如何解决这样的疑问？
