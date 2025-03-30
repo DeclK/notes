@@ -38,7 +38,7 @@ Reference [github](https://github.com/SafeAILab/EAGLE)
 
   <img src="EAGLE Speculative Decoding/image-20250328225651677.png" alt="image-20250328225651677" style="zoom:80%;" />
   
-  **我们可以简单地把 LLM (i.e. Base Model) 看作是一个 next token prediction machine**，也就是说你给进去任何 token，它都会基于历史状态给你预测下一个 token 是什么。这个想法将会简化 LLM 模型，帮助我们理解整个 speculative decoding 过程。简要描述下上图的过程：在 prefill 中输入 `How can I` 预测出了 3 个 next tokens，但是我们只关注最后一个，即由 `I` 预测得到的 next token `learn`。然后进入 decode 阶段，我们使用 `learn` 去预测得到下一个 token `eagle`，用 `eagle` 去预测得到 `speculative`，...，如此循环下去获得最终完整的句子 `How can I learn eagle speculative decoding well?`
+  **我们可以简单地把 LLM (i.e. Base Model) 看作是一个 next token prediction machine**，也就是说你给进去任何 token，它都会基于历史状态来预测下一个 token 是什么。这个想法将会简化 LLM 模型，帮助我们理解整个 speculative decoding 过程。简要描述下上图的过程：在 prefill 中输入 `How can I` 预测出了 3 个 next tokens，但是我们只关注最后一个，即由 `I` 预测得到的 next token `learn`。然后进入 decode 阶段，我们使用 `learn` 去预测得到下一个 token `eagle`，用 `eagle` 去预测得到 `speculative`，...，如此循环下去获得最终完整的句子 `How can I learn eagle speculative decoding well?`
   
   OK，现在来看看用投机采样整个过程可能是什么样的？这里就开始引入 draft model 了，该 draft model 也是一个 LLM，只不过比原来的 baes model 要小很多，**但是不妨碍其本质是一个 next token prediction machine**
   
@@ -71,9 +71,113 @@ Reference [github](https://github.com/SafeAILab/EAGLE)
   
   <img src="EAGLE Speculative Decoding/image-20250328235339912.png" alt="image-20250328235339912" style="zoom:80%;" />
 
+- Extend to sampling situations
+
+  在上面的讨论中，我们利用了 base model 的前向输出去验证 draft tokens 的正确性，完成这一操作有一个隐藏条件：base model & draft model 在预测 next token 的时候是确定性的，用专业术语来说就是：temperature 为 0。如果这个条件无法满足，那么上述的错位对比是没有意义的（无法对比不确定的东西）。`temperature = 0` 在具体实现中就是直接使用 `argmax(probability)` 来完成对 token 的选取
+
+  在 `temperature != 0` 的情况下，我们就需要通过采样来获得 next token。此时 draft token & base model 输出变为不确定性的，但我们仍然可以验证所生成的 draft token 分布是否符合 base model 应该生成的 token 分布。接下来就需要做下概率论了🤔
+
+  定义：draft token 预测 next token `x` 的分布为 `q(x)`，而 base model 预测 next token `x` 的分布为 `p(x)`
+
+  目标：从分布 `q(x)` 出发，最终获得分布 `p(x)`
+
+  算法：下图来自于 EAGLE-3 paper，描述了多 token 的投机采样算法。其核心思想是：先从 `q(x)` 分布中采样，以一定概率去接收采样到的 `x`，如果 `x` 被拒绝，则在一个新分布重新采样一个 `x`。该过程采样获得的 `x` 在数学上等价于直接从 `p(x)` 中直接采样
+
+  <img src="EAGLE Speculative Decoding/image-20250330223102475.png" alt="image-20250330223102475"  />
+
+  我将上图的算法抽象为 python 伪代码，并只考虑 single round
+
+  ```python
+  def speculative_sampling(p, q):
+      x = sample_from_distribution(q)
+      ratio = p(x) / q(x)
+  
+      r = uniform(0, 1)
+      if r < ratio: # accept the x according to ratio
+          return x
+      if r >= ratio: # reject x, resample from a new distribution
+          new_p = lambda x: (p(x) - min(p(x), q(x))) / sum([p(x) - min(p(x), q(x)) for x in sample_space])
+          new_x = sample_from_distribution(new_p)
+          return new_x
+  ```
+
+  该采样过程的正确性在下面的 section 给出。现在我们重新来审视投机采样和之前的 verify 过程：左侧即为当前讨论的投机采样，而右侧即为简单的 verify 过程
+
+  <img src="EAGLE Speculative Decoding/image-20250330232028249.png" alt="image-20250330232028249" style="zoom:80%;" />
+
+  可以看到左侧， base model 没有生成 token，而是生成的对应的概率分布，我们将利用这个概率分布 `p(x)`，来和对应的 draft token 分布 `q(x)` 进行投机采样。之前的 verify 过程，变为了现在的是否接收采样结果：
+
+  1. 若接收当前 draft token，则继续验证下一个 draft token
+  2. 若拒绝当前 draft token，则用新分布重新采样，生成一个新的 token，在此之后所有的 draft token 全部舍弃
+
+- Proof the correctness of speculative sampling
+
+  按照上述方法采样产生的 `x` 在数学上是等价于 `p(x)` 的。证明来自投机采样论文 [Fast Inference from Transformers via Speculative Decoding](https://openreview.net/pdf?id=C9NEblP8vS)
+
+<img src="EAGLE Speculative Decoding/image-20250330224150492.png" alt="image-20250330224150492" style="zoom:80%;" />
+
+上述证明中，没有提到 $\beta$ 的定义，在论文中定义为：采样结果被接收的概率。采样结果被接收的概率是一个期望值，如下
+
+<img src="EAGLE Speculative Decoding/image-20250330224536397.png" alt="image-20250330224536397" style="zoom: 80%;" />
+
+我再翻译一下这个期望：
+
+1. 当 `q(x) <= p(x)` 时，采样结果一定会被接收，概率为 1
+2. 当 `q(x) > p(x)` 时，采样结果以概率 `p(x) / q(x)` 接收
+
 ## EAGLE-1
 
+第一章节的投机采样原理是“神”，而其他的方法都是“形”。对于 EAGLE 来说，其特色就是在 draft tokens 生成过程中，加入了 `hidden_states` 作为额外的信息，来帮助 draft model 更好猜测。
 
+<img src="EAGLE Speculative Decoding/image-20250330235637826.png" alt="image-20250330235637826" style="zoom:80%;" />
+
+NOTE: 上图中省略了 draft model 的 prefill 过程，实际上会使用 base model 中的 input tokens & hidden states 完成 prefill
+
+EAGLE 利用 initial token embedding + 对应的 `hidden_states` 作为输入，使用一个 linear 层来融合这两个 feature，并用其进行自回归推理
+
+```python
+def eagle_decode(init_token,
+                 input_hidden_states,
+                 embed,
+                 fc,
+                 draft_model_transformer, 
+                 lm_head, 
+                 draft_len):
+    """
+    Args:
+    	- init_token: initial token, (1,)
+    	- input_hidden_states: the hidden_states which produce the initial token (1, C)
+    	- embed: token embedding map
+    	- fc: linear to fuse embedding & hidden_states (2C, C)
+    	- draft_model_transformer: transformer blocks
+    Return:
+    	- draft_tokens, (draft_len + 1,)
+    """
+    next_token = init_token
+    draft_tokens = [init_token]
+    
+    for i in range(draft_len):
+        # get input feat
+        input_embed = embed(next_token)	# (1, C)
+        input_feat = fc(torch.concat([input_embed, input_hidden_states], dim=-1)) # (1, C)
+        
+        # get hidden states
+        last_hidden_states = draft_model_transformer(input_feat)
+        
+        # get logits
+        logits = lm_head(last_hidden_states) # (1, vocab_size)
+        
+        # sample
+        next_token = sample(logits)
+        
+        draft_tokens.append(next_token)
+        
+	return draft_tokens
+```
+
+之后就是 verify draft tokens，并删除 base model 中录入的错误 kv cache
+
+NOTE: 对于 draft model kv cache 需要清除掉由 draft model hidden states 产生的 kv cache，重新用 base model hidden states 生成新的 kv cache。这个技巧在 EAGLE 代码里叫做 stable kv，确保在 decode 之前，draft model 中的 kv cache 全部由 base model hidden states 生成，这为 EAGLE-3 埋下了伏笔
 
 ## EAGLE-1 Tree
 
