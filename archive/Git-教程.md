@@ -296,7 +296,11 @@ rebase 一种较危险的 merge 操作，会更换节点的基底
 
 如果对于 git 中 recursive 3-way merge 算法感兴趣，可以参看 [维基百科](https://en.wikipedia.org/wiki/Merge_(version_control))
 
-可以使用 `git diff HEAD` 来查看哪些文件有改变，或者有冲突，查看单个文件的话可以直接 `git diff (--staged) file`
+可以使用 `git diff HEAD` 来查看哪些文件有改变，或者有冲突，查看单个文件的话可以直接 `git diff (--staged) file`。我有时 `git apply` 会遇到报错：`git apply fails with "patch does not apply" error`，这通常发生在我在跨系统生成和应用 diff 文件时产生，解决方法参考 [link](https://stackoverflow.com/questions/4770177/git-apply-fails-with-patch-does-not-apply-error)
+
+```shell
+git apply --reject --whitespace=fix *.patch
+```
 
 对于某些文件我们想完全保留我们的改变，可以使用 `git checkout --ours path/to/conflicted-file`，同理也可以使用 `--theirs` 来完全保留 incoming 更改
 

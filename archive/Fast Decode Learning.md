@@ -8,6 +8,30 @@
 
   以后打包只用简单写写这个配置文件就行了
 
+  使用 setup.py + 环境变量来管理 csrc extension，用 pyproject.toml 来管理 python dependencies，使用 setuptools.packages 关键字来管理需要打包的文件 [link](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#setuptools-specific-configuration)
+
+  一个 example pyproject.toml
+
+  ```txt
+  [build-system]
+  requires = ["setuptools>=61.0.0", "wheel"]
+  build-backend = "setuptools.build_meta"
+
+  [project]
+  name = "FQT"
+  version = "0.1.0"
+  authors = [
+      {name = "DeclK", email = "xxx@gmail.com"},
+  ]
+  description = "xxx"
+  readme = "README.md"
+  requires-python = ">=3.8"
+
+  [tool.setuptools.packages.find]
+  where = ["."]
+  include = ["xxx"]
+  ```
+
 ## Datasets of medusa
 
 - raw 数据形式，以及输入到网络中的数据形式

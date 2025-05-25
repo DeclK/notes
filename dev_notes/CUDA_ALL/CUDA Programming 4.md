@@ -185,13 +185,13 @@
 
   bank 的逻辑抽象图如下
 
-  <img src="CUDA Programming 4/image-20241113111543226.png" alt="image-20241113111543226" style="zoom: 80%;" />
+  <img src="CUDA Programming 4/image-20250525151751355.png" alt="image-20250525151751355" style="zoom:67%;" />
 
   每一个 bank 的宽度为 4B/32bit，并且同一个 bank 将会分为多个 layer。shared memory 将会让数据连续地分布到 bank 当中，从 bank0 的 layer0 开始，根据地址的顺序填入数据。以上面的 transpose 为例子，我们向 shared memory 填入一段 32x32 TILE float 矩阵，每一个 float 正好就是 4 Byte，那也就正好使用了 32 个 layer
 
   没有 bank conflict 的情况：一个线程束中的线程各自访问不同的 bank
 
-  <img src="CUDA Programming 4/image-20241113112725625.png" alt="image-20241113112725625" style="zoom:67%;" />
+  <img src="CUDA Programming 4/image-20250525151818183.png" alt="image-20250525151818183" style="zoom:67%;" />
 
   但是按照我们上面的 transpose 代码的写法会出现 bank conflict。原因如下：我们对于 shared memory 访问代码为
 
@@ -201,7 +201,7 @@
 
   thread0~thread31 会去访问 bank0 中的 layer0~layer31 中的数据，这下多个线程需要的数据都在同一个 bank 上 (in our case bank0)，此时我们就说产生了冲突 conflict，需要排队获取数据
 
-  <img src="CUDA Programming 4/image-20241113113614994.png" alt="image-20241113113614994" style="zoom:67%;" />
+  <img src="CUDA Programming 4/image-20250525151833019.png" alt="image-20250525151833019" style="zoom:67%;" />
 
   要解决这样的 bank conflict 也很简单，只需要在申请 shared memory 的时候多申请一部分数据，填入一些空白的数据，让各个线程在取数据的时候分布在不同的 bank。我们只需要更改一行代码
 
@@ -212,7 +212,7 @@
 
   此时 bank 访问的情况如下
 
-  <img src="CUDA Programming 4/image-20241113114424544.png" alt="image-20241113114424544" style="zoom:67%;" />
+  <img src="CUDA Programming 4/image-20250525151845615.png" alt="image-20250525151845615" style="zoom:67%;" />
 
   黑色框就是我们所申请的空白内存，即 `TILE_DIM + 1` 中的 +1，这下我们在访问 ` S[threadIdx.x][threadIdx.y]` 时，所有的 thread 都会访问到不同 bank 的数据，只不过是他们的 layer 不同罢了。最后测试的时延如下
 
