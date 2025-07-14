@@ -46,7 +46,7 @@ $$
 可以解得
 
 $$
-\delta\mathbf{w}=-\frac{w_q}{[\mathbf{H}^{-1}]_{qq}}\mathbf{H}^{-1}·\mathbf{e}_q    
+\delta\mathbf{w}=-\frac{w_q}{[\mathbf{H}^{-1}]_{qq}}\mathbf{H}^{-1}·\mathbf{e}_q
 $$
 
 $$
@@ -56,11 +56,13 @@ $$
 这样我们就得到了一个 $$\delta\mathbf{w}$$使得我们剪切了 $$w_q$$并且调整了其他的权重使得 Loss 的变动最小
 
 有了 OBS 的铺垫，OBQ 很快把这种方式推广到了量化当中，**这其实很好理解：常用的量化则是把数值近似到一个接近的值， 而剪枝实际上可以看做把数值直接近似成0（某种意义上或许可以称作1bit或0bit量化）**，可以理解为一种特殊的量化
-
+$$
+\mathbf{e}_q^T·\delta \mathbf{w} + w_q= Quant(w_q)
+$$
 OBQ 将 OBS 扩展后的公式如下：
 
 $$
-\delta\mathbf{w}=-\frac{quant(w_q)-w_q}{[\mathbf{H}_F^{-1}]_{q,q}}(\mathbf{H}_F)^{-1}_{:,q}   
+\delta\mathbf{w}=-\frac{w_q-quant(w_q)}{[\mathbf{H}_F^{-1}]_{q,q}}(\mathbf{H}_F)^{-1}_{:,q}
 $$
 
 $$
@@ -150,6 +152,277 @@ GPTQ 算法在量化 1-3B 参数量的模型只需要几十分钟，对于 175B 
 论文使用 RTN 作为 baseline 进行比较，是全面占优的。在越大的模型上，其量化结果越好
 
 ![img](GPTQ/1710324236604-4.png)
+
+## Math in GPTQ
+
+### Lagrange Multiplier
+
+> From wiki
+>
+> the **method of Lagrange multipliers** is a strategy for finding the local [maxima and minima](https://en.wikipedia.org/wiki/Maxima_and_minima) of a [function](https://en.wikipedia.org/wiki/Function_(mathematics)) subject to [equation constraints](https://en.wikipedia.org/wiki/Constraint_(mathematics)) 
+
+其中函数和约束记为
+$$
+f(x_1, x_2, \dots, x_n)\\
+g(x_1, x_2, \dots, x_n) = 0
+$$
+[bilibili](https://www.bilibili.com/video/BV15T411f7DY) 这个视频很好地讲述了拉格朗日乘数法的几何理解：
+
+极值点的必要但不充分条件为：1. 满足约束函数条件；2. 原函数梯度与约束的梯度方向相同
+$$
+\begin{cases}
+\nabla f(x_1, x_2, \dots, x_n) = \lambda \nabla g(x_1, x_2, \dots, x_n) \\
+g(x_1, x_2, \dots, x_n) = c
+\end{cases}
+$$
+这两个条件可以用一个 lagrange function 并对其变量求偏导来表示
+$$
+\mathcal{L}(x_1, x_2, \dots, x_n, \lambda) = f(x_1, x_2, \dots, x_n) - \lambda (g(x_1, x_2, \dots, x_n) - c)
+\\
+\frac{\partial \mathcal{L}}{\partial x_i} = 0 \quad \text{for } i = 1, \dots, n \quad \text{and} \quad \frac{\partial \mathcal{L}}{\partial \lambda} = 0
+$$
+利用拉格朗日乘数法就能够轻松推导出 GPTQ 论文中的最优值结论
+
+### Schur Complement
+
+舒尔补并没有直接在 GPTQ 的论文当中出现，不过在询问各个 ChatGPT 老师的过程中，schur complement 会频繁出现。这里简单列出其形式和重要特性：
+
+对于一个分块矩阵 $M$，其中 $A$ 必须是可逆的（如果 $D$ 是可逆的，也可以定义关于 $D$ 的 schur complement）
+$$
+M = \begin{pmatrix}
+A & B \\
+C & D
+\end{pmatrix}
+$$
+则矩阵 $M$ 关于块 $A$ 的 schur complement 为
+$$
+S = D - C A^{-1} B
+$$
+
+
+
+Schur 补最著名的应用是给出分块矩阵 $M$ 的逆的显式表达式（当 $A$ 和 $S$ 均可逆时）
+$$
+M^{-1} = \begin{pmatrix}
+A^{-1} + A^{-1} B S^{-1} C A^{-1} & -A^{-1} B S^{-1} \\
+-S^{-1} C A^{-1} & S^{-1}
+\end{pmatrix}
+$$
+**为什么重要？** 这个公式将大规模矩阵 $M$ 的求逆问题分解为对较小的子块 $A$ 和 $S$ 的求逆问题，以及一些矩阵乘法。如果 $A$ 和 $S$ 的逆更容易计算（例如，它们是稀疏的、对角化的或已经预先计算好的），这可以**显著降低计算复杂度**
+
+### Inverse of $H_F$
+
+在 GPTQ 当中，当我们量化好了某个权重时，就会在 Hessian 矩阵中剔除该权重的位置相关的行和列，然后重新求解子 Hessian 矩阵的逆。在论文当中使用迭代公式求解这个过程
+$$
+\mathbf{H}^{-1}_{-q} = (\mathbf{H}^{-1}-\frac{1}{[\mathbf{H}^{-1}]_{q,q}}\mathbf{H}^{-1}_{:,q}\mathbf{H}^{-1}_{q,:})_{-q}
+$$
+而这个式子，是不是很像上面提到的 schur complement？但实际上二者的联系并没有看上去那样直接。这个证明过程需要使用到 schur complement
+
+> From DeepSeek（不得不感叹现在的 AI 真的很强，直接把整个证明过程写得非常清楚）
+>
+> 将原矩阵进行重新排列
+> $$
+> \mathbf{H} = \begin{bmatrix}
+> \mathbf{H}_{-q} & \mathbf{c} \\
+> \mathbf{d}^\top & e
+> \end{bmatrix}
+> $$
+> 其中：
+>
+> - $\mathbf{H}_{-q}$ 是移除第 $q$ 行和第 $q$ 列后的 $(n-1) \times (n-1)$ 子矩阵（即我们要求的逆的部分）。
+> - $\mathbf{c}$ 是 $\mathbf{H}$ 的第 $q$ 列，但移除第 $q$ 行元素（一个 $(n-1) \times 1$ 列向量）。
+> - $\mathbf{d}^\top$ 是 $\mathbf{H}$ 的第 $q$ 行，但移除第 $q$ 列元素（一个 $1 \times (n-1)$ 行向量）。
+> - $e = \mathbf{H}_{q,q}$ 是一个标量。
+>
+> 根据 schur complement 的定义，我们可以得到 $H^{-1}$ 的表达式
+> $$
+> \mathbf{H}^{-1} = \begin{bmatrix}
+> \mathbf{H}_{-q}^{-1} + \frac{1}{\delta} \mathbf{H}_{-q}^{-1} \mathbf{c} \mathbf{d}^\top \mathbf{H}_{-q}^{-1} & -\frac{1}{\delta} \mathbf{H}_{-q}^{-1} \mathbf{c} \\
+> -\frac{1}{\delta} \mathbf{d}^\top \mathbf{H}_{-q}^{-1} & \frac{1}{\delta}
+> \end{bmatrix}
+> $$
+> 其中 schur complement $\delta = e - \mathbf{d}^\top \mathbf{H}_{-q}^{-1} \mathbf{c}$
+>
+> 由于我们已经事先求得了 $H^{-1}$，所以可以根据上述表达式计算得到 $H_{-q}^{-1}$。这其中还需要花费一些功夫，我们把 $H^{-1}$ 也进行分块
+> $$
+> \mathbf{H}^{-1} = \begin{bmatrix}
+> \mathbf{A} & \mathbf{b} \\
+> \mathbf{c}^\top & d
+> \end{bmatrix}
+> $$
+> 这里 DeepSeek 应该是有一个笔误，这里的 $c$ 和 $H$ 之中的 $c$ 是不一样的。从这个分块形式中，我们可以识别：
+>
+> - $\mathbf{H}^{-1}$ 的右下角元素是 $[\mathbf{H}^{-1}]_{q,q} = \frac{1}{\delta}$，因此 $\delta = \frac{1}{[\mathbf{H}^{-1}]_{q,q}}$
+> - $\mathbf{H}^{-1}$ 的第 $q$ 列（移除第 $q$ 行元素）是 $\mathbf{b} = -\frac{1}{\delta} \mathbf{H}_{-q}^{-1} \mathbf{c}$
+> - $\mathbf{H}^{-1}$ 的第 $q$ 行（移除第 $q$ 列元素）是 $\mathbf{c}^\top = -\frac{1}{\delta} \mathbf{d}^\top \mathbf{H}_{-q}^{-1}$（这里 $\mathbf{c}^\top$ 是行向量）
+>
+> 我们需要求解 $\mathbf{H}_{-q}^{-1}$。从分块矩阵中，$\mathbf{H}^{-1}$ 的左上块是：
+> $$
+> \mathbf{A} = \mathbf{H}_{-q}^{-1} + \frac{1}{\delta} \mathbf{H}_{-q}^{-1} \mathbf{c} \mathbf{d}^\top \mathbf{H}_{-q}^{-1}
+> $$
+> 利用上面识别的 $\mathbf{b}$ 和 $\mathbf{c}^\top$，我们可以重写：
+> $$
+> \mathbf{H}_{-q}^{-1} \mathbf{c} = -\delta \mathbf{b}, \quad \mathbf{d}^\top \mathbf{H}_{-q}^{-1} = -\delta \mathbf{c}^\top
+> $$
+> 代入 $\mathbf{A}$ 的表达式：
+> $$
+> \mathbf{A} = \mathbf{H}_{-q}^{-1} + \frac{1}{\delta} (-\delta \mathbf{b}) (-\delta \mathbf{c}^\top) = \mathbf{H}_{-q}^{-1} + \delta \mathbf{b} \mathbf{c}^\top
+> $$
+> 因为 $\delta = \frac{1}{[\mathbf{H}^{-1}]_{q,q}}$，所以：
+> $$
+> \mathbf{A} = \mathbf{H}_{-q}^{-1} + \frac{1}{[\mathbf{H}^{-1}]_{q,q}} \mathbf{b} \mathbf{c}^\top
+> $$
+> 这里 $\mathbf{A}$ 正是 $\mathbf{H}^{-1}$ 移除第 $q$ 行和第 $q$ 列后的子矩阵，即 $\mathbf{A} = (\mathbf{H}^{-1})_{-q}$。因此：
+> $$
+> (\mathbf{H}^{-1})_{-q} = \mathbf{H}_{-q}^{-1} + \frac{1}{[\mathbf{H}^{-1}]_{q,q}} \mathbf{b} \mathbf{c}^\top
+> $$
+> 重新排列得：
+> $$
+> \mathbf{H}_{-q}^{-1} = (\mathbf{H}^{-1})_{-q} - \frac{1}{[\mathbf{H}^{-1}]_{q,q}} \mathbf{b} \mathbf{c}^\top
+> $$
+> 注意，$\mathbf{b}$ 和 $\mathbf{c}^\top$ 分别是 $\mathbf{H}^{-1}$ 的第 $q$ 列和第 $q$ 行移除第 $q$ 个元素后的部分
+
+在此过程中，我们对矩阵 $H$ 进行了重新排布，好消息是排布可以使用相似变换来完成，所以不影响以上证明的最终结论
+
+> **移动操作的数学本质**
+>
+> - 将第 $q$ 行/列移动到边界，等价于用排列矩阵 $\mathbf{P}$ 对 $\mathbf{H}$ 做相似变换：
+>   $$
+>   \widetilde{\mathbf{H}} = \mathbf{P} \mathbf{H} \mathbf{P}^\top
+>   $$
+>   其中 $\mathbf{P}$ 是置换矩阵（$\mathbf{P}^{-1} = \mathbf{P}^\top$）。
+>
+> - $\widetilde{\mathbf{H}}$ 的逆为：
+>   $$
+>   \widetilde{\mathbf{H}}^{-1} = \mathbf{P} \mathbf{H}^{-1} \mathbf{P}^\top
+>   $$
+>
+> - **关键点**：$\widetilde{\mathbf{H}}$ 的左上角子矩阵 $\widetilde{\mathbf{H}}_{-n}$ 就是原始 $\mathbf{H}_{-q}$（仅行列顺序可能不同，但集合相同）。
+
+### Cholesky decomposition
+
+> From DeepSeek
+>
+> Cholesky 分解是一种非常重要的矩阵分解方法，专门针对**对称正定矩阵**。它将一个对称正定矩阵 `A` 分解为一个**下三角矩阵** `L` 和其**转置** `Lᵀ` 的乘积。
+>
+> **数学表达：**
+> `A = L * Lᵀ`
+>
+> 其中：
+>
+> * `A` 是一个 `n x n` 的 **对称正定矩阵**。
+> * `L` 是一个 `n x n` 的 **下三角矩阵**（即主对角线以上的元素全为零）。
+> * `Lᵀ` 是 `L` 的 **转置**，是一个上三角矩阵。
+>
+> **为什么重要？优势是什么？**
+>
+> 1.  **高效性：** 与通用的 LU 分解相比，Cholesky 分解利用了矩阵的对称正定性，**计算量大约只有 LU 分解的一半**，并且**所需的存储空间也更少**（只需要存储 `L` 矩阵，因为它包含了 `Lᵀ` 的信息）。这使得它在处理大规模对称正定系统时速度更快、内存占用更低。Cholesky 分解可以通过一种相对直接的算法计算，类似于高斯消元法，但利用了对称性来减少计算量。计算过程**逐行/列**进行
+> 2.  **数值稳定性：** 对于对称正定矩阵，Cholesky 分解**通常非常数值稳定**，不需要进行主元（pivoting）。正定性保证了在计算过程中不会出现除零错误（因为对角线元素 `lⱼⱼ` 的计算涉及开平方根，而 `aⱼⱼ - Σ...` 部分保证是正数）。
+> 3.  **正定性的检测：** 在计算 Cholesky 分解的过程中，如果遇到试图对负数或零开平方根的情况（即 `aⱼⱼ - Σ... <= 0`），那么就可以立即断定原始矩阵 `A` **不是正定**的。因此，Cholesky 分解算法本身也是一个检查矩阵是否正定的有效方法。
+> 4.  **矩阵求逆：** 虽然直接求逆通常不推荐（效率低且可能引入数值误差），但如果需要对称正定矩阵 `A` 的逆，可以通过 Cholesky 分解来实现：
+>     *   `A = L * Lᵀ`
+>     *   `A⁻¹ = (Lᵀ)⁻¹ * L⁻¹`
+>     *   求三角矩阵的逆比求一般矩阵的逆高效得多。
+
+### Proof of GPTQ correctness
+
+在 GPTQ 算法之中直接使用了 Cholesky 分解过后的上三角矩阵 $L^T$ 来替代 $H_F^{-1}$，在论文当中完全没证明其正确性，关键证明都是一句带过，所以给我带来很大困扰。事实上需要掌握以上的数学工具才能完全理解该过程
+
+要证明 GPTQ 算法的正确性，需要几个额外的关键证明：
+
+1. 证明计算子 Hessian 逆等价于 Cholesky decomposition 子矩阵 $L_FL_F^T$
+   $$
+   \mathbf{H}^{-1}_{-q} = (\mathbf{H}^{-1}-\frac{1}{[\mathbf{H}^{-1}]_{q,q}}\mathbf{H}^{-1}_{:,q}\mathbf{H}^{-1}_{q,:})_{-q}=L_{F}L_F^T
+   $$
+   在 GPTQ 的实际使用过程中 $q=0$，即永远按照顺序进行量化，我们就证明在 $q=0$ 的情况下，二者是等价的。我们首先对 $H^{-1}$ 进行分解
+   $$
+   H^{-1} = L L^T = \begin{bmatrix}
+   l_{11} & 0 \\
+   l_{21} & L_{22}
+   \end{bmatrix}
+   \begin{bmatrix}
+   l_{11} & l_{21}^T \\
+   0 & L_{22}^T
+   \end{bmatrix}
+   = \begin{bmatrix}
+   l_{11}^2 & l_{11} l_{21}^T \\
+   l_{11} l_{21} & l_{21} l_{21}^T + L_{22} L_{22}^T
+   \end{bmatrix}.
+   $$
+   其中 $L_{22}$ 就是上述提到的 $L_{FF}$，即剩余的子矩阵，$l_{21}$ 是一个向量，$l_{11}$ 是一个标量。根据定义有
+
+   1. $[\mathbf{H}^{-1}]_{q,q}=l_{11}^2$
+   2. $\mathbf{H}^{-1}_{q,:}=[l_{11}, l_{21}]$
+   3. $\mathbf{H}^{-1}_{:,q}=[l_{11}, l_{21}]^T$
+
+   将上述表达式带入到迭代式中既可以求得
+   $$
+   \mathbf{H}^{-1}_{-q}== \begin{bmatrix}
+   0 & 0 \\
+   0 & L_{22} L_{22}^T
+   \end{bmatrix}_{-q}=L_{22} L_{22}^T
+   $$
+
+2. 证明使用 $L^T$ 替代 $H_F^{-1}$ 进行计算是等价的
+
+   这个证明过程也不难，因为在第一行二者只相差一个 scale $L_{00}$，这个差异由一个除法进行了消除。证明只需要把矩阵乘的过程写出来即可。下图来自于 Grok 回答
+
+   <img src="GPTQ/image-20250701214958437.png" alt="image-20250701214958437" style="zoom:50%;" />
+
+以上两个证明保证了 GPTQ 算法的正确性：1. 无需重复计算 $H_F^{-1}$，可以直接使用 Cholesky decomposition 结果；2. 无需使用 $H_F^{-1}$，可直接使用 Cholesky decomposition 的上三角矩阵作为替代
+
+一个简单的 pytorch 测试代码
+
+```python
+import torch
+
+# Set random seed for reproducibility
+torch.set_printoptions(sci_mode=False)
+torch.manual_seed(0)
+
+# Create a random 4x4 symmetric positive definite matrix H
+# (Using 4x4 to make the blocks more interesting)
+d = 4
+A = torch.randn(d, d)
+H = A @ A.T + torch.eye(d) * 0.01
+# print("Original Hessian H:\n", H)
+
+# Let's say we quantize the first weight (index 0)
+H_qq = H[0, 0]
+H_qF = H[0, 1:]
+H_Fq = H[1:, 0]
+H_FF = H[1:, 1:]
+
+def schur_complement(H_FF, H_Fq, H_qF, H_qq):
+    """Calculate the Schur complement."""
+    return H_FF - torch.outer(H_Fq, H_qF) / H_qq
+
+H_qq_1 = H[0, 0]
+H_qF_1 = H[0, :]   
+H_Fq_1 = H[:, 0]
+H_FF_1 = H[:, :]
+
+# print(schur_complement(H_FF, H_Fq, H_qF, H_qq))
+# print(schur_complement(H_FF_1, H_Fq_1, H_qF_1, H_qq_1))
+
+H_inv = torch.inverse(H)
+H_inv_qq = H_inv[0, 0]
+H_inv_qF = H_inv[0, 1:]
+H_inv_Fq = H_inv[1:, 0]
+H_inv_FF = H_inv[1:, 1:]
+# print(H_inv_FF)
+
+H_F_inv = torch.inverse(schur_complement(H_FF, H_Fq, H_qF, H_qq))
+
+
+# proof the Cholesky decomposition
+L = torch.linalg.cholesky(H_inv)
+L_FF = L[1:, 1:]
+print(schur_complement(H_inv_FF, H_inv_Fq, H_inv_qF, H_inv_qq))
+print(torch.inverse(H_FF))
+print(L_FF @ L_FF.T)
+print(L_FF.T * (L_FF[0, 0]))
+```
 
 ## 实践
 
