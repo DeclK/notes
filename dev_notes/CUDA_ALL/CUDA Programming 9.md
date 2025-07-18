@@ -42,7 +42,7 @@ observations:
 
    1. global memory tensor
    2. shared memory tensor
-   3. register tensor
+   3. register tensor, has to be static
 
 non-owning tensor 占据大部分的使用时间，先来看下 non-owning tensor 的创建，只需要两个参数：
 
@@ -164,7 +164,29 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
 ### silu_and_matmul
 
-silu and matmul, ref with flashinfer
+silu and multiply, ref with flashinfer
+
+input tensor: (B, N, C)
+
+整个过程是以 float 精度计算的，所以在计算之前需要使用类型转换
+
+当使用 GPU 并行来加速 kernel 时，可以想象的是：整个程序有多个 blocks 在同时运行，这是 block 级别的并行。而在 block 内部存在着 thread 级别的并行，通常来说还需要 thread 进行循环以处理多个数据
+
+```cpp
+__global__ void function(){
+  // inside of a block
+  while task is not done {
+    threads keep doing jobs;
+  }
+}
+```
+
+并行化逻辑：
+
+1. 每一个 block 处理一个 token，thread 数量根据 dimension 数量决定，最大取 1024 个线程，每一个线程使用向量化存储，会一次性搬运 128-bit 数据
+2. grid 并行化处理全部 token
+
+对比一般的 cuda 编程，由于需要构建 cute tensor，所以我还传入了 shape
 
 ### softmax
 
@@ -181,6 +203,12 @@ Rmsnorm, ref with flashinfer or pytorch or vllm
 ## W8A8 Gemm
 
 compare with cutlass sota results
+
+## DataType Convertion
+
+1. dequant (4-bit to 16/32-bit)
+2. fp32 to fp16 bit
+3. from int4/8 to int32? so we can see the actual numbers
 
 ## Questions
 
@@ -221,4 +249,6 @@ compare with cutlass sota results
 
    对于 half 转 float 可以直接用强制类型转换 `(float)`
 
-4. 我使用 reed 当中的实现，运行时间比 torch 要多很多，需要 ~0.1ms，比 torch 要多一个数量级，不太清楚是什么导致的
+4. sizeof 是测量什么？
+
+   以 byte 为单位，返回一个类型所占据的字节数，`sizeof(float)=4`
