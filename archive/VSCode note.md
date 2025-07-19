@@ -175,11 +175,70 @@ Host random_name
 
 参考 [CSDN](https://blog.csdn.net/ibless/article/details/118610776) 解决问题
 
+### Debug
+
+通过填写 launch.json 文件就可以构建 debug 程序，通常填入 program 路径以及对应的 arguments 即可。但有时程序是直接通过命令来启动，例如 `torchrun`，此时也可以通过 `launch.json` 发起 debug 程序
+
+```json
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "torch run debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/usr/local/bin/torchrun",
+            "args": [
+                "--nproc_per_node=1",
+                "--nnodes=1",
+                "--node_rank=0",
+                "--master_addr=127.0.0.1",
+                "--master_port=12345",
+                "your_program.py",
+                "--args1", "1",
+                "--args2", "2"
+            ],
+            "cwd": "${workspaceFolder}/your_program",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "3",
+            },
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "subProcess": true
+        }
+    ]
+
+```
+
+对于 `python -m torch.distributed.run` 这样的方式也可以解决，配置 `module` 字段即可
+
+```json
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "torch run debug",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "torch.distributed.run",
+            ...
+        }
+    ]
+```
+
 ## 其他技巧
 
 ### Remote Development
 
 Remote Development 是一个 VSCode 远程开发全家桶，强烈推荐😀！不仅方便于远程服务器开发，也可以连接到本地 WSL 当中。在 WSL 中开发体验非常好，对于图形化界面也有充分的支持
+
+### 配置与插件
+
+有时候你会在一些封闭网络工作，无法访问到 extension 下载，只能通过内网进行文件传输。当你有一台新的电脑，要把老电脑的 vscode 配置转移到新电脑中时，以下就是终极的解决方案：
+
+1. 所有的插件都在 `~/.vscode`
+2. 所有的自定义配置在 `~/.config/Code/User/settings.json` & `~/.config/Code/User/keybindings.json`
+3. 所有的 remote 配置在 `~/.ssh/config`
+
+把以上所有的东西复制到新电脑中就完事儿了！对于云端的 vscode server 来说也只要把 `~/.vscode-server` 下的东西进行复制即可
 
 ### VSCode with container
 
@@ -406,4 +465,3 @@ https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{"the_publi
                      "--model-path", "resnet.pth"]
         }
 ```
-
