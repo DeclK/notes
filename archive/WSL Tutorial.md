@@ -97,5 +97,10 @@ host_ip=$(cat /etc/resolv.conf |grep "nameserver" |cut -f 2 -d " ")
 export ALL_PROXY="http://$host_ip:7890"
 ```
 
+update 2025/07/19 From DeepSeek
 
-
+```shell
+# work with clash allow LAN on
+export http_proxy="http://$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):7890"
+export https_proxy="http://$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):7890"
+```

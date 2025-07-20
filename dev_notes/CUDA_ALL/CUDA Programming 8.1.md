@@ -807,6 +807,20 @@ Swizzle 具体的计算过程在这里下不整理，在之后用 Swizzle 解决
    正如本文之前所示的 ldmatrix 示意图，一个黑色方框 (8x8 half matrix) 就是一次 phase 读取
 
    <img src="CUDA Programming 8.1/v2-5a2257c2bea9b2f6652cfe579444f3bb_720w.webp" alt="img" style="zoom:67%;" />
+   
+   update 2025/07/19 补充一下 `LDG.128` 与合并访问之间的关系
+   
+   > From Kimi
+   >
+   > **LDG128 是向量化加载指令，天然利于合并访存**。在 CUDA 中，**一个 warp（32线程）如果使用 LDG.128 连续访问内存地址**，则：
+   >
+   > - 每个线程请求 16 Byte；
+   > - 整个 warp 请求 32 × 16 = **512 Byte**；
+   > - 如果地址对齐且连续，这 512 Byte 可以合并为 **4 次 128 Byte 的事务**（512/128 = 4）。
+   >
+   > 这**极大提高了合并度（coalescing degree）**，减少 memory transaction 数量，提升带宽利用率。
+   
+   使用4次 `LDG.32` 仍然可能仅使用在 4 次 128 Byte 的内存事务完成，但是相比 `LDG.128` 会使用更多的指令，这也会消耗更多的时间。所以尽可能使用 `LDG.128` 指令
 
 在 reed zhihu 中有一个分析 bank conflict 的思路
 
@@ -1195,7 +1209,7 @@ xxxyy yyy
       // tCrA_view	(CPY, CPY_M, CPY_K)
       cute::copy(s2r_tiled_copy_a, tAsA(_, _, 0, ismem_read), tCrA_view(_, _, 0));
       cute::copy(s2r_tiled_copy_b, tBsB(_, _, 0, ismem_read), tCrB_view(_, _, 0));
-   
+      
       // complete 1 small k iteration mma
       cute::gemm(tiled_mma, tCrD, tCrA(_, _, 0), tCrB(_, _, 0), tCrD);
       ```

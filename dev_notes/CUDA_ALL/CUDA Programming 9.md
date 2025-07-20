@@ -186,7 +186,51 @@ __global__ void function(){
 1. 每一个 block 处理一个 token，thread 数量根据 dimension 数量决定，最大取 1024 个线程，每一个线程使用向量化存储，会一次性搬运 128-bit 数据
 2. grid 并行化处理全部 token
 
-对比一般的 cuda 编程，由于需要构建 cute tensor，所以我还传入了 shape
+对比一般的 cuda 编程，由于需要构建 cute tensor，所以我还传入了 shape `(B, N, C)`
+
+首先我需要将每一个 block 所需要的数据进行划分，然后对每一个线程的数据进行划分，最后将每个线程的数据使用 `cute::copy` api 进行直接拷贝
+
+1. 对 block 所需数据进行划分 `local_tile`
+
+   `local_tile` 本质就是 `zipped_divide` + coord chosing
+
+   > From cute doc
+   >
+   > This `local_tile` is simply shorthand for
+   >
+   > 1. apply the tiler via [`zipped_divide`](https://docs.nvidia.com/cutlass/media/docs/cpp/cute/02_layout_algebra.html#zipped-tiled-flat-divides)
+   >
+   > ```cpp
+   > // ((BLK_M,BLK_K),(m,k))
+   > Tensor gA_mk = zipped_divide(mA, select<0,2>(cta_tiler));
+   > ```
+   >
+   > 1. apply the coord to the second mode, the “Rest” mode, to extract out the correct tiles for this CTA.
+   >
+   > ```cpp
+   > // (BLK_M,BLK_K,k)
+   > Tensor gA = gA_mk(make_coord(_,_), select<0,2>(cta_coord));
+   > ```
+
+   coord slice 针对的是 rest mode, instead of tile mode
+
+   由于我们的问题太简单了，不需要使用 `local_tile` 直接进行 tensor index 即可
+
+2. 对 thread 所需数据进行划分 `local_partition`。
+
+   `local_partition` 的本质和 `local_tile` 的本质是非常相似的，也是 `zipped_divide` + coord chosing，只是 coord chosing 针对的是 tile mode, instead of rest mode
+   
+   在本问题当中，我也没有使用 local partition 来获得每一个线程所需要的数据，而是直接使用 reshape 的方式（define a new tensor）直接获得了每一个 thread 对应的数据
+
+在本例当中我也没有考虑边界条件
+
+Tips：
+
+- 在进行 local tile 的时候 tile 请选择最简单的 shape tiler，而不要选择复杂的 tiler。这一般就是对 MN 进行划分，简单的 shape tiler layout 其输入和输出的 mapping 是在同一个 domain，即：输入经过 layout function 过后不变
+
+- 如果要使用复杂的 tiler，请在上一步过后单独使用 compose 完成。如果是在使用 local partition，直接使用 `ThreadLayout` 也可以一步到位
+
+- 似乎不需要对所有的数据都分配寄存器，可以一边算一边存，这样也是很高效的，这表明了：load & store & compute 都是异步的
 
 ### softmax
 
@@ -247,8 +291,14 @@ compare with cutlass sota results
    }
    ```
 
-   对于 half 转 float 可以直接用强制类型转换 `(float)`
+   对于 half 转 float 可以直接用强制类型转换 `(float)`，我也可以使用 cuda inline function `__half2float` 完成类型转换
 
 4. sizeof 是测量什么？
 
    以 byte 为单位，返回一个类型所占据的字节数，`sizeof(float)=4`
+
+5. 如何处理尾部未对齐数据？
+
+   尤其是在矩阵乘法当中。在简单的情况下，我已知的解法是：使用边界循环，也可以使用填充。我还没见过矩阵乘法的边界处理循环代码，可能需要从 deepgemm 中寻找答案
+   
+   在 cute doc 当中也提供了一个解决方案，之后可以尝试下 [predication](https://docs.nvidia.com/cutlass/media/docs/cpp/cute/0y_predication.html)
