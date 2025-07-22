@@ -227,10 +227,10 @@ __global__ void function(){
 Tips：
 
 - 在进行 local tile 的时候 tile 请选择最简单的 shape tiler，而不要选择复杂的 tiler。这一般就是对 MN 进行划分，简单的 shape tiler layout 其输入和输出的 mapping 是在同一个 domain，即：输入经过 layout function 过后不变
-
 - 如果要使用复杂的 tiler，请在上一步过后单独使用 compose 完成。如果是在使用 local partition，直接使用 `ThreadLayout` 也可以一步到位
-
 - 似乎不需要对所有的数据都分配寄存器，可以一边算一边存，这样也是很高效的，这表明了：load & store & compute 都是异步的
+- 需要加入 `-use_fast_math` 才能获得最优性能，我检查了所有的可能，包括 convert & load & pragma & cute operations & num input params... 最后通过实现 flashinfer 自身的 kernel 在我自己的环境下对比，发现二者其实速度一样。所以怀疑是编译 flag 导致了速度问题
+- 发现 kernel 不 launch，运行时间为0，尝试各种编译 flag，都没什么用。最后由 claude code + kimi 大师找出来原来是 kernel 内部的代码写错了。但是由于没有 cuda check 所以这个错误没有报出来，这告诉我们在开发过程中一定要加入 check
 
 ### softmax
 
