@@ -162,7 +162,7 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
 ## Practice Problems
 
-### silu_and_matmul
+### silu_and_mul
 
 silu and multiply, ref with flashinfer
 
@@ -240,6 +240,15 @@ softmax, ref with leet cuda
 
 Rmsnorm, ref with flashinfer or pytorch or vllm
 
+并行化逻辑：
+
+1. 每一个 block 处理一个 token。先计算 sum 统计值，然后再 norm & weight scale
+2. grid 并行化处理所有 token
+
+这个逻辑和 silu and mul 其实是一样的。不过相比 silu and mul 有了 reduce 过程，归约的时候涉及到 thread 之间的通信，所以需要 shared memory，更加复杂一点
+
+使用 `__shfl_xor_sync` 先进行 warp 内部的 reduce，可显著加速（未测试过）。由于这个操作的存在，我们在构建 tensor 的时候就会多一个 warp 维度
+
 ## Simple Copy
 
 ## Simple Gemm
@@ -300,5 +309,9 @@ compare with cutlass sota results
 5. 如何处理尾部未对齐数据？
 
    尤其是在矩阵乘法当中。在简单的情况下，我已知的解法是：使用边界循环，也可以使用填充。我还没见过矩阵乘法的边界处理循环代码，可能需要从 deepgemm 中寻找答案
-   
+
    在 cute doc 当中也提供了一个解决方案，之后可以尝试下 [predication](https://docs.nvidia.com/cutlass/media/docs/cpp/cute/0y_predication.html)
+
+6. 为什么在 warp reduce 过程中使用 `shfl_xor_sync` 而不是使用 `shfl_up_sync`
+
+   因为它是最快的，而且不需要考虑线程 id 越界问题
