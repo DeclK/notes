@@ -249,7 +249,36 @@ Rmsnorm, ref with flashinfer or pytorch or vllm
 
 使用 `__shfl_xor_sync` 先进行 warp 内部的 reduce，可显著加速（未测试过）。由于这个操作的存在，我们在构建 tensor 的时候就会多一个 warp 维度
 
+对线程数量的安排也比较讲究：类似于 silu and mul，尽量安排与数据量对应的线程数，知道达到一个 block 线程数量的上限。
+
+Tips
+
+似乎经过了  `__shfl_xor_sync` 过后，每一个线程所得到的 reduction sum 是一样的
+
+相比于 if 条件 `condition ? a : b` 似乎会是更快的选择
+
+sync 通常在两种地方使用：
+
+1. 使用 shared memory 时
+2. 对部分线程进行操作时
+
+如何进行循环 (round and stride)，这很重要。对于非对齐的 thread，循环是否会进行等待呢？
+
+### unaligned cases
+
+Predication
+
+### utils
+
+cuda check
+
+build input & output on host & device
+
+reference code & verify
+
 ## Simple Copy
+
+又出现一篇新的 cute 教程，师承 reed，主要讲了下 copy [写给大家看的 CuTe 教程：tiled copy](https://zhuanlan.zhihu.com/p/1930389542784964333)
 
 ## Simple Gemm
 
