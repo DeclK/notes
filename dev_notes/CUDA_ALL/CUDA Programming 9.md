@@ -55,11 +55,33 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
 ## Manipualte Tensor
 
-操作 tensor 的方法同样有限，都是对 mode/axis 进行操作
+操作 tensor 的方法同样有限，都是对 mode/axis/shape 进行操作，input x 可以是 tensor/layout/shape
 
-1. take mode
-2. flatten mode
-3. group mode
+1. `take<begin, end>(x)`
+
+   说是 take，实际上是 slice，取 begin & end
+
+2. `select<modes...,>(x)`
+
+   真正的 take，不过返回的还是一个 tuple-like object
+
+3. `flatten(x)`
+
+   没有办法选取 modes 进行展开，只能一次性全部展开
+
+4. `group<begin, end>(x)`
+
+   对 modes 进行打包
+
+5. `get<idx>(x)`
+
+   可以认为是弱化版本的 select，同时自动解包
+
+   ```cpp
+   // x.shape() = (256, 128)
+   get<0>(x.shape())		 // 256
+   select<0>(x.shape()) // (256,)
+   ```
 
 以上操作其实都是完成 pytorch 当中的 view & permute & slice 操作。但对于 squeeze 这样的操作似乎没有特别好的方法？
 
@@ -267,6 +289,44 @@ sync 通常在两种地方使用：
 ### unaligned cases
 
 Predication
+
+make identity tensor 会构建出一个比较特殊的 tensor，tensor 中的每一个元素不是一个 value，而是对应的 coordinate [make identity layout doc](https://docs.nvidia.com/cutlass/media/docs/pythonDSL/cute_dsl_api/cute.html#cutlass.cute.make_identity_layout)
+
+```python
+# Create a simple 1D coord tensor
+tensor = make_identity_tensor(6)  # [0,1,2,3,4,5]
+
+# Create a 2D coord tensor
+tensor = make_identity_tensor((3,2))  # [(0,0),(1,0),(2,0),(0,1),(1,1),(2,1)]
+
+# Create hierarchical coord tensor
+tensor = make_identity_tensor(((2,1),3))
+# [((0,0),0),((1,0),0),((0,0),1),((1,0),1),((0,0),2),((1,0),2)]
+```
+
+在 cpp 当中每一个元素其实是一个 nested tuple (a shape)，tuple 有两个成员 `first_ & rest_`，通过递归的方式可以访问其中的元素
+
+这个 tensor 经常用作 predication，从而对边界条件进行判断。predication 
+
+logical divide 会比其他 divide 限制更少一些。我尝试了以下代码只有 logical divide 能够通过
+
+```cpp
+auto x = make_layout(make_shape(128, 128), LayoutRight{});
+auto tiler = make_tiler(_, make_shape(8));
+auto out = logical_divide(x, tiler); // (128, (8, 16)) : (128, (1, 8))
+```
+
+另外 logical divide 还会进行自动的 padding 然后再进行 divide
+
+```cpp
+auto x = make_layout(make_shape(1000, 128), LayoutRight{});
+auto tiler = make_tiler(make_shape(128));
+auto out = logical_divide(x, tiler); // ((128, 8), 128) : ((8, 1024), 1)
+```
+
+利用这个性质加上 predication 就可以很好地处理 unaligned situations [predication doc](https://docs.nvidia.com/cutlass/media/docs/cpp/cute/0y_predication.html)
+
+predication 的本质就是用 bool tensor 来控制线程的运行
 
 ### utils
 
