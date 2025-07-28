@@ -131,7 +131,7 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 1. fill
 2. clear
 
-剩下的略微复杂的操作，例如 local_partition axpby 放到具体的方法当中进行整理
+剩下的略微复杂的操作，例如 local_partition axpby 放到具体的方法当中进行整理。另外 `cute::size` 似乎也会经常使用，有时可以直接用 `get` shape 来替代
 
 ## Partition Tensor
 

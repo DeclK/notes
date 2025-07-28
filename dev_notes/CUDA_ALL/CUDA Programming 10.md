@@ -96,6 +96,114 @@ tma 的基本用法
 
 ## Warp Specialization
 
+参考 [blog1](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) [blog2](https://research.colfax-intl.com/cutlass-tutorial-design-of-a-gemm-kernel/)
+
+第一篇博客要讨论的 topic 还挺广泛的：
+
+1. wgmma
+2. warp specialization & ping pong
+3. persistent kernel & stream-K
+
+> We hope that after going through this series, readers will become experts on the GEMM algorithm, and can utilize some of the beautiful ideas that go into this algorithm to design and implement other kernels in their own work.
+
+希望读完这个系列过后就能成为 GEMM 大师！
+
+### wgmma
+
+A *warpgroup* consists of four contiguous warps, i.e., 128 contiguous threads
+
+This operation typically follows one of these forms, where matrix `C` serves as the accumulator:
+
+- `C = A * B + C`
+- `C = A * B`, where the input from accumulator `C` is disabled.
+
+A notable requirement of WGMMA is that operand `B` must always be stored in shared memory (SMEM). In contrast, operand `A` can be located in either SMEM or register memory (RMEM), and the accumulator `C` is always held in RMEM.
+
+这里提了一个很重要的规则：B 矩阵一定是保存在 shared memory 当中的，而 A 矩阵既可以在 shared memory 也可以在 global memory。累加器 C 必须在 register memory
+
+SM90 MMA atoms are then labeled as `SM90_MxNxK_XYZ_SS` or `SM90_MxNxK_XYZ_RS`
+
+```cpp
+TiledMMA tiled_mma = cute::make_tiled_mma(
+  SM90_64x64x16_F16F16F16_SS<GMMA::Major::MN,GMMA::Major::MN>{});
+```
+
+在 DeepGEMM 当中，所有的 mma 都是使用 `SS` atom，也就是说 Tensor core 都是直接在 shared memory 上去获得数据，而不是 register
+
+- `X` and `Y` are the datatypes of the operands.
+- `Z` is the datatype of the accumulator.
+- `MxNxK` are the tile sizes that the `wgmma` instruction computes with — the “wgmma atom”. Not all values of `MxNxK` are possible. Here is the [list of allowed shapes](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shape): `M` is always 64, `N` is a multiple of 8 from 8 to 256, and for 16-bit operand datatype, `K` is 16 (more generally, `K` is fixed to be 32 bytes).
+
+wgmma 的构建和 mma 的构建是类似的，都有 `AtomLayoutMNK` and `PermutationMNK` 
+
+```cpp
+TiledMMA tiled_mma = make_tiled_mma(
+ SM90_64x64x16_F16F16F16_SS{},
+ Layout<Shape<_2,_1,_1>>{});
+```
+
+
+
+smem layout requirements
+
+1. M N K 必须要能够被 mma tile shape 整除
+
+2. 对 sA 和 sB 的 layout 根据 swizzle function 而定
+
+   > However, as a practical matter, we can always construct layouts guaranteed to be compatible with `wgmma` using certain pre-defined layout atoms provided by CUTLASS, followed by the `cute::tile_to_shape` method.
+
+   tile to shape 的实际用途。似乎必须使用 `GMMA:Layout_XX` 中的 layout 来构建 smem layout
+   
+   These layout atoms must then be passed into `tile_to_shape` with the SMEM shape for `sA` and `sB` given by `make_shape(bM,bK,bP)` or `make_shape(bN,bK,bP)`, with the modes of the shape given **in that order**, such that the tile sizes of the layout atoms divide into those of the larger SMEM shape.
+   
+   ```cpp
+   GMMA::Layout_MN_INTER_Atom<T>
+   GMMA::Layout_MN_SW32_Atom<T>
+   GMMA::Layout_MN_SW64_Atom<T>
+   GMMA::Layout_MN_SW128_Atom<T>
+    
+   GMMA::Layout_K_INTER_Atom<T>
+   GMMA::Layout_K_SW32_Atom<T>
+   GMMA::Layout_K_SW64_Atom<T>
+   GMMA::Layout_K_SW128_Atom<T>
+   ```
+   
+   这也省的我们自己去构建 swizzle 了，应该是件好事吧
+
+
+
+The WGMMA-specific thing to notice here is that `tCsA` isn’t actually a thread-level slice of SMEM, but rather the entire SMEM tensor with a reorganized layout.
+
+Next, printing the “fragments” `tCrA` and `tCrB` for any thread index shows:
+
+```cpp
+tCrA: GMMA::DescriptorIterator o (_1,_2,_4,_3):(_0,_64,_256,_1024)
+tCrB: GMMA::DescriptorIterator o (_1,_2,_4,_3):(_0,_64,_256,_1024)
+```
+
+Internally, CUTLASS constructs a “[matrix descriptor](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#asynchronous-warpgroup-level-matrix-shared-memory-layout-matrix-descriptor)“, which is 64-bit value held in registers that describes the SMEM in a way suitable for use by the `wgmma` instruction. For the programmer, the most important thing to bear in mind is that values of SMEM are **not** copied into RMEM; rather, accessing the values of `tCrA` and `tCrB` instead accesses these 64-bit descriptors. Moreover, these tensors being “iterators” means that only the single 64-bit descriptor used for a given `wgmma` instruction is held in registers at a time (e.g., as opposed to all 24 of them).
+
+上面这一段话也非常重要：最终生成的是一个 descriptor (just like tma did.)，我认为也简化了我们对 layout 的操作，把注意力集中于对数据位置的描述，剩下的交给 cuda 去管理
+
+
+
+synchronization in wgmma
+
+```cpp
+cute::warpgroup_arrive();
+cute::gemm(tiled_mma, tCrA(_,_,_,read_pipe), tCrB(_,_,_,read_pipe), tCrC);
+cute::warpgroup_commit_batch();
+cute::warpgroup_wait<0>();
+```
+
+
+
+ (To verify this, note that `fence.proxy.async` is wrapped by `cutlass::arch::fence_view_async_shared()`).
+
+这个命令在 DeeGEMM 当中有看到
+
+**Just like [TMA operations](https://research.colfax-intl.com/tutorial-hopper-tma/), `wgmma.mma_async` is performed in the [async proxy](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy).** 
+
 ## Cluster Programming
 
 sync in clusers
@@ -126,7 +234,22 @@ fence 更为抽象：通常有其“配合的命令”，保证了在“配合�
 
 二者都是用于线程同步的工具，保证线程任务都处于满足要求的状态，从而保证程序的正确性
 
-我必须要把 tma 当作一个独立的硬件单元来看待，这样才能够说通所有的 fence 操作：为什么在 sync 过后还要使用一个 tma store fence？不都已经同步过了吗？数据明明都已经写入到了 smem 当中了！原因是 tma 是独立于 smem 的硬件单元，smem 完成了写入，但是 tma 并不知道 smem 完成了写入，我们需要 fence 来告知 tma：所有的线程都已经完成了 smem 写入，请你搬运这些写入的数据（这个过程也是让数据对 tma visible 的过程）。如果不告诉 tma 这些 smem 写入完成的话，tma 会搬运一些“幽灵数据”（上一次对 tma 可见的数据）。所以说个人认为这里的 fence 更像是一种“搬运/提交”，将 smem 的数据“搬运/提交”到 tma 上，再由 tma 进行搬运回 gmem。该效果从外部来看：确保了 smem 写入一定发生在 tma store 之前，同时并没有阻塞线程的执行
+为什么在 sync 过后还要使用一个 tma store fence？不都已经同步过了吗？数据明明都已经写入到了 smem 当中了！所有的解释都是：smem 完成了写入，但是 tma 并不知道 smem 完成了写入，我们需要 fence 来告知 tma：所有的线程都已经完成了 smem 写入，请你搬运这些写入的数据（这个过程也是让数据对 tma visible 的过程）。
+
+以上的描述过于形象化，而不够严谨。我拷打了 Grok 很久，它也只是在这几个名词之间绕来绕去。我的逻辑很简单：
+
+1. Generic proxy 对 smem 进行了写入，并且使用 syncthreads 保证了写入的完成
+2. 不添加 fence 使得 async proxy 无法看见这些写入操作（invisible），其看见的是 outdated 数据
+3. async proxy 看见的 smem 和 generic 看见的 smem 不一样
+4. smem 在同一时刻只能有一种状态
+
+以上就推出了矛盾点。所以我认为用 visible 来描述这个过程是不利于我们对 GPU 模型的理解的。但是在拷打 Grok 的过程中，其不断地提出另一个概念 **relaxed memory consistency model**。对这个概念进行解释：
+
+> From Kimi
+>
+> 在 GPU 内存中，**relaxed consistency model（放松一致性模型）** 是一种比顺序一致性（Sequential Consistency, SC）或 Total Store Order（TSO）更弱的内存一致性模型，其默认允许内存操作（如加载和存储）被重排序，除非程序员通过显式的同步机制（如 `FENCE` 或 `__threadfence()` 等）指定顺序 [ref link](https://www.sigarch.org/gpu-memory-consistency-specifications-testing-and-opportunities-for-performance-tooling/#:~:text=g.%2C%20device,block%28%29%7C)
+
+如此一来就能解释通了：tma store 和 smem write 由两个不同的 proxy 执行，他们二者的在执行时并不保证严格的顺序，可能 tma store 在 smem write 的过程中就开始了，所以其看到的内容就是 outdated，所以必须要使用 fence 来保证，tma store 的发起在 smem 写入之后，而 tma store 怎么看不到 generic proxy 对 smem 的操作，所以首先必须要让 generic proxy 的这些操作对 async proxy 操作可见。在操作可见之后，方可完成判断：这些操作是否完成，从而控制 tma store 的顺序一定在 smem 之后
 
 barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的 barrier
 
@@ -143,3 +266,9 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
 2. what is a qualifier
 
    在 PTX 当中 `xxx.yyy.zz` 中的 `xxx & yyy & zz` 就是 qualifier 
+
+3. 为什么说 Hopper 架构是第一代真正的异步 GPU？
+
+   [zhihu](https://www.zhihu.com/question/11261005710/answer/1925679279854851325) 这位佬的知乎也有很多干货
+   
+4. 什么是 async proxy？我在 wgmma 和 tma 当中都看见了这个概念
