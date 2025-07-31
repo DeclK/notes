@@ -94,7 +94,7 @@ tma 的基本用法
 
 6. tma 在 cluster 中可以广播 smem 数据以达到数据快速 loading (locality)
 
-## Warp Specialization
+## wgmma
 
 参考 [blog1](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) [blog2](https://research.colfax-intl.com/cutlass-tutorial-design-of-a-gemm-kernel/)
 
@@ -107,8 +107,6 @@ tma 的基本用法
 > We hope that after going through this series, readers will become experts on the GEMM algorithm, and can utilize some of the beautiful ideas that go into this algorithm to design and implement other kernels in their own work.
 
 希望读完这个系列过后就能成为 GEMM 大师！
-
-### wgmma
 
 A *warpgroup* consists of four contiguous warps, i.e., 128 contiguous threads
 
@@ -144,7 +142,7 @@ TiledMMA tiled_mma = make_tiled_mma(
 
 
 
-smem layout requirements
+**smem layout requirements**
 
 1. M N K 必须要能够被 mma tile shape 整除
 
@@ -187,7 +185,7 @@ Internally, CUTLASS constructs a “[matrix descriptor](https://docs.nvidia.com/
 
 
 
-synchronization in wgmma
+**synchronization in wgmma**
 
 ```cpp
 cute::warpgroup_arrive();
@@ -196,13 +194,123 @@ cute::warpgroup_commit_batch();
 cute::warpgroup_wait<0>();
 ```
 
+- `warpgroup_arrive` 其实也是一个 fence，其作用是保证 warpgroup 的执行一定在 memory 操作完成之后执行。
 
+  > From Kimi
+  >
+  > **`warpgroup_arrive()` 是一道“护栏”，它告诉 GPU：本 warpgroup 所有线程对寄存器/共享内存的写操作已经完成，接下来可以安全地让 `wgmma.mma_async` 去读这些地址。**
+  >
+  > `wgmma.mma_async` 是异步的，硬件可能把它的**读操作提前**。
+  > 如果你在它之前还有往共享内存或寄存器写 A/B 矩阵数据的指令，而**不写 fence**，就可能读到**旧值** → 结果错误。
 
- (To verify this, note that `fence.proxy.async` is wrapped by `cutlass::arch::fence_view_async_shared()`).
+  上面的解释也指向了 relaxed consistency model。之前所见到的是 `fence.proxy.async`，其涉及到 generic proxy 和 async proxy 之间的同步；而在 wgmma 当中的是 `wgmma.fence.sync.aligned`，这实际上是在 async proxy 内部的同步，不涉及到 generic proxy。这也说明了 relaxed consistency model 不仅存在在不同的 proxy 之间，也存在在 asycn proxy 内部。
 
-这个命令在 DeeGEMM 当中有看到
+- `warpgroup_commit_batch`
+
+  这里的作用类似于 `cp_async_fence`，其实是一个 commit 命令，将当前的所有的 wgmma 命令打包提交，然后在之后使用 wait 命令等待具体的命令
+
+- `warpgroup_wait`
+
+  允许最新提交的任务中，有最多 N 个 wgmma 任务未完成。N = 0 说明等待所有的 wgmma 任务完成
 
 **Just like [TMA operations](https://research.colfax-intl.com/tutorial-hopper-tma/), `wgmma.mma_async` is performed in the [async proxy](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy).** 
+
+In situations where the warpgroup has the opportunity to perform independent computation, flexibility with the parameter `N` comes in handy. For example, this comes into play with the GEMM-softmax overlapping strategy employed in the design of [FlashAttention-3](https://research.colfax-intl.com/flashattention-3-fast-and-accurate-attention-with-asynchrony-and-low-precision/).
+
+**wgmma core matrices**
+
+看上去对我们构建 kernel 没什么大用，感觉是对 wgmma 的一些底层原理介绍：为什么对 smem layout 有这样的要求。我不想深入探索这里的底层原理。
+
+> From Kimi
+>
+> **Core matrix 就是 WGMMA 在 Shared Memory 里能“一次性吃进嘴里的最小数据块”；记住它的大小、排布方式和 swizzling 规则，就能把 SMEM 布局写对。**
+>
+> 你只需在 CUTLASS 里选 `Layout_MN_SW128_Atom<>` 这类原子布局，再 `tile_to_shape`，就能保证 LBO/SBO/swizzle 都合法，不必手算。
+
+## Warp Specialization
+
+在介绍 warp specialization 之前先简单介绍了一些背景
+
+1. 现在的 tensor core 计算能力远强于数据的运输能力，所以一切的优化都围绕着如何打满 tensor core 的算力。这个过程叫做 "feading the beast"
+
+2. 总体上有两种优化技巧
+
+   1. 有效的 threadblock scheduling，以提升 L2 cache hits
+
+      we refer curious readers to the techniques of [threadblock rasterization](https://github.com/NVIDIA/cutlass/blob/main/media/docs/efficient_gemm.md#threadblock-rasterization) and persistent kernels, for instance as implemented in CUTLASS.
+
+   2. overlap copying with math computation，pipeline
+
+讨论两种流水线：multi-stage 和 warp-specializatioin
+
+With warp-specialization, some warps are dedicated to memory fetches (*producers*), while others are dedicated to compute (*consumers*), and named barriers are used for synchronization between them. The idea is that the warp schedulers can then more easily hide the latency of copy operations within compute
+
+The fastest Ampere GEMM kernels, as well as the famous FlashAttention-2, use the multistage kernel design.
+
+It is not trivial to implement pipelines correctly and efficiently. Programmers must handle the multiple buffers as well as asynchronous load calls across multiple threads. In the next section, we show how to implement pipelining via a CUTLASS abstraction: the `Pipeline` class.
+
+可以使用 cutlass 中定义的 pipeline class 快速完成流水线搭建，因为流水线搭建真的不是一件简单的事情
+
+buffer: shared memory with N stages
+
+**Barriers.** To synchronize the buffer stages across the producer and the consumer, a Pipeline adheres to the standard *acquire and release model* that uses locks to manage accesses to the buffers. To this end, let `full_barrier` and `empty_barrier` be two arrays of *barrier objects*, both of size `N`. These barrier objects possess a *phase bit* value which is initialized to 0 and flips between 0 and 1.
+
+定义了 barriers 来进行管理这些 buffers，什么时候 lock 什么时候 release
+
+Concretely, these barrier objects will be [mbarrier](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#parallel-synchronization-and-communication-instructions-mbarrier) objects resident in SMEM. An mbarrier object is initialized both with the aforementioned phase bit as well as an *arrival count*. It then supports arrive-on and wait operations and flips its phase based on reaching the arrival count threshold. Importantly, the values of these barrier objects can and should be visible to all threads.
+
+有了这些概念过后再去看 tma 的一些代码就会跟清楚
+
+首先定义了 pipeline state，其有两个核心成员 index & phase。pipeline state 会重载算符 `++`，此时 index 会不断递增，直至增加到 stage number N，而 phase 则在 stage number 增加到 0 时，相位翻转
+
+```cpp
+    void operator++(int) {
+      count += 1;
+      if ((++stage_idx) == kStage) {
+        phase ^= 1;
+        stage_idx = 0;
+      }
+    }
+```
+
+那么这个 pipeline state 是如何同步 producer & consumer 的呢？
+
+**Synchronization**. We now explain how the barrier objects and thread-local pipeline states are used to synchronize producers and consumers. To avoid confusion, let us distinguish the producer *action* from the producer thread(s) issuing that action, as these may potentially be decoupled (think of TMA). First, the producer action will flip the phase of `full_barrier[i]` to signal that it has filled the `i`th stage of the buffer, so that the consumer threads can now read from it. Similarly, the consumer threads will flip the phase of `empty_barrier[i]` to signal that they have finished consuming the `i`th stage of the buffer, so that the producer can now write to it.
+
+这意味着我们有 N 个 `full_barrier & empty barrier`，每一个 barrier 都有一个自己的 pipeline state？arrival count 又在其中扮演什么角色？arrival count 和 stage 是相关的概念吗？
+
+Finally, each thread, whether consumer or producer, keeps track of a phase to match against the phases of the barrier objects, and in fact threads taking on both consumer and producer roles will need to track *both* phases. These “internal” phases of the threads need to be flipped as well as the kernel proceeds through iterations of its mainloop.
+
+整个过程描述下来还是比较抽象的，这是因为描述中缺少了对 mbarrier 和 pipeline state 之间的联系与区分：
+
+1. Mbarrier，管理两个成员：arrival count & phase
+2. PipelineState，管理两个成员：index & phase
+
+可以看到二者都拥有各自的 phase，但是二者的 phase 是联系起来看待。
+
+通过阅读 PTX doc 知道了各个命令的本质
+
+1. mbarrier 实际上有4个成员：phase, arrive count, pending count, tx-count
+
+   mbarrier 的[初始化](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-init)只传入一个 `count`，此时
+
+   - Initializing the current phase to 0.
+   - Initializing the expected arrival count to `count`.
+   - Initializing the pending arrival count to `count`.
+   - Initializing the *tx-count* to 0.
+
+2. [arrive](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-arrive-on) 会 decreament pending count
+
+3. [expect_tx](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-expect-tx-operation)(bytes) 会增加 tx-count  += bytes
+
+4. tma copy 会自动调用 [complete_tx](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-complete-tx-operation)，会减少 tx-count -= bytes
+
+5. 当 pending count = 0 以及 tx-count = 0 时，触发 [phase complete](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-phase-completion) 条件，此时：
+
+   1. phase flip: phase ^= 1
+   2. pending count 还原会 `count`
+
+根据以上机制，就可以顺利推理整个流水线的同步过程。另外根据 [zhihu](https://zhuanlan.zhihu.com/p/1905383022901059783) 的说法：mbarrier.wait 只检查current phase 的完成，即 phase = 1, barrier.wait(phase)，若 barrier 内置 phase 为 0，则此 wait 不会等待。这也是为什么一开始要把 producer pipeline_state 的 phase 初始化为 1。因为初始化时不必等待 consumer 完成计算，直接发起 tma load
 
 ## Cluster Programming
 
@@ -251,6 +359,10 @@ fence 更为抽象：通常有其“配合的命令”，保证了在“配合�
 
 如此一来就能解释通了：tma store 和 smem write 由两个不同的 proxy 执行，他们二者的在执行时并不保证严格的顺序，可能 tma store 在 smem write 的过程中就开始了，所以其看到的内容就是 outdated，所以必须要使用 fence 来保证，tma store 的发起在 smem 写入之后，而 tma store 怎么看不到 generic proxy 对 smem 的操作，所以首先必须要让 generic proxy 的这些操作对 async proxy 操作可见。在操作可见之后，方可完成判断：这些操作是否完成，从而控制 tma store 的顺序一定在 smem 之后
 
+**fence 最核心的目的其实是用于保证操作按照期望的顺序执行**，而这也是由 relaxed consistency model 所产生的直接影响。
+
+有一个很形象但也许不准确的说法：barrier 是等线程；而 fence 是等数据
+
 barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的 barrier
 
 对于 gmem -> smem 使用 mbarrier 来进行同步，smem -> gmem 使用 fence 来进行同步
@@ -270,5 +382,7 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
 3. 为什么说 Hopper 架构是第一代真正的异步 GPU？
 
    [zhihu](https://www.zhihu.com/question/11261005710/answer/1925679279854851325) 这位佬的知乎也有很多干货
-   
+
 4. 什么是 async proxy？我在 wgmma 和 tma 当中都看见了这个概念
+
+5.  `cutlass::arch::fence_view_async_shared()` 这个命令在 DeeGEMM 当中有看到，功能未知
