@@ -367,6 +367,10 @@ EAGLE-3 就发现：如果不对这个 hidden states 进行监督，第一个猜
 2. DeepSeek-V3 所使用的 input tokens 为真实数据，而 EAGLE-3 在进行第二个 training step 的时候已经开始使用 draft model 所产生的 token。或许这里像 DeepSeek-V3 一样使用 ground truth input tokens 会更好
 3. DeepSeek-V3 讨论的是多个 module 来预测多个 next token，而 EAGLE-3 仍然是使用一个 draft model 来生成多个 next token
 
+update 2025/07
+
+对于 mtp & eagle decode 之间的联系与区别：Mtp 通过 mtp module 让 main module 对未来多个 token 进行理解，此对训练的稳定非常重要。Eagle3 通过自回归让自己对未来多个 token 进行理解与预测，同时解决了 feature estimation 问题。mtp 当然也可以采取同样的做法，但是主模型进行自回归的代价太大了，使用 mtp 小模型来进行辅助是更合理的选择
+
 ## Question
 
 - 如何进行 batched speculative sampling？

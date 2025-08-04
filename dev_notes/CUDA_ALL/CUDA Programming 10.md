@@ -312,6 +312,12 @@ Finally, each thread, whether consumer or producer, keeps track of a phase to ma
 
 根据以上机制，就可以顺利推理整个流水线的同步过程。另外根据 [zhihu](https://zhuanlan.zhihu.com/p/1905383022901059783) 的说法：mbarrier.wait 只检查current phase 的完成，即 phase = 1, barrier.wait(phase)，若 barrier 内置 phase 为 0，则此 wait 不会等待。这也是为什么一开始要把 producer pipeline_state 的 phase 初始化为 1。因为初始化时不必等待 consumer 完成计算，直接发起 tma load
 
+
+
+由于 cutlass doc 当中的代码并没有被 DeepGemm 中采用，而且我所学习的 cute ws 代码也是参考 DeepGemm 来构建的，之后的学习全面针对 awesome cute 当中的代码学习
+
+
+
 ## Cluster Programming
 
 sync in clusers
@@ -386,3 +392,5 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
 4. 什么是 async proxy？我在 wgmma 和 tma 当中都看见了这个概念
 
 5.  `cutlass::arch::fence_view_async_shared()` 这个命令在 DeeGEMM 当中有看到，功能未知
+
+6. 如何利用 mbarrier 构建 sm80 pipeline？
