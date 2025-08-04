@@ -317,6 +317,37 @@ Finally, each thread, whether consumer or producer, keeps track of a phase to ma
 由于 cutlass doc 当中的代码并没有被 DeepGemm 中采用，而且我所学习的 cute ws 代码也是参考 DeepGemm 来构建的，之后的学习全面针对 awesome cute 当中的代码学习
 
 
+为什么设置了两个不一样的 arrival count？
+
+```cpp
+static constexpr int ConsumerArvCnt = size(TiledMma{}) * size(ClusterShape{}) / WarpSize;
+static constexpr int ProducerArvCnt = 1;
+
+for (int i = 0; i < Stage; i++) {
+    shared_storage.pipelines.mainloop_full_bar[i].init(ProducerArvCnt);
+    shared_storage.pipelines.mainloop_empty_bar[i].init(ConsumerArvCnt);
+}
+```
+
+这是因为对于 full barrier，由于 tma 操作只需要一个线程进行发起即可。而对于 empty barrer 来说由于 simt 的原因，可能每一个线程都会发起一个 arrival signal。所以在具体的代码里有一个 predicate，让每一个 warp group 只由一个（或多个）thread 发起 arrival
+
+```cpp
+uint32_t lane_idx = threadIdx.x & 31;
+uint32_t target_cta = lane_idx;
+uint32_t pred_arrive = lane_idx < size(ClusterShape{}); // lane_id thread notify cluster_id cta barrier
+// notify producer
+shared_storage.pipelines.mainloop_empty_bar[pipeline_states.stage_idx].arrive(target_cta, pred_arrive);
+```
+
+可以看到，当 cluser size = 1 的时候，其实只有每一个 warp group 的 0 号线程发起了 arrival signal。那么就正好符合 `ConsumerArvCnt` 的需求
+
+提出疑问：为什么不把 consumer arrival count 也设置为一，让 thread id = 0 的线程去发起就好
+
+> From Grok
+>
+> 如果将 ConsumerArvCnt 设为 1，只让 threadIdx.x == 0 的线程执行 arrive，就会出现以下问题：
+>
+> **无法保证所有线程完成**：threadIdx.x == 0 的线程可能在自己的计算完成后立即调用 arrive，但其他线程（例如其他 warp）可能尚未完成 MMA 操作。这样，empty barrier 的 phase 会过早翻转，producer 可能开始加载新数据，覆盖 SMEM 中仍在被其他 warp 使用的内容，导致数据竞争和错误结果。
 
 ## Cluster Programming
 
