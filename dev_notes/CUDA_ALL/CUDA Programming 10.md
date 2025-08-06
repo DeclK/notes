@@ -349,6 +349,64 @@ shared_storage.pipelines.mainloop_empty_bar[pipeline_states.stage_idx].arrive(ta
 >
 > **无法保证所有线程完成**：threadIdx.x == 0 的线程可能在自己的计算完成后立即调用 arrive，但其他线程（例如其他 warp）可能尚未完成 MMA 操作。这样，empty barrier 的 phase 会过早翻转，producer 可能开始加载新数据，覆盖 SMEM 中仍在被其他 warp 使用的内容，导致数据竞争和错误结果。
 
+## KEY Functions
+
+有几个关键的组成部分
+
+1. producer
+
+2. consumer
+
+   1. coorperative
+   2. pingpong
+
+3. issue_mma
+
+   完成一次 big K iteration，i.e. 完成一个 output tile 的累加计算 (maybe?
+
+4. mma tail
+
+5. issue epilogue
+
+似乎整个 GEMM 就是这些关键功能的合作，我应该要把他们的基本功能和原理都弄清楚，再考虑与 deepgemm 的对比
+
+在进行 gemm 学习时一个简单的假设会使得流水线的图示变简单：gemm 是 compute bound。该假设就会使得取数据的时间小于计算时间，在这样的假设下才能够在流水线中将算力打满，同时在这样的条件下我们才能够看到： epilogue & prologue 的时延被计算所掩藏
+
+简易的证明 issue mma 是最高效的：
+
+1. smem_1 抵达，mma_0 还没有计算完成
+
+   此时为 compute bound，我们需要等待 mma_0 计算完成，才能开始 mma_1 的计算，此时 tensor core 没有空闲，算力打满
+
+2. Smem_1 抵达，mma_0 的计算已经完成（一段时间了）
+
+   此时为 memory bound，我们必须等待 smem_1 的抵达才能够开启 mma_1 的计算。需要注意的是，我们在 mma_0 计算完成的瞬间，就已经通知 empty barrier 到达信息，让 smem_0 处于可写状态。此时 memory 没有空闲，算力受限，但无法进一步提升
+
+应该不需要使用 prologue mma (one mma in-flight) 的操作？像 DeepGemm 一样直接等 mma 计算完就完事儿了！这一点我需要自己实验一下才知道差距多大。唯一我能够想到的差距在于：第一次 mma 需要使用
+
+```cpp
+    // fisrt mma with no accumulation to avoid init zeros
+    tiled_mma.accumulate_ = GMMA::ScaleOut::Zero;
+```
+
+来告诉 mma：直接用 `C = AB`，而不要使用 `C = AB + C`。这样能节省一次对 accumulator 的清零。但这和 in-flight 与否无关
+
+在 [efficient gemm](https://github.com/NVIDIA/cutlass/blob/main/media/docs/cpp/efficient_gemm.md) 文档中简要描述了 coorperative & ping pong kernel 设计：
+
+1. Cooperative
+
+   两个 warp group 完成一个 tile 的 mma，但是他们会在 M 维度进行对半分，各自完成一半 tile mma
+
+2. Ping-Pong
+
+   两个 warp group 完成两个 tile 的 mma，他们会通过配合掩藏 prologue & epilogue
+
+在 [为什么Hopper架构上warp-specialization比multi-stage要好？-zhihu](https://www.zhihu.com/question/11261005710) 中有简易的图示 
+
+## Sync function
+
+在代码当中会遇到很多用于同步的语句，需要逐一理清他们的作用，然后和 function 功能配合起来，彻底让 pipeline 编程白盒
+
 ## Cluster Programming
 
 sync in clusers
@@ -418,10 +476,44 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
 
 3. 为什么说 Hopper 架构是第一代真正的异步 GPU？
 
-   [zhihu](https://www.zhihu.com/question/11261005710/answer/1925679279854851325) 这位佬的知乎也有很多干货
+   [为什么Hopper架构上warp-specialization比multi-stage要好-zhihu](https://www.zhihu.com/question/11261005710/answer/1925679279854851325) 这位佬的知乎也有很多干货
 
 4. 什么是 async proxy？我在 wgmma 和 tma 当中都看见了这个概念
 
-5.  `cutlass::arch::fence_view_async_shared()` 这个命令在 DeeGEMM 当中有看到，功能未知
+5. `cutlass::arch::fence_view_async_shared()` 这个命令在 DeeGEMM 当中有看到，功能未知
 
 6. 如何利用 mbarrier 构建 sm80 pipeline？
+
+7. 为什么 warp specialization 比 multi-stage 要好？
+
+   [为什么Hopper架构上warp-specialization比multi-stage要好？-zhihu](https://www.zhihu.com/question/11261005710) 之前看到的回答：persistant warp specialization 会隐藏 prologue & epilogue 的时间。但是问题来了：什么是 persistant？
+
+   在 [Nvidia Cute 实战-WarpSpecialization Gemm for Hopper[zhihu](https://zhuanlan.zhihu.com/p/1905383022901059783) 中有提到 persistant 的含义：
+
+   > **Persistent Scheduler and CTA Swizzle**
+   >
+   > Persistent Scheduler 不同于传统的 data parallel：grid 固定launch CTA 数目=SM数目**（cluster size=2条件下最优的配置）**，保证每个 CTA 运行多个 Gemm Tile 从而可以从第二个 Tile 开始隐藏 prologue 的开销。
+
+   之前总是把 persistant 和 warp specialization 一起出现，但是二者并没有本质上的联系。而 persistant 和 scheduler 联系起来才会显得逻辑更自然
+
+   在 Ampere 架构当中，grid dimension 的划分就是根据 cta tile 来简单划分
+
+   ```cpp
+   dim3 gridDim = {ceil(M/BM), ceil(N/BN)}
+   ```
+
+   每一个 cta 只会处理自己的 tile。处理完过后上下文就会进行切换，交由其他的 cta 继续完成下一个 tile
+
+   而对于 persistant scheduler，我们固定下来了 cta 的数量，每一个 cta 会处理多个 tile，这样就省略掉了上下文切换的时间，并且在处理连续的两个 tile 时，可以隐藏 tile 间的 prologue 时间
+
+8. 对比 fp16 & fp8 的 gemm 实现当中，我发现 fp8 gemm 没有 mma prologue，也就是先启动一个 mma，然后用 mma tail 进行收尾。另外 fp8 deepgemm 使用了多个 accumulator，为什么要多个累加器？这不会造成寄存器紧张吗？
+
+9. 如何构建流水线的性能模型，其中常见的方式是用流水线图来简单对比
+
+10. issue epilogue 和 issue_mma 之间是否是 async？只有是 async 形式，才能够隐藏掉 tile 之间的 prologue 时间。同时必须要使用 ping-pong consumer 才能隐藏掉 epilogue 的时间
+
+11. tma 会自动判断数据 out of bound 吗？具体的表现和使用形式是怎么样的？
+
+12. 什么是 wave？
+
+13. 如果不使用 one mma in-flight 会降低多少表现？
