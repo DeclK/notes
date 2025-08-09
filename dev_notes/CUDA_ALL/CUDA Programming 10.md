@@ -492,9 +492,21 @@ warp specialization 的代码其实很简单，就是一个 if-else 分支
 
 3. pipeline state
 
-4. TODO: All kinds of tempalte meta programming
+4. All kinds of tempalte meta programming
 
-   感觉这里才是最麻烦的地方，~120 行
+   感觉这里才是最麻烦的地方，~120 行，希望我能够整理出一个清晰的逻辑以及结构，这样才能在之后的编写中有一个思路可循
+   
+   0. 模板元编程参数：cta shape, stage number, cluster shape，想要生成特化代码的参数。这些特化代码在真正编译的时候都会被编译，再从 host 端进 if-else 进行选择
+   
+   1. ABCType and layout，这应该是 args 所提供的最基础的信息
+   
+   2. mma atom
+   
+   3. **copy atom**
+   
+      这才是模版中占比最多的 atom，不仅需要定义各个存储之间的 copy atom (gmem <-> smem <-> rmem)，还要定义各个输入矩阵都单独定义一个 copy atom (Tensor A B C)。定义 copy atom 也不可避免地需要对 memory layout 进行定义，所以整个的代码行数就是大几十行。接下来就是一一进行分析
+   
+   其实不用把一大堆的 static constexpr int 写在 struct 的最前面，我觉得在使用的时候再进行一些计算，可能会更好读一些，不然这些定义距离使用的地方太远了，写的时候不方便。我看 reed 中的 gemm-multistage 就是这么干的，这些 constexpr int 应该会被处理为编译期常量，而不会占用寄存器资源（Maybe
 
 ### Compute Logic
 
@@ -778,3 +790,57 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
     ```
 
     否则编译就会报错，这是因为 Non-`static` data members cannot be declared as `constexpr`. [StackOverflow](https://stackoverflow.com/questions/50332569/why-i-am-getting-this-error-constexpr-is-not-valid-here)
+
+16. 选择哪些参数作为模板元编程的参数？
+
+    模板元编程是在对代码编程，而不是编程本身。利用元编程可以控制在编译时代码的具体实现。有点类似于：不使用 if-else 来实现多种代码的手段。更准确的来说，模板元编程的核心目的在于
+
+    > From DeepSeek
+    >
+    > **模板元编程是通过编译器对模板的递归实例化和特化机制，在编译期生成类型专属代码或完成计算的技术，本质是将运行时的逻辑判断转移到编译期，实现零开销抽象**
+
+    这对于 if-else 不友好的 CUDA 编程来说是非常有用的。但其实 if-else 不会消失，而是从 kernel 端移动到了 host 端，原因在于：如果你想要运行这样的特化代码，就必须要进行编译，而你想要能够运行所有的特化代码，那就要对所有的特化代码进行编译。所以有两种选择：
+
+    1. 通常使用 host 端的 if-else 来进行特化代码选择
+
+       ```cpp
+       // From sglang-kernel
+       template <typename OutType>
+       void sm90_fp8_dispatch_shape(
+           torch::Tensor& out,
+           const torch::Tensor& a,
+           const torch::Tensor& b,
+           const torch::Tensor& scales_a,
+           const torch::Tensor& scales_b,
+           const c10::optional<torch::Tensor>& bias) {
+         uint32_t const m = a.size(0);
+         using FastPingpongScheduler = cutlass::gemm::KernelTmaWarpSpecializedPingpongFP8FastAccum;
+         using FastBasicScheduler = cutlass::gemm::KernelTmaWarpSpecializedFP8FastAccum;
+         using PersistentTileScheduler = cutlass::gemm::PersistentScheduler;
+         using BasicTileScheduler = void;
+         if (m <= 1) {
+           return sm90_fp8_dispatch_bias<
+               OutType,
+               Shape<_64, _64, _128>,
+               Shape<_1, _8, _1>,
+               FastBasicScheduler,
+               BasicTileScheduler>(out, a, b, scales_a, scales_b, bias);
+         }
+         if (m <= 64) {
+           // m in [1, 64]
+           return sm90_fp8_dispatch_bias<
+               OutType,
+               Shape<_64, _64, _128>,
+               Shape<_1, _4, _1>,
+               FastPingpongScheduler,
+               PersistentTileScheduler>(out, a, b, scales_a, scales_b, bias);
+         } else if (m <= 256) {
+           // m in (64, 256]
+           ...
+         } 
+         ...
+       ```
+
+    2. 使用 jit (just in time) 的方式进行即时编译，从而获得动态的编译代码
+
+    
