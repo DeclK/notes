@@ -488,7 +488,7 @@ warp specialization 的代码其实很简单，就是一个 if-else 分支
      };
    ```
 
-   我尝试了一下去掉这个 aignas 仍然能够成功运行，可能不需要过都注意这个细节
+   我尝试了一下去掉这个 aignas 仍然能够成功运行，可能不需要太注意这个细节
 
 3. pipeline state
 
@@ -505,6 +505,10 @@ warp specialization 的代码其实很简单，就是一个 if-else 分支
    3. **copy atom**
    
       这才是模版中占比最多的 atom，不仅需要定义各个存储之间的 copy atom (gmem <-> smem <-> rmem)，还要定义各个输入矩阵都单独定义一个 copy atom (Tensor A B C)。定义 copy atom 也不可避免地需要对 memory layout 进行定义，所以整个的代码行数就是大几十行。接下来就是一一进行分析
+   
+      
+   
+   4. 同时为了 kernel 的合法性，会进行一些 `static_assert` 检查：例如 cluster shape & cta tile 的合法性
    
    其实不用把一大堆的 static constexpr int 写在 struct 的最前面，我觉得在使用的时候再进行一些计算，可能会更好读一些，不然这些定义距离使用的地方太远了，写的时候不方便。我看 reed 中的 gemm-multistage 就是这么干的，这些 constexpr int 应该会被处理为编译期常量，而不会占用寄存器资源（Maybe
 

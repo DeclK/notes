@@ -312,15 +312,25 @@ logical divide 会比其他 divide 限制更少一些。我尝试了以下代码
 
 ```cpp
 auto x = make_layout(make_shape(128, 128), LayoutRight{});
-auto tiler = make_tiler(_, make_shape(8));
+auto tiler = make_tile(_, make_shape(8));
 auto out = logical_divide(x, tiler); // (128, (8, 16)) : (128, (1, 8))
 ```
+
+对于 `zipped_divide` 之类的操作仍然没有足够详细的文档，以下的代码是可行的
+
+```cpp
+auto x = make_layout(make_shape(make_shape(128, 1)), make_stride(make_stride(256, 0), 1));
+auto tiler = make_tile(_, make_shape(8));
+auto out = zipped_divide(x, tiler);//((128, 8), (1, 32))
+```
+
+不过代码虽然是可行的，但不是我预期中的结果。这里的下划线 `_` 最终取了 mode0 的第一个，而不是全部，这是为在看 `thrfrg_x` 发现的用法
 
 另外 logical divide 还会进行自动的 padding 然后再进行 divide
 
 ```cpp
 auto x = make_layout(make_shape(1000, 128), LayoutRight{});
-auto tiler = make_tiler(make_shape(128));
+auto tiler = make_tile(make_shape(128));
 auto out = logical_divide(x, tiler); // ((128, 8), 128) : ((8, 1024), 1)
 ```
 
