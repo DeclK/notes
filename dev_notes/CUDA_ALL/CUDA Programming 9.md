@@ -83,6 +83,18 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
    select<0>(x.shape()) // (256,)
    ```
 
+6. `rank<idx>(x)`
+
+   获得 rank (i.e. dimensionality)
+
+7. `repeat<R>(x)`
+
+   用得最多的就是 `repeat<R>(_)`，通常用于展开 modes，其作用是将元素 x 重复 R 次，R 指代的是 rank。另外一个常用的是 `repeat_like(t, x)`，这在 [repeat_like doc](https://docs.nvidia.com/cutlass/media/docs/pythonDSL/cute_dsl_api/cute.html#cutlass.cute.repeat_like) 中有写其功能：构建一个 t-like tuple，其中的元素值为 x
+
+8. `append<R>(x, y) ` & `prepend(x, y)` 
+
+   [append doc](https://docs.nvidia.com/cutlass/media/docs/pythonDSL/cute_dsl_api/cute.html#cutlass.cute.append) 实际类似于 python list 的 extend 方法，而不是 append。其中参数 R 是 up to rank 的意思，会将 tuple 用 x padding 到 R rank 大小
+
 以上操作其实都是完成 pytorch 当中的 view & permute & slice 操作。但对于 squeeze 这样的操作似乎没有特别好的方法？
 
 > From Kimi & Claude Code

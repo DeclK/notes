@@ -495,22 +495,131 @@ warp specialization 的代码其实很简单，就是一个 if-else 分支
 4. All kinds of tempalte meta programming
 
    感觉这里才是最麻烦的地方，~120 行，希望我能够整理出一个清晰的逻辑以及结构，这样才能在之后的编写中有一个思路可循
-   
+
    0. 模板元编程参数：cta shape, stage number, cluster shape，想要生成特化代码的参数。这些特化代码在真正编译的时候都会被编译，再从 host 端进 if-else 进行选择
-   
+
    1. ABCType and layout，这应该是 args 所提供的最基础的信息
-   
-   2. mma atom
-   
+
+   2. **mma atom**
+
    3. **copy atom**
-   
+
       这才是模版中占比最多的 atom，不仅需要定义各个存储之间的 copy atom (gmem <-> smem <-> rmem)，还要定义各个输入矩阵都单独定义一个 copy atom (Tensor A B C)。定义 copy atom 也不可避免地需要对 memory layout 进行定义，所以整个的代码行数就是大几十行。接下来就是一一进行分析
-   
-      
-   
+
    4. 同时为了 kernel 的合法性，会进行一些 `static_assert` 检查：例如 cluster shape & cta tile 的合法性
-   
-   其实不用把一大堆的 static constexpr int 写在 struct 的最前面，我觉得在使用的时候再进行一些计算，可能会更好读一些，不然这些定义距离使用的地方太远了，写的时候不方便。我看 reed 中的 gemm-multistage 就是这么干的，这些 constexpr int 应该会被处理为编译期常量，而不会占用寄存器资源（Maybe
+
+   其实不用把一大堆的 static constexpr int 写在 struct 的最前面，我觉得在使用的时候再进行一些计算，可能会更好读一些，不然这些定义距离使用的地方太远了，写的时候不方便。我看 reed 中的 gemm-multistage 就是这么干的，这些 constexpr int 应该会被处理为编译期常量，而不会占用寄存器资源（Maybe\
+
+5. Tile Scheduler
+
+### TiledMMA
+
+对于 Hopper 的 TiledMMA 构建 cute 有一个合适的工具函数来帮助我们 `cute::GMMA::ss_op_selector`
+
+只需要传入 ABC matrix type & CTATile & ABMajor
+
+```cpp
+  // ws_cooperative use 2 warp group
+  using AtomLayoutMNK =
+      std::conditional_t<kernel_tag == KernelTag::WASP_COOP,
+                         Layout<Shape<_2, _1, _1>>, Layout<Shape<_1, _1, _1>>>;
+  using TiledMma = decltype(cute::make_tiled_mma(
+      cute::GMMA::ss_op_selector<ABtype, ABtype, Acctype, CtaTile, GmmaMajorA,
+                                 GmmaMajorB>(),
+      AtomLayoutMNK{}));
+```
+
+GMMA 其实就是 group mma，也就是 warp group mma，和 wgmma 其实是一个东西
+
+对于 cooperative kernel，会利用 `AtomLayoutMNK` 在 M 方向上进行扩展，以达到利用两个 warpgroup 完成一个 mma 的功能。（我之前还在思考，怎么将 M 维度 split 成两份，原来是反过来思考的，更简单了）
+
+### TiledCopy
+
+1. G2S copy
+
+   使用 tma copy AB matrix
+
+   1. 构建 copy atom
+
+      copy atom 根据 cluster shape 来决定是否使用 tma multi-cast 指令。在 cute 当中有工具函数直接获得 atom
+
+      ```cpp
+        // tma g2s load
+        using TmaG2STiledCopyA =
+            decltype(sm90_cluster_shape_to_tma_atom(shape<1>(ClusterShape{})));
+        using TmaG2STiledCopyB =
+            decltype(sm90_cluster_shape_to_tma_atom(shape<0>(ClusterShape{})));
+      ```
+
+      这个函数名字很长，实际上就是一个 if-else 选择。如果 cluster shape = 2 就会启用 multi-cast。一个细节：对于 A 矩阵是看 `ClusterShape[1]` 的大小，因为是同一行的 CTA 才会共享 A 矩阵数据
+
+   2. 构建 tma copy descriptor
+
+      回想一下在 Ampere 架构中如何构建 G2S TiledCopy：
+
+      如何构建 tma TiledCopy，其中的参数各自起到什么作用？如何使用 tma copy？对比 Ampere G2S 的 copy 过程有什么区别？
+
+      他们二者的共同点：都需要对 smem 的 atom layout 进行定义（主要是定义 swizzle），并使用 `tile_to_shape` 完成完整 smem layout 构建 `(M or N, K, num_stages)`
+
+      1. tma tiled copy 核心参数
+
+         1. copy op: with or without mulit-cast
+         2. Gtensor: 完整的 matrix 矩阵
+         3. Slayout: smem layout，由 `tile_to_shape` 提供
+         4. cluster size: 1 or 2
+
+         实际上还有一个 cta tile 的参数，通常由 slayout shape 直接确定了
+
+         ```cpp
+         tma_desc = make_tma_copy(SM90_TMA_LOAD{}, 
+                                  gmem_tensor, 
+                                  smem_layout, 
+                                  [cluster size])
+         ```
+      
+         该 atom 应该能够一次对整个 `smem_layout` 大小的 tensor 进行 copy
+      
+      2. 如何使用 tma descriptor
+      
+         1. 获得 tma tensor。这区别于 Ampere 架构直接使用 gmem tensor，tma 需要调用 `get_tma_tensor` 来获得 tma tensor
+         
+            ```cpp
+            Tensor A = tma_desc.get_tma_tensor(make_shape(m, k))
+            ```
+         
+         2. 使用 cta id in cluster 获得当前的数据 slice，该 slice 也充当 `thr_copy` 的角色
+         
+            ```cpp
+            g2s_tma_a = tma_desc.get_slice(cluster_idx.y)
+            ```
+         
+            这里的 cluster 的作用就发挥出来了，参考 [tma tutorial](https://research.colfax-intl.com/tutorial-hopper-tma/) 当中的内容：对于 cluster size = 2 (通常最大也就是 2 了) 的情况，一个 cluster 内部的两个 cta 会对数据进行划分，各自搬运一半的数据，然后进行通讯共享以拼凑得到完整的数据
+         
+         3. 利用 `thr_copy` 对数据进行线程划分，但这对 tma 来说其实是多余的，因为只有一个线程，不过不过为了 cute 的统一编程风格，这样做也可理解
+         
+            ```cpp
+            // gA_mk (BLK_M, BLK_K, m, k)
+            Tensor gA_mk = local_tile(A, CTATile{}, make_cood(_, _, _), Step<_1, _X, _1>)
+            // gA (BLK_M, BLK_K, k)
+            Tensor gA = gA_mk(_, _, tile_info.m_idx, _)
+            // tAgA (COPY, COPY_M, COPY_K, k)?
+            Tensor tAgA = g2s_tma_a.partition_S(gA)
+            Tensor tAsA = g2s_tma_a.partition_D(sA)
+            ```
+         
+            TODO: 我猜测 REST_M & REST_K 都是 1，并且 COPY = BLK_M * BLK_K，这正好对应了 cta tile 大小
+         
+         4. 使用 `cute::copy & tma_desc` 完成 copy 任务
+         
+            ```cpp
+            copy(
+              tma_desc.with(*full_barrier_ptr, multicast_mask_a),
+              tAgA(_, _, _, k_idx),
+              tAsA(_, _, _, k_idx)
+            )
+            ```
+         
+            TODO: 如何理解这里的 full_barrier_ptr & multcast_mask 的作用
 
 ### Compute Logic
 
@@ -528,8 +637,6 @@ warp specialization 的代码其实很简单，就是一个 if-else 分支
 4. mma tail
 
 5. issue epilogue
-
-6. Scheduler
 
 似乎整个 GEMM 就是这些关键功能的合作，我应该要把他们的基本功能和原理都弄清楚，再考虑与 deepgemm 的对比
 
@@ -847,4 +954,20 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
 
     2. 使用 jit (just in time) 的方式进行即时编译，从而获得动态的编译代码
 
+    3. Awesome-cute 应该是有参考 cutlass 代码来写自己的 kernel，我需要找到他所参考的核心代码在哪里
+
+    4. mma selector 只对 sm90 存在，在 Blackwell 架构中的 cute 并不存在，我需要知道选择 mma 的启发式规则，这应该得参考下 deepgemm 的实
     
+    5. GMMA 和 UMMA
+    
+       > From Kimi
+       >
+       > GMMA 与 UMMA 分别是 Hopper 与 Blackwell 两代 GPU 架构提出的新一代 Tensor Core MMA（矩阵乘-累加）指令的统称。
+       >
+       > 1. GMMA（Hopper） • 在 Hopper 架构的 PTX 里写作 wgmma.mma_async，官方文档/社区也简称 GMMA（Group-level MMA）。
+       >    - 以 warpgroup（32×4=128 线程）为执行粒度，异步完成大块矩阵乘法，结果累加在寄存器文件。
+       >    - 需要程序员显式管理共享内存→寄存器的数据搬运，并配合 WGMMA 的 pipeline barrier 使用。
+       > 2. UMMA（Blackwell） • Blackwell 废弃了 wgmma.mma_async，引入新的 PTX 指令 tcgen05.mma，官方/社区把它叫 UMMA（Universal MMA）。
+       >    - 运算粒度更灵活：支持 FP4/FP6 等新精度，原生支持 block-scaling
+       >    - 累加器不再占用通用寄存器，而是落到一块叫 Tensor Memory（TMEM）的专用 SRAM
+       >    - 由单个线程即可发起，两个 CTA 还能跨 SM 成对协同，进一步降低寄存器压力。因而 CUTLASS 中把原来的 “warp-group” 概念替换为 “CTA-pair” 抽象。

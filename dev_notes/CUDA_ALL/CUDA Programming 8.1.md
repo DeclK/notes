@@ -534,7 +534,7 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 
 我们把 src layout 和 dst layout 都打出来看，由于所使用的 data type 为 half，所以 src layout 和 dst layout 转化为 `(t, v) -> logical mem id` 映射
 
-<img src="CUDA Programming 8.1/image-20250810144100108.png" alt="image-20250810144100108" style="zoom:50%;" />
+<img src="CUDA Programming 8.1/image-20250811162318861.png" alt="image-20250811162318861" style="zoom:50%;" />
 
 上面的打印中相同的数字代表了相同的 logical mem id，即他们代表了统一个元素。可以看到在 src 当中的 t0 拥有数据 0~7，他们分别分配到了 dst 当中的 t0~t3 中的前两个 values 当中。而对于 dst 当中的 t0 数据则来自于 t0, t8, t16, t24 的前两个 values
 
@@ -594,9 +594,34 @@ src_tv_2_mn = dst_tv_2_mn.compose(src_tv_2_dst_tv)
 
 当我们使用 copy atom 为 `cute::uint64_t` 的大小时，在 hgemm 的例子当中就会报错，因为 64bit 代表 4 个 half 数据，但这 4 个数据 copy 到 shared memory 中的位置是不连续的，通过这个 copy atom 是无法完成的
 
-同样在 ldmatrix 过程也有连续性要求，
+同样在 ldmatrix 过程也有连续性要求，先回顾一下 ldmatrix 当中的 src & dst tv layout
 
-但是想象一下，如果 tensor 不是按照 row-major 进行排布的话，显然整个连续性就无法被保了，ldmatrix copy 无法完成。这也是为什么 mma atom 也会要求 tensor 的排布。所以 mma atom layout + tensor layout 共同保证了 ldmatrix 在 copy 过程中的连续性要求
+<img src="CUDA Programming 8.1/image-20250811162318861.png" alt="image-20250811162318861" style="zoom: 25%;" />
+
+该图定义了 src tv 和 dst tv 之间的映射。可以看到如下的特征
+
+```python
+DST						 	   SRC		 
+----------------------------
+T0~T3    V0~V1 <=> T0  V0~V7
+T4~T7    V0~V1 <=> T1  V0~V7
+...
+T28~T31  V0~V1 <=> T7  V0~V7
+----------------------------
+T0~T3    V2~V3 <=> T8  V0~V7
+T4~T7    V2~V3 <=> T9  V0~V7
+...
+T28~T31  V2~V3 <=> T15 V0~V7
+----------------------------
+```
+
+用语言描述一下第一行：dst T0~T3 线程的 V0~V1 数据，对应了 src T0 线程的 V0~V7 数据。对于 ldmatrix 而言，其要求 src thread 中的 V0~V7 在内存中是连续的。OK，现在我们就用 mma atom 的 tv layout 来实际看一下，其 src thread 中的 V0~V7 是否真的连续。以 `SM80_16x8x16_F16F16F16F16_TN` 中的 matrix A 的 (dst) tv layout 为例，用 `print_latex` 打出来得到如下排布
+
+<img src="CUDA Programming 8.1/image-20250811163804449.png" alt="image-20250811163804449" style="zoom: 33%;" />
+
+我们可以发现 T0~T3 的 V0~V1 数据，正好是横向连续的 MK 坐标，这也说明了 T0 线程的 V0~V7 就是连续的 MK 坐标，但是为了保证内存的连续，MK -> Memory 的映射必须是 LayoutRight 即 row-major 排布内存，否则这些横向连续的 MK 坐标所对应的数据在内存仍然不连续
+
+综上，在所给的 ldmatrix + mma layout + tensor layout 的条件下，copy 的连续性得到了满足。这也凸显出了三者的高度定制性：ldmatrix 必须和匹配的 mma layout 以及匹配的 tensor layout 进行使用，否则将会报错
 
 #### Async Copy
 
@@ -964,8 +989,8 @@ xxxyy yyy
 
 首先我需要先定义我们所能使用的工具：mma atom & copy atom。正如之前在 tiled copy 当中所分析的，我将以两个概念来构建 atom
 
-1. block atom：理解基本的 block 物理操作单元
-2. tiled atom：结合 tv layout & mn shape 构建出逻辑操作区域与 partition 方法
+1. block atom：理解基本的 block 物理操作单元，定义一个 block 所需的基本工具
+2. tiled atom：结合 tv layout & mn shape 构建出具体的操作区域与 partition 方法，本质是 block atom 的具象化
 
 #### Block Atom
 
@@ -997,19 +1022,13 @@ xxxyy yyy
 
 #### Tiled Atom
 
+Tiled Atom 实际上都是围绕 copy atom，对于 mma atom 的核心定义，其实都在的 block atom 中完成了。即使是 tiled mma 当中定义的 PermutationMNK 也是针对于 tiled copy 所设计的
+
 我们需要根据 mma 的情况来给 block atom 赋予实际的 MN shape 以方便我们构建 gemm 算法
 
 1. tiled mma atom
 
-   我认为等同于上述的 block mma atom，其能力没有做更多的复制扩展。但是在 tiled mma 中其实为之后的 tiled copy 预先定义了其 tv layouts & mn shape。可以看到，一个 block mma atom 能处理的 MN & MK & NK 大小分别为 `(32, 16), (32, 16), (16, 16)`，反观 block copy atom 中通常一次会处理 1024 个元素 copy，是超过 MN & MK & NK 的元素数量的。但是考虑到不同 thread 可能会读取到相同的元素，如下图所示
-
-   <img src="CUDA Programming 8.1/image-20250525153845284.png" alt="image-20250525153845284" style="zoom:50%;" />
-
-   经过 MN 方向上的两次复制，thread 数量其实增加了四倍，但是 MK & NK 数量只增加了两倍，这意味着每两个线程会读取同一个数据，即图示中的 Atom1 & Atom2 都会读取相同的 MK 1 数据。此时计算实际需要 copy 的 MN & MK & NK 数据量变成了 `MN: (32, 16), MK: (32, 32=16x2), NK: (16, 32=16x2)`，其中 MN & NK copy 元素数量（512）仍然小于一个 S2R block copy atom 所能处理的最小数量（1024）
-
-   **所以我们需要在 N 方向上进行两倍的扩展，让总数据量为 `MN: (32, 32=16x2), NK: (32=16x2, 32=16x2)` 的矩阵大小，从而满足 g2s block copy atom 的最小要求。这也解释了为什么 `PermutationMNK` 当中为什么要在 N 方向上乘以 2**
-
-   
+   我认为等同于上述的 block mma atom，其能力没有做更多的复制扩展
 
 2. tiled copy atom
 
@@ -1035,6 +1054,70 @@ xxxyy yyy
    4. S2G
 
       与 G2S 一样，采取 mn shape `(32, 32)`，tiled tv layouts `((_4,_32),_8):((_256,_1),_32)`
+
+**补充：PermutationMNK, N = 2 的推导过程，实践 TiledCopy**
+
+**What We Have**: s2r copy atom, mma atom's tv layouts and NK shape, block threads
+
+**What We Want**: copy the NK data to register and satisfy mma tv layouts for 1 block
+
+一些更具体的参数值列在下方以方便我们的推导:
+
+```python
+# Conditions
+N = 8
+K = 16
+num_threads = 128 = 32 * 4
+AtomLayoutMNK = (2, 2, 1)		# 4 Atoms 
+copy_atom = SM75_U32x4_LDSM_N
+mma_atom = SM80_16x8x16_F16F16F16F16_TN
+# What's missing...
+PermutationMNK
+```
+
+现在我们就差定义好 `PermutationMNK` 就能够构建出 TiledMMA，让后利用方法 `get_layoutB_TV & get_layoutB_NK` 获得 NK 矩阵的 tv layout & MN shape，而这两个参数正是构建 TiledCopy 唯二需要的参数
+
+我们先看下我们需在此条件下，需要什么：
+
+<img src="CUDA Programming 8.1/image-20250525153845284.png" alt="image-20250525153845284" style="zoom:50%;" />
+
+我们需要复制的数据，其实就是 NK1 & NK2，但是注意到：Atom1 & Atom2 都需要 NK1，Atom2 & Atom4 都需要 NK2。所以需要的总数据其实是 2 倍的 NK1 & NK2，总共需要 copy 512 个元素
+
+```python
+one_atom = N * K = 8 * 16 = 128
+four_atom = 4 * one_atom = 128 * 4 = 512
+```
+
+在 `PermuationMNK` 都为 1 的情况下，可以得到对应的 matrxi B tv layout & nk shape
+
+```python
+B_dst_tv_layout = Layout(
+  # (n_threads, (v_per_thread, restNK)), (128, 4) in total
+	shape = ((4, 8, 2, 2), ((2, 2), (1, 1)))
+  stride = ((32, 1, 0, 8), ((16, 128), (0, 0)))
+)
+NK_shape = (16, 16)
+```
+
+OK，现在我们来尝试在此情况下使用 TiledCopy。在之前的分析中，我们需要使用 `src_tv_2_dst_tv` 与上述的 `B_dst_tv_layout` 进行 zipped divide & compose，以获得符合要求的 `B_src_tv_layout`，从而划分 src tensor。而 `src_tv_2_dst_tv` 这个 layout 是一个 `(t, v) -> (t, v)` 的映射，其中 `v = 8`，这是由 copy atom 决定的。而 `B_dst_tv_layout` 的 shape 只有 `(128, 4)`，其 `v = 4`，无法被 `v = 8` 进行 divide！于是乎，以上操作无法完成
+
+既然没有足够的 values，那么我们就可为其扩展足够的 values，此时 `PermutationMNK` 就可发挥大作用了（当我理解原理过后，我认为之前的 `ValLayoutMNK` 命名更为合理呢🤔）。我们可以选择在 K 维度上进行扩展，也可以选择在 N 维度上进行扩展，显然选择后者会是更合理的选择，因为在 K 维度上扩展的话，会连带影响 A 矩阵的 tv layout。以下就是将 N 维度扩展两倍过后的结果
+
+```python
+B_dst_tv_layout = Layout(
+  # (n_threads, (v_per_thread, restNK)), (128, 8) in total
+	shape = ((4, 8, 2, 2), ((2, 2), (2, 1)))
+  stride = ((64, 1, 0, 8), ((32, 256), (16, 0)))
+)
+NK_shape = (32, 16)
+```
+
+此时 `(128, 8)` 的大小正好有 1024 个 half 数据，这也正是一个 block 进行一次 copy 的最小数量（i.e. 每一个 threads copy 8 个 half 数据）。如果我们再继续扩展 `PermutationMNK` 可不可以呢？其实是可以的，但是也需要满足 compose 的合法要求，同时 values 数量会 > 1024，本质上变为重复一个 block atom 的能力，而该功能实际可由 `cute::copy` 去完成
+
+以上的分析回答了一个困扰许久的问题：`PermutationMNK` 到底有什么作用？**我的回答：增加 cta 中 TiledCopy 一次能 copy 的 values 数量**。同时以上的分析也让我真正懂得了如何去构建和使用 TiledCopy，让我对组成 TiledCopy 的两个参数：tv layout & mn shape 有了更具象化的理解
+
+1. tv layouts，是线程分割数据的核心，也是保证程序合法的重要参考
+2. mn shape，是对 gemm 进行 tile 区域划分的逻辑粒度
 
 ### Define Shared Memory
 
