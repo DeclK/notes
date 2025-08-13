@@ -303,7 +303,7 @@ Finally, each thread, whether consumer or producer, keeps track of a phase to ma
 
 3. [expect_tx](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-expect-tx-operation)(bytes) 会增加 tx-count  += bytes
 
-4. tma copy 会自动调用 [complete_tx](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-complete-tx-operation)，会减少 tx-count -= bytes
+4. tma copy 会自动调用 [complete_tx](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-complete-tx-operation)，会减少 tx-count -= bytes。查看 tma load 的 ptx 就可以看到其中有 complete_tx 的 qualifier 字段
 
 5. 当 pending count = 0 以及 tx-count = 0 时，触发 [phase complete](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-phase-completion) 条件，此时：
 
@@ -312,7 +312,43 @@ Finally, each thread, whether consumer or producer, keeps track of a phase to ma
 
 根据以上机制，就可以顺利推理整个流水线的同步过程。另外根据 [zhihu](https://zhuanlan.zhihu.com/p/1905383022901059783) 的说法：mbarrier.wait 只检查current phase 的完成，即 phase = 1, barrier.wait(phase)，若 barrier 内置 phase 为 0，则此 wait 不会等待。这也是为什么一开始要把 producer pipeline_state 的 phase 初始化为 1。因为初始化时不必等待 consumer 完成计算，直接发起 tma load
 
+Phase 的物理含义是什么？如何理解同一个 phase 的各个 barrier & pipeline states？
 
+对于这个问题，Kimi & DeepSeek 都没回答到我能 get 到的点上，不过他们的回答都具有启发性
+
+> From DeepSeek
+>
+> 在您提供的代码中，`phase` 是一个关键概念，用于管理生产者（producer）和消费者（consumer）之间的同步。它的物理意义可以理解为 **数据缓冲区（或同步屏障）的当前有效状态标识**，用于区分不同阶段的数据版本，确保生产者和消费者不会同时操作同一份数据。
+>
+> From Kimi
+>
+> `phase` 本质上就是 **“这次是第奇数次到达 barrier” 还是 “第偶数次到达”** 的 1-bit 计数器
+
+我的理解： phase 的物理意义其实是一个不进位的计数器，用于记录这是第 phase 个数据
+
+而 wait phase 的物理含义为：等待第 phase 批数据处理完成。这样理解起来就顺了：我们将 producer pipeline states phase 初始化为 1，consumer pipeline states phase 初始化为 0。其实这里的 1 看似比 0 要大，在我这里看来其实 1 < 0，换句话说，这里的 1 指代的是上一批的数据，0 是当前批的数据。那么这两个 wait 就变得相当形象了
+
+```cpp
+// wait for previous data to be consumed
+empty_barrier.wait(phase=1)
+  
+// wait for current data to be loaded
+full_barrier.wait(phase=0)
+```
+
+empty barrier 是在等待上一批的数据完成，而 full barrier 则是在等待这一批的数据加载。而我们把 empty barrier & full barrier 的 phase 都初始化为 0 也很好理解
+
+```cpp
+// dealing/consuming current data
+empty_barrier.phase = 0
+  
+// dealing/producing current data
+full_barrier.phase = 0
+```
+
+empyt barrier phase 初始化为 0 意味着 consumer 正在消耗第 0 批数据（虽然初始化时，tensor core 并不是真的就在运行了！不过从 empty barrier 的视角来看，就是在消耗第 0 批数据的状态）
+
+full barrier phase 初始化为 0 意味着 producer 正在生产第 0 批数据 
 
 由于 cutlass doc 当中的代码并没有被 DeepGemm 中采用，而且我所学习的 cute ws 代码也是参考 DeepGemm 来构建的，之后的学习全面针对 awesome cute 当中的代码学习
 
@@ -971,3 +1007,7 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
        >    - 运算粒度更灵活：支持 FP4/FP6 等新精度，原生支持 block-scaling
        >    - 累加器不再占用通用寄存器，而是落到一块叫 Tensor Memory（TMEM）的专用 SRAM
        >    - 由单个线程即可发起，两个 CTA 还能跨 SM 成对协同，进一步降低寄存器压力。因而 CUTLASS 中把原来的 “warp-group” 概念替换为 “CTA-pair” 抽象。
+    
+    6. load shared 在 deepgemm 当中被使用，在 cute 中应当如何实现
+    
+    7. 在 warp group consumer 当中是不是不应该使用 `syncthreads` 这样会形死锁，应该会有 warp group 专属的 sync 命令
