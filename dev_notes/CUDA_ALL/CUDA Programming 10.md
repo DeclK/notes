@@ -350,6 +350,8 @@ empyt barrier phase 初始化为 0 意味着 consumer 正在消耗第 0 批数�
 
 full barrier phase 初始化为 0 意味着 producer 正在生产第 0 批数据 
 
+TODO: A timeline figure to help understanding
+
 由于 cutlass doc 当中的代码并没有被 DeepGemm 中采用，而且我所学习的 cute ws 代码也是参考 DeepGemm 来构建的，之后的学习全面针对 awesome cute 当中的代码学习
 
 
@@ -649,13 +651,21 @@ GMMA 其实就是 group mma，也就是 warp group mma，和 wgmma 其实是一�
          
             ```cpp
             copy(
-              tma_desc.with(*full_barrier_ptr, multicast_mask_a),
+              tma_desc.with(reinterpret_cast<uint64_t*>full_barrier_ptr, multicast_mask_a),
               tAgA(_, _, _, k_idx),
               tAsA(_, _, _, k_idx)
             )
             ```
          
-            TODO: 如何理解这里的 full_barrier_ptr & multcast_mask 的作用
+            对比于 Ampere 是传入了 `thr_copy` 对象，Hopper 就传入了 `tma_desc.with` 返回值。其中有两个重要的传入参数
+            
+            1. `full_barrier_ptr`
+            
+               为什么需要 mbarrier 传入？这需要理解 mbarrier 的作用：由于之前使用了 `arrive_and_expect_tx`，对 mbarrier 当中的 tx-count 进行了增加，而 tma copy 则会使用 complete-tx ptx 对 tx-count 进行减少，从而刷新 mbarrier 的 phase 状态 
+            
+            2. `multicast_mask`
+            
+               
 
 ### Compute Logic
 
@@ -1011,3 +1021,5 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
     6. load shared 在 deepgemm 当中被使用，在 cute 中应当如何实现
     
     7. 在 warp group consumer 当中是不是不应该使用 `syncthreads` 这样会形死锁，应该会有 warp group 专属的 sync 命令
+    
+    8. `reinterpret_cast` 在代码中有不少的运用，常见的使用场景是什么？
