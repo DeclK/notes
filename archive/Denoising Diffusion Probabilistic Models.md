@@ -559,3 +559,5 @@ $$
 - Markov Chain Monte Carlo (MCMC)
 
   在 diffusion 中使用了 Markov chain & Monte Carlo sampling，但是并没有同时使用 MCMC 方法，要学习 MCMC 可能还得在新的分支领域
+  
+- 为什么在 DDPM 中有两种不同的推导方式？为什么前者的方差较大？如何证明其方差大？
