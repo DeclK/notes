@@ -371,6 +371,10 @@ update 2025/07
 
 对于 mtp & eagle decode 之间的联系与区别：Mtp 通过 mtp module 让 main module 对未来多个 token 进行理解，此对训练的稳定非常重要。Eagle3 通过自回归让自己对未来多个 token 进行理解与预测，同时解决了 feature estimation 问题。mtp 当然也可以采取同样的做法，但是主模型进行自回归的代价太大了，使用 mtp 小模型来进行辅助是更合理的选择
 
+### Flex Attention
+
+TODO: introduce flex attention, and how it is applied in EAGLE3 training
+
 ## Question
 
 - 如何进行 batched speculative sampling？
