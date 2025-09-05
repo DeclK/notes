@@ -277,11 +277,122 @@ pip install -e . --no-build-isolation
 
    其中的 `image_grid_thw` 是 Qwen2.5VL 在具体任务中的指定参数，以上推理代码具有一般性
 
+## Producer-Consumer Dataloader
+
+放弃传统 pytorch dataloader 实现了 producer-consumer dataloader 以更好地适应 iteration based training & 训练 resume，缺点是没有使用多进程，producer 是一个单进程，多进程还需要考虑他们之间的排序。不过好消息是单进程即可满足绝大多数的场景，除非 GPU 的吞吐极其快，超过了 CPU 的能力
+
+1. python multi-processing
+
+   在 Python 中使用多进程需要使用 `multiprocessing ` 模块中的 `Process`
+
+   ```python
+   from multiprocessing import Process
+   ```
+
+   每创建一个 `Process` 实例就是创建了一个子进程，利用 `start & join` 方法来启动子进程和等待子进程
+
+   ```python
+       p = multiprocessing.Process(target=worker, args=[params_needed_by_worker,...])
+       p.start()	# non-blocking
+       p.join()	# wait until process finish
+   ```
+
+   通常可以使用一个 list 来管理多进程
+
+   ```python
+   process_list = []
+   for i in range(num_process):
+       p = Process(target=worker, ...)
+       p.start()
+       process_list.append(p)
+       
+   for p in process_list:
+       p.join()	# wait for every process to finish
+   ```
+
+2. contextmanager combined with generator
+
+   lingua 使用了把 contextmanager 和 generator 合并了起来，二者都使用了 `yeild` 语法，这里会比较容易混淆
+
+   ```python
+   @contextlib.contextmanager
+   def async_iterator(buffer_size: int, iterator_builder):
+       ...	# prepare code
+       consumer = consume_buffer(producer, queue)
+       yield consumer	# return a generator
+       ... # clean code
+       
+   def consume_buffer(producer: Process, queue: Queue):
+       while producer.exitcode is None:
+           try:
+               item = queue.get(timeout=0.1)  # Tries to get an item from the queue with a timeout
+               yield item
+           except Empty:
+               pass
+   
+       raise RuntimeError("Data loader quit unexpectedly, real error has been raised previously")
+   ```
+
+   在实际使用过程中会使用 `with` 语句或者 `enter_context` 来返回 iterator，在退出 context 的时候就会触发 clean code 逻辑
+
+   ```python
+   with async_iterator(producer, queue) as iterator:
+       data = next(iterator)
+   ```
+
+   使用生成器语法糖的函数，其实可以看做一个特殊的类。我们需要先对这个类进行实例化（即传入参数），构建好生成器，在这个过程中不会执行任何函数中的代码。然后再使用 `next` 方法输出每一次 yield 的返回值
+
+   ```python
+   generator = consume_buffer(producer, queue)	# build a generator, will not execute any code
+   item = next(generator)
+   ```
+
+   区别于 iterator 似乎还需要先调用 `iter` 方法，让 iterator 初始化，然后再使用 `next`
+
+3. 构建 resumable dataloader
+
+   我的思路：记录 rank0 的 step & rng，保证每一个 rank 的 data list 数量是相等的。有 step & rng 可以直接推断得到当前 epoch 的随机顺序，然后通过 `step % len(data)` 来获得当前 iteration index
+
+缺点：
+
+1. 对于 unpickable 的对象无法使用 multi-process。这对于 flex attention block mask 来说就是如此。我本来想把 mask 编译移动到 dataloader 当中来 overlap latency，很可惜失败了
+2. multiprocess 中的 `Queue.get` 真的很慢，这仍然是受制于 python GIL 问题
+
+优点：
+
+1. 能够完美地进行 resume
+2. producer-consumer 逻辑足够简单也足够强大，性能瓶颈并不来源于此
+
+## EAGLE Scaling
+
+在 [issue](https://github.com/sgl-project/SpecForge/issues/93) 中提及了一个相关工作 [Scaling Laws for Speculative Decoding](https://arxiv.org/abs/2505.07858)，另外也有一个 [issue](https://github.com/SafeAILab/EAGLE/issues/220) 提到了模型结构改进可能对 scaling 有所影响
+
+TODO: 该论文当中的结论
+
+在此也记录下在多模态上进行 EAGLE3 scaling law 中遇到的现象
+
+在这一小节中记录下遇到的现象
+
+1. loss 在后期有上升
+
+2. 如何判断收敛
+
+   loss & grad norm
+
+3. norm before lm head
+
+   exploding the loss, can't converge [PreNorm & PostNorm](https://kexue.fm/archives/9009) [Transformer 初始化](https://kexue.fm/archives/8620) [Bert 初始标准差为什么是 0.02](https://kexue.fm/archives/8747)
+
+4. scaling 结论
+
+   4x of the data, 3% improved the acc len。需要注意的是，通常在评价 acc len 的时候，各个 benchmark 都会开启 tree attention，而我通常不会开启
+
 ## Future Work
 
 1. **小词表原生支持**
-2. **EAGLE3 实现**
+   - 已支持小词表推理，小词表训练需要重构。对不在小词表中的 output token 进行 loss masking
+2. ✅**EAGLE3 实现**
 3. 数据增广
-4. 利用 Producer-Consumer 模型实现 Dataloader
+4. ✅利用 Producer-Consumer 模型实现 Dataloader
 5. 多轮对话支持
-6. 融入 transformers 生态
+6. ✅融入 transformers 生态

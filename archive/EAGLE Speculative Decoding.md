@@ -373,7 +373,85 @@ update 2025/07
 
 ### Flex Attention
 
-TODO: introduce flex attention, and how it is applied in EAGLE3 training
+由于 EAGLE3 使用了 ttt 训练策略，所以 attention mask 形成了一个稀疏矩阵。在 EAGLE3 论文当中提到
+
+> Using matrix multiplication in this case would result in significant computational waste, so we can use vector dot products to calculate the attention score only for the corresponding positions.
+
+所以其 attention 计算分为了两个部分，一个是 causal mask 使用 sdpa，另一个是 dot product 计算 diagnal attention。这样会让 attention 表达变得复杂，而且显存并没有实质性的节省。而 [flex attention](https://pytorch.org/blog/flexattention/) 提供了一个简洁且节省显存的 attention 计算方法。根据 EAGLE3 代码可以写出如下 mask 计算模式
+
+```python
+from torch.nn.attention.flex_attention import or_masks
+def generate_eagle3_mask(
+    seq_lengths: torch.Tensor, Q_LEN: int, KV_LEN: int, shift_left: int = 0
+):
+    # seq_lengths: (B,) acutal lengths of each sequence
+    def causal_mask(b, h, q_idx, kv_idx):
+        # Causal will keep shrinking by 1 diagnol due to appended suffix
+        # Shirnk the causal by diagnol
+        causal_mask = (q_idx - shift_left) >= kv_idx
+        padding_mask = kv_idx < seq_lengths[b]
+        return causal_mask & padding_mask
+
+    def suffix_mask(b, h, q_idx, kv_idx):
+        suffix_mask = kv_idx >= Q_LEN
+        padding_mask = kv_idx % Q_LEN < seq_lengths[b]
+        diagnol_mask = (kv_idx - q_idx) % Q_LEN == 0
+        return suffix_mask & padding_mask & diagnol_mask
+
+    mask_mod = or_masks(causal_mask, suffix_mask)
+    mask_mod.__name__ = f"eagle3_mask_Q_{Q_LEN}_KV_{KV_LEN}_shift_left_{shift_left}"
+    return mask_mod
+```
+
+我以 `seq_len = 3` 为例子，看下前面两个 step 的 attention mask 如何
+
+```python 
+# step=0, Q_LEN=3, KV_LEN=3, pure causal mask
+  0 1 2
+0 ✅❌❌
+1 ✅✅❌
+2 ✅✅✅
+# step=1, Q_LEN=3, KV_LEN=6, causal mask & suffix mask
+  0 1 2  1 2 3
+1 ❌❌❌ ✅❌❌
+2 ✅❌❌ ❌✅❌
+3 ✅✅❌ ❌❌✅
+# step=1, no causal shift mask, should we use this?
+  0 1 2  1 2 3
+1 ✅❌❌ ✅❌❌
+2 ✅✅❌ ❌✅❌
+3 ✅✅✅ ❌❌✅
+```
+
+可以看到 causal mask 在逐渐减少，这和 EAGLE3 论文描述是不符合的，[issue](https://github.com/SafeAILab/EAGLE/issues/247) 对此提出疑问，不过没有得到官方的回复。有了 `mask_mod` 过后可以通过 `create_block_mask & flex_attention` 接口进行计算
+
+```python 
+from torch.nn.attention.flex_attention import create_block_mask, flex_attention
+# xk, xq: (B, H, N, C)
+block_mask = create_block_mask(
+    mask_mod=generate_eagle3_mask(
+        seq_lengths=input_seq_len,
+        Q_LEN=seq_len,
+        KV_LEN=xk.shape[-2],
+        shift_left=steps,
+    ),
+    B=bsz,
+    H=1,  # Rely on broadcast
+    Q_LEN=seq_len,
+    KV_LEN=xk.shape[-2],
+    device=xq.device,
+)
+
+output = flex_attention(
+    query=xq,
+    key=xk.contiguous(),
+    value=xv.contiguous(),
+    block_mask=block_mask,
+    enable_gqa=True,
+)
+```
+
+在 flex attention 文档中有很多关于 `torch.compile` 相关的问题，在实际使用中似乎不考虑 compile 会让编程更简单，或许以后的 torch version 都会自动考虑这个问题。推荐 `torch>=2.6` 的版本，flex attention 会更好用
 
 ## Question
 
