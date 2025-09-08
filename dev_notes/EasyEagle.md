@@ -365,27 +365,35 @@ pip install -e . --no-build-isolation
 
 ## EAGLE Scaling
 
-在 [issue](https://github.com/sgl-project/SpecForge/issues/93) 中提及了一个相关工作 [Scaling Laws for Speculative Decoding](https://arxiv.org/abs/2505.07858)，另外也有一个 [issue](https://github.com/SafeAILab/EAGLE/issues/220) 提到了模型结构改进可能对 scaling 有所影响
-
-TODO: 该论文当中的结论
+在 [issue](https://github.com/sgl-project/SpecForge/issues/93) 中提及了一个相关工作 [Scaling Laws for Speculative Decoding](https://arxiv.org/abs/2505.07858)，另外也有一个 [issue](https://github.com/SafeAILab/EAGLE/issues/220) 提到了模型结构改进可能对 scaling 有所影响。简单来说 Pretrain & SFT & model capacity 在 draft model 上都有 scaling law，然后根据 GPU 的 roofline 模型可以得到投机采样时 batch size 的最优值
 
 在此也记录下在多模态上进行 EAGLE3 scaling law 中遇到的现象
 
-在这一小节中记录下遇到的现象
-
 1. loss 在后期有上升
+
+   [zhihu](https://www.zhihu.com/question/415931517) 中的回答我认为比较合理。这种 loss 震荡原因可能是因为有两个极小值点，但是这两个极小值点的 loss 相差非常大，所以在这样的情况下，会出现 loss 的震荡
 
 2. 如何判断收敛
 
-   loss & grad norm
+   一般从 grad norm 来判断模型的收敛更加容易，因为这是一条更平滑的曲线（相比于 loss 曲线来说）。在我的实验场景中 grad norm 在 0.5 过后就不再会明显下降了。另外 grad norm 不应该为0，这意味着网络中的梯度消失，而且由于权重衰减的存在，也阻止了这一现象的发生
 
 3. norm before lm head
 
-   exploding the loss, can't converge [PreNorm & PostNorm](https://kexue.fm/archives/9009) [Transformer 初始化](https://kexue.fm/archives/8620) [Bert 初始标准差为什么是 0.02](https://kexue.fm/archives/8747)
+   在 lm head 之前加了一个 RMSNorm，初始的 loss 直接爆炸了，训练无法收敛。参考链接 [PreNorm & PostNorm](https://kexue.fm/archives/9009) [Transformer 初始化](https://kexue.fm/archives/8620) [Bert 初始标准差为什么是 0.02](https://kexue.fm/archives/8747)
+
+   这可能因为 lm head 是冻住的，对于输入前的分布有比较特别的要求，一般来说最后的 RMSNorm 的 scale 可能会比较大（10+）。而我们初始化的 RMSNorm 全部 scale 为 1，扰乱了分布
 
 4. scaling 结论
 
-   4x of the data, 3% improved the acc len。需要注意的是，通常在评价 acc len 的时候，各个 benchmark 都会开启 tree attention，而我通常不会开启
+   **3.6x of the data, 10% improved the accept length**
+   
+   以上是我的实验场景中的结论，效果还是非常显著的。需要注意的是，一些论文在计算 acc len benchmark 时会开启 tree attention，而我的实验中不会开启
+   
+   我在一开始的 scaling 实验中得到了错误结论：4x of the data, 3% improved the acc len。其中有三个原因：
+   
+   1. 所保存的 checkpoint 处于 loss 的震荡区域，没有完全收敛！这是导致错误结论的最根本原因
+   2. 设置的 threashold 过高（0.7）
+   3. 学习率过大（1e-3），模型效果没有调整到最优
 
 ## Future Work
 
