@@ -356,7 +356,7 @@ pip install -e . --no-build-isolation
 缺点：
 
 1. 对于 unpickable 的对象无法使用 multi-process。这对于 flex attention block mask 来说就是如此。我本来想把 mask 编译移动到 dataloader 当中来 overlap latency，很可惜失败了
-2. multiprocess 中的 `Queue.get` 真的很慢，这仍然是受制于 python GIL 问题
+2. （已解决）multiprocess 中的 `Queue.get` 真的很慢，这仍然是受制于 python 进程通信问题，data 需要在不同的进程间进行传输，随着数据量的增加（~40MB 量级），这个 overhead 非常大！这个问题在使用了 `threading` 模块后彻底解决，因为线程的资源和主进程是共用的，根据 [zhihu-天清](https://www.zhihu.com/question/516209908) 的回答，科学计算库即使在线程中还是会自动使用多核计算，即使 thread 在 GIL 的限制下，加速效率仍然很高。最后加入 `pin_memory` 优化，async producer-consumer dataloader 和 pytorch multi-worker dataloader 的相同，相比优化前提升了 20x (30ms vs 1.5ms)
 
 优点：
 
@@ -386,14 +386,18 @@ pip install -e . --no-build-isolation
 4. scaling 结论
 
    **3.6x of the data, 10% improved the accept length**
-   
+
    以上是我的实验场景中的结论，效果还是非常显著的。需要注意的是，一些论文在计算 acc len benchmark 时会开启 tree attention，而我的实验中不会开启
-   
+
    我在一开始的 scaling 实验中得到了错误结论：4x of the data, 3% improved the acc len。其中有三个原因：
-   
+
    1. 所保存的 checkpoint 处于 loss 的震荡区域，没有完全收敛！这是导致错误结论的最根本原因
    2. 设置的 threashold 过高（0.7）
    3. 学习率过大（1e-3），模型效果没有调整到最优
+
+5. top1 accuracy 不是绝对的指标
+
+   训练出来的有的模型虽然第一个 token 的命中 accuracy 不是最高的，但是整体的 accept length 还要更高。还是应当综合考虑
 
 ## Future Work
 
