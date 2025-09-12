@@ -11,7 +11,12 @@ From Linear Algebra to the Essence of Eigen
 
 能否从特征向量出发，完成对 SVD 的代数&几何理解。然后从 PCA 出发，发现 SVD 与特征的实际含义。最后再利用 SVD 的特性来说明其在模型量化当中的应用 [SVDQuant](https://arxiv.org/abs/2411.05007)
 
-参考材料：[科学空间](https://www.spaces.ac.cn/archives/10407) [白板机器学习](https://www.bilibili.com/video/BV1aE411o7qd) [线性代数的本质](https://www.3blue1brown.com/topics/linear-algebra)
+参考材料：
+
+- [低秩近似之路（二）：SVD](https://www.spaces.ac.cn/archives/10407) 
+- [SVD分解(一)：自编码器与人工智能](https://www.spaces.ac.cn/archives/4208) 
+- [白板机器学习-降维](https://www.bilibili.com/video/BV1aE411o7qd)
+- [线性代数的本质](https://www.3blue1brown.com/topics/linear-algebra)
 
 ## 线性代数的本质
 
@@ -269,11 +274,9 @@ $$
    >
    > 表达式 $A^{-1}MA$ 暗示着一种数学上的转移作用
 
+### Eigen
 
-
-
-
-
+### Abstract
 
 ## SVD
 
@@ -293,7 +296,7 @@ $$
 
   理解在机器学习的世界里：什么是特征值？什么是特征向量？
 
-# Question
+## Question
 
 - 为什么实对称矩阵一定可以被对角化？这其中有没有什么深层次的原因？
 
@@ -306,3 +309,9 @@ $$
      **谱定理**大致指出：**自伴算子（或矩阵）可以在某个标准正交基下被对角化**。所以，实对称矩阵可对角化是谱定理的一个直接推论。谱定理是泛函分析、量子力学等领域的基石，它将算子（或矩阵）的“结构”完全由其“谱”（即特征值的集合）来描述。
 
   这确实很神奇🧐
+  
+- 在学习 SVD 的过程中还在科学空间中看到了激活函数以及 EM 算法的相关解读，包含了 silu 为什么会 work，EM 算法与梯度下降算法之间的联系
+
+  [浅谈神经网络中激活函数的设计](https://spaces.ac.cn/archives/4647)
+
+  [梯度下降和EM算法](https://www.spaces.ac.cn/archives/4277)

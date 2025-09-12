@@ -355,8 +355,10 @@ pip install -e . --no-build-isolation
 
 缺点：
 
-1. 对于 unpickable 的对象无法使用 multi-process。这对于 flex attention block mask 来说就是如此。我本来想把 mask 编译移动到 dataloader 当中来 overlap latency，很可惜失败了
+1. 对于 unpickable 的对象无法使用 multi-process。这对于 flex attention block mask 来说就是如此。我把 mask 利用类的形式进行重写使得其能 pickable，从而把编译移动到 dataloader 当中来 overlap latency，在之后发现这样做会降低 flex attention 的运行时间，得不偿失。
 2. （已解决）multiprocess 中的 `Queue.get` 真的很慢，这仍然是受制于 python 进程通信问题，data 需要在不同的进程间进行传输，随着数据量的增加（~40MB 量级），这个 overhead 非常大！这个问题在使用了 `threading` 模块后彻底解决，因为线程的资源和主进程是共用的，根据 [zhihu-天清](https://www.zhihu.com/question/516209908) 的回答，科学计算库即使在线程中还是会自动使用多核计算，即使 thread 在 GIL 的限制下，加速效率仍然很高。最后加入 `pin_memory` 优化，async producer-consumer dataloader 和 pytorch multi-worker dataloader 的相同，相比优化前提升了 20x (30ms vs 1.5ms)
+3. 改为了 threading 放弃 multiprocess 过后，也就放弃了 multiprocess 的优点。当 GPU 的吞吐能力大于 CPU 时，此时无解
+4. （已解决）由于顺序性的 generator，无法利用 num workers 同时加载多个数据。但是我可以通过在 iterable dataset 中添加一个预取数据机制，这样通过多线程的优势，能够把数据 loading 的成本快速下降
 
 优点：
 
