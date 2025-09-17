@@ -310,6 +310,36 @@ $$
 
 ### Abstract vector spaces
 
+这一章节是线性代数的向量再探讨：**“向量到底是什么？”**，最终对向量进行了高度且准确的抽象：向量是**任何可以相加和数乘的对象**。更严谨的来说，任何东西只要满足八条公理，就可以是向量，并且这些向量构成了一个抽象的向量空间（也叫**线性空间**）
+
+- **函数也可以是向量**
+
+  因为函数可以像向量一样**相加**和**数乘**：
+  $$
+  (f+g)(x)=f(x)+g(x)\\
+  (c⋅f)(x)=c⋅f(x)
+  $$
+  导数操作可以写成一个**无限维矩阵**，主对角线上方偏移一位填充整数
+
+- **抽象向量空间的定义**
+
+  八条公理，满足就是线性空间：
+
+  - 加法封闭、交换、结合
+  - 零向量存在
+  - 加法逆元存在
+  - 数乘封闭
+  - 数乘对向量加法的分配律
+  - 数乘对标量加法的分配律
+  - 数乘与标量乘法兼容
+  - 1 乘向量不变
+
+  > Basically it's a checklist to be sure the notions of vector addition and scalar multiplication are reasonable.
+  >
+  > These axioms are not so much fundamental rules of nature as they are an interface between you, the mathematician discovering results, and other people who may want to apply those results to new sorts of vector spaces.
+
+  至于这八条公理是怎么产生的？公理的产生是数学家从无数例子当中总结出来的不言自明的规则，并且这八条公理并不是完全独立的，他们也是冗余的，有人说只需要其中的六条即可 [Is every axiom in the definition of a vector space necessary?](https://math.stackexchange.com/questions/1412899/is-every-axiom-in-the-definition-of-a-vector-space-necessary/2385192#2385192)
+
 ## SVD
 
 - 引理1：谱定理

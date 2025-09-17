@@ -25,6 +25,8 @@ DeepGemm 有趋势要取代所有的 Gemm 实现，in a clean & efficient way。
 
 [CalebDu/Awesome-Cute](https://github.com/CalebDu/Awesome-Cute/tree/main) 参考 DeepGemm 实现了 cute fp16 的 GEMM，而 DeepGEMM 本身似乎更倾向于使用 cuda 更底层的命令。可以对比一下二者的表现差异
 
+**TODO：把文档进行重新梳理，尤其是对各个编程概念、函数功能进行更清晰的结构化。然后再补充 epilogue & scheduler 的功能**
+
 ## TMA
 
 首先明确一点：TMA 优化的是数据从 global memory 到 shared memory 这个过程，没有优化从 shared memory 到 register。
@@ -1000,26 +1002,28 @@ barrier 一定会阻塞线程的执行，例如 `syncthreads` 就是最常用的
 
     2. 使用 jit (just in time) 的方式进行即时编译，从而获得动态的编译代码
 
-    3. Awesome-cute 应该是有参考 cutlass 代码来写自己的 kernel，我需要找到他所参考的核心代码在哪里
+17. Awesome-cute 应该是有参考 cutlass 代码来写自己的 kernel，我需要找到他所参考的核心代码在哪里
 
-    4. mma selector 只对 sm90 存在，在 Blackwell 架构中的 cute 并不存在，我需要知道选择 mma 的启发式规则，这应该得参考下 deepgemm 的实
-    
-    5. GMMA 和 UMMA
-    
-       > From Kimi
-       >
-       > GMMA 与 UMMA 分别是 Hopper 与 Blackwell 两代 GPU 架构提出的新一代 Tensor Core MMA（矩阵乘-累加）指令的统称。
-       >
-       > 1. GMMA（Hopper） • 在 Hopper 架构的 PTX 里写作 wgmma.mma_async，官方文档/社区也简称 GMMA（Group-level MMA）。
-       >    - 以 warpgroup（32×4=128 线程）为执行粒度，异步完成大块矩阵乘法，结果累加在寄存器文件。
-       >    - 需要程序员显式管理共享内存→寄存器的数据搬运，并配合 WGMMA 的 pipeline barrier 使用。
-       > 2. UMMA（Blackwell） • Blackwell 废弃了 wgmma.mma_async，引入新的 PTX 指令 tcgen05.mma，官方/社区把它叫 UMMA（Universal MMA）。
-       >    - 运算粒度更灵活：支持 FP4/FP6 等新精度，原生支持 block-scaling
-       >    - 累加器不再占用通用寄存器，而是落到一块叫 Tensor Memory（TMEM）的专用 SRAM
-       >    - 由单个线程即可发起，两个 CTA 还能跨 SM 成对协同，进一步降低寄存器压力。因而 CUTLASS 中把原来的 “warp-group” 概念替换为 “CTA-pair” 抽象。
-    
-    6. load shared 在 deepgemm 当中被使用，在 cute 中应当如何实现
-    
-    7. 在 warp group consumer 当中是不是不应该使用 `syncthreads` 这样会形死锁，应该会有 warp group 专属的 sync 命令
-    
-    8. `reinterpret_cast` 在代码中有不少的运用，常见的使用场景是什么？
+18. mma selector 只对 sm90 存在，在 Blackwell 架构中的 cute 并不存在，我需要知道选择 mma 的启发式规则，这应该得参考下 deepgemm 的实
+
+19. GMMA 和 UMMA
+
+    > From Kimi
+    >
+    > GMMA 与 UMMA 分别是 Hopper 与 Blackwell 两代 GPU 架构提出的新一代 Tensor Core MMA（矩阵乘-累加）指令的统称。
+    >
+    > 1. GMMA（Hopper） • 在 Hopper 架构的 PTX 里写作 wgmma.mma_async，官方文档/社区也简称 GMMA（Group-level MMA）。
+    >    - 以 warpgroup（32×4=128 线程）为执行粒度，异步完成大块矩阵乘法，结果累加在寄存器文件。
+    >    - 需要程序员显式管理共享内存→寄存器的数据搬运，并配合 WGMMA 的 pipeline barrier 使用。
+    > 2. UMMA（Blackwell） • Blackwell 废弃了 wgmma.mma_async，引入新的 PTX 指令 tcgen05.mma，官方/社区把它叫 UMMA（Universal MMA）。
+    >    - 运算粒度更灵活：支持 FP4/FP6 等新精度，原生支持 block-scaling
+    >    - 累加器不再占用通用寄存器，而是落到一块叫 Tensor Memory（TMEM）的专用 SRAM
+    >    - 由单个线程即可发起，两个 CTA 还能跨 SM 成对协同，进一步降低寄存器压力。因而 CUTLASS 中把原来的 “warp-group” 概念替换为 “CTA-pair” 抽象。
+
+20. load shared 在 deepgemm 当中被使用，在 cute 中应当如何实现
+
+21. 在 warp group consumer 当中是不是不应该使用 `syncthreads` 这样会形死锁，应该会有 warp group 专属的 sync 命令
+
+22. `reinterpret_cast` 在代码中有不少的运用，常见的使用场景是什么？
+
+23. `issue_epilogue` 当中为什么使用了所有的 consumer threads 的 sync 操作？尤其是在 pingpong kernel 当中，因为连个 wg 是需要异步进行的，这不会造成浪费吗？pingpong kernel 是不是通过 `pipeline_states` 来进行同步控制的，以达到交替运行的目的？

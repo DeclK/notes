@@ -486,10 +486,40 @@ auto lxtiler_rake = raked_product(l, tiler);
 
 在上述例子当中只需要一个 block 进行一次 copy 就能够完成 `(32, 32)` 大小的 copy 任务。还有一种情况，**一个 tiled copy 需要一个 block 进行多次来完成 `(32, 32)` 大小的 copy 任务**，例如将上述例子中的 copy atom 换为 `Copy_Atom<UniversalCopy<cute::uint32_t>, T>`，一个线程只会复制两个 fp16 元素，此时 128 个线程只能够复制 256 个 fp16 元素，很明显并不能够一次完成 `(32, 32)` 大小的 copy 任务。所以一个 tiled copy 会执行多次来完成该 copy 任务
 
-**NOTE:** 我们需要将 copy partition 和 atom partition 分开来看待，copy partition 会按照所给的 tiled tv layouts 进行分配，而 atom partition 只会按照 atom tv layouts 进行分配，这是一个错位点。**也正是由于这个原因，我们需要进行 `retile` 来使得二者进行对齐**。针对于二者的区别，我认为应当对二者概念进行更细粒度的区分：
+**NOTE:** 我们需要将 copy partition 和 atom partition 分开来看待，copy partition 会按照所给的 tiled tv layouts 进行分配，而 atom partition 只会按照 atom tv layouts 进行分配，这是一个错位点。**也正是由于这个原因，我们需要进行 `retile` 来使得二者进行对齐**。~~针对于二者的区别，我认为应当对二者概念进行更细粒度的区分：block atom，由于 thread 复制所产生的 atom 能力复制，定义了一个 block 操作的基本物理单位；tiled atom，由于 block atom 重复执行所产生的 atom 能力复制，定义了一个 block 操作的基本逻辑单位~~
 
-1. **block atom，由于 thread 复制所产生的 atom 能力复制，定义了一个 block 操作的基本物理单位**
-2. **tiled atom，由于 block atom 重复执行所产生的 atom 能力复制，定义了一个 block 操作的基本逻辑单位**
+**补充（2025/09/17）：retile 到底要解决一个什么样的问题？结论：解决线程 register 的 layout 转换问题**
+
+我们在思考 copy 的问题时，其实还是更容易从整体去思考，例如把一个 MN shape 的数据进行划分，每一个线程获得各自的数据，然而最后我们都是面向 thread 编程，各个线程的 register 数据都是各自独立（互不可见）的，我们必须要将自己的视角进行转换。以下有三个划分视角：
+
+对于一个 MN shape 数据
+
+1. 我们可以使用 mma atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据 `tCrC_0`
+
+   假设 mma atom layout 的 mn shape 为 `(m, n)`，每一个 thread 有 4 个 values，那么 `tCrC_0.shape = (4, M//m, N//n)`
+
+2. 我们可以使用 s2r copy atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据 `tCrC_1`
+
+   假设 s2r copy atom 的 mn shape 为 `(2m, n)`，每一个 thread 有 8 个 values，那么 `tCrC_1.shape = (8, M//2m, N//n)` 
+
+3. 我们可以使用 r2s copy atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据为 `tCrC_2`
+
+   假设 r2s copy atom 的 mn shape 为 `(m, 2n)`，每一个 thread 有 8 个 values，那么 `tCrC_1.shape = (8, M//m, N//2n)`
+
+以上三种划分，最终得到了三种数据 `tCrC_0/1/2`，而这**三种数据实际上包含了相同的数据内容**，但是他们的排布完全不同。能不能有一个 function 能够将 `tCrC_0/1/2` 之间的排布进行相互转换，例如将 `tCrC_0` 的排布，转换成为 `tCrC_1` 的排布，并且二者对应位置的数据也相同：
+
+```python
+new_tCrC_0 = retile(tCrC_0)
+
+new_tCrC_0.layout() == tCrC_1.layout()
+
+for x, y in tCrC.coord():
+	new_tCrC_0[x, y] == tCrC_1[x, y]
+```
+
+有的兄弟，有的。这个 function 就是 `retile`。有了 `retile` 过后，就能够在各个形态进行丝滑转换，我们无论是在进行 mma 计算，还是在进行数据 copy，就可以构建同一份 register 数据的不同排布，以确保在 `cute::copy & cute::gemm` 在进行坐标 index 的时候获得了正确的数据
+
+我之前对于 retile & tiled copy 没有那么熟，所以认为要用更多的概念来进行区分。实际上从始至终，我们都是在 block level 上进行编程，更多由重复所带来的功能，都可以由 `cute::gemm & cute::copy` 进行完成。而由于 copy & mma block 之间，对数据的划分各有不同，所以产生了对数据 layout 的操作转换，这带来了极大的学习困难
 
 #### ThrCopy
 
@@ -989,16 +1019,16 @@ xxxyy yyy
 
 首先我需要先定义我们所能使用的工具：mma atom & copy atom。正如之前在 tiled copy 当中所分析的，我将以两个概念来构建 atom
 
-1. block atom：理解基本的 block 物理操作单元，定义一个 block 所需的基本工具
-2. tiled atom：结合 tv layout & mn shape 构建出具体的操作区域与 partition 方法，本质是 block atom 的具象化
+1. basic atom：最小的操作单元，定义所需的基本工具。最小操作单元可以是 thread level，也可以是 warp level
+2. block atom (tiled atom)：结合 tv layout & mn shape 构建出具体的操作区域与 partition 方法，本质是 basic atom 的 block level 形态，也是实际编程中所使用的 atom。在对 basic atom 进行扩展时，其实就是将 basic atom 进行重复，以铺满 mn shap 空间。所谓的铺满，就是由 threads 增加所带来的重复效应，即 tv layouts 中的 t 维度进行扩张
 
-#### Block Atom
+#### Basic Atom
 
-1. block mma atom
+1. mma atom
 
    选择 mma op `SM80_16x8x16_F16F16F16F16_TN`，并且在 M, N 方向上重复 2 次，所以 128 个线程总共将处理 `(32, 16, 16)` 大小的 mma
 
-2. block copy atom
+2. copy atom
 
    copy atom 会是最复杂的
 
@@ -1020,7 +1050,7 @@ xxxyy yyy
 
    NOTE: 在上面的叙述中我都使用的**“可完成”**来描述 block atom 完成的 MN shape，是因为在提供具体的 TV layouts & MN shape 之前，我只能知道其复制的总元素数量是多少
 
-#### Tiled Atom
+#### Block Atom
 
 Tiled Atom 实际上都是围绕 copy atom，对于 mma atom 的核心定义，其实都在的 block atom 中完成了。即使是 tiled mma 当中定义的 PermutationMNK 也是针对于 tiled copy 所设计的
 
@@ -1028,7 +1058,7 @@ Tiled Atom 实际上都是围绕 copy atom，对于 mma atom 的核心定义，�
 
 1. tiled mma atom
 
-   我认为等同于上述的 block mma atom，其能力没有做更多的复制扩展
+   在上述 basic atom 中已经描述完毕
 
 2. tiled copy atom
 

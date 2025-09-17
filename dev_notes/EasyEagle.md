@@ -401,6 +401,24 @@ pip install -e . --no-build-isolation
 
    训练出来的有的模型虽然第一个 token 的命中 accuracy 不是最高的，但是整体的 accept length 还要更高。还是应当综合考虑
 
+6. **EAGLE2 has scaling law too**
+
+   目前从其他人的结论来看：EAGLE2 也具备 scaling 性质，但是在官方 EAGLE2 的实现设置下无法展现。我正在尝试复现其中的 scaling 性质，我先用我当前的代码跑了一下，没有发现 scaling 性质，不过我发现我的实现与有两个显著区别：
+
+   1. `p_loss & v_loss` 的权重
+
+      在我的代码中 `p_loss` 权重为1，`v_loss` 权重为 0.1，但实际上是反过来的。也就是说 EAGLE2 更看重对 `v_loss` 的模仿
+
+   2. data augmentation
+
+      我的代码中没有 data augmentation
+
+   通过修改 loss，最终得到了非常好的结果（accept len 3.5->4.5）。所以我没有进一步实验 data augmentation 的影响。这说明了 loss 的设置对于模型的 scaling 有着深刻的影响，而这个 loss 也说明了 EAGLE2 本质上是对  hidden states 的模仿，对 logits 的学习并没有发挥多大作用
+   
+   而 EAGLE3 则全面转向了 logits 的学习，而我最初的设置也许可以近似于 EAGLE3 step=1 的情况，在此限制下模型无法对 step > 1 的 token 进行有效预测，因此目标的不匹配也限制了模型的能力，即使 scale up data 也无法获得好的投机采样效果
+   
+   我认为对 logits 的学习是更难的，但是这解除了对 base model 的特征模仿限制，打开了更多的可能性：使用融合特征作为初始条件进行投机采样（EAGLE3 的另一个优化）
+
 ## Future Work
 
 1. **小词表原生支持**
