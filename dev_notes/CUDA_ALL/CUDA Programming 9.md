@@ -24,7 +24,7 @@
 
 ## Create Tensor
 
-在 claude code kimi 的帮助下，很快就构建出了 host 上的 tensor，无法使用 print values 查看，会出 segmentation fautl。说明所构建的 tensor 只是一个空壳
+在 claude code kimi 的帮助下（参考 [zhihu](https://zhuanlan.zhihu.com/p/1928071611342393465) 安装），很快就构建出了 host 上的 tensor，无法使用 print values 查看，会出 segmentation fautl。说明所构建的 tensor 只是一个空壳
 
 observations:
 
@@ -53,7 +53,7 @@ data pointer 可以是 nullptr，此时 tensor 只是一个 layout representatio
 
 cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_ptr) 在底层都会转换成普通的 cpu pointer
 
-## Manipualte Tensor
+## Manipualte Tensor Layout
 
 操作 tensor 的方法同样有限，都是对 mode/axis/shape 进行操作，input x 可以是 tensor/layout/shape
 
@@ -144,6 +144,66 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 2. clear
 
 剩下的略微复杂的操作，例如 local_partition axpby 放到具体的方法当中进行整理。另外 `cute::size` 似乎也会经常使用，有时可以直接用 `get` shape 来替代
+
+其他常见的 layout 变换
+
+1. `product_each`
+
+   这其实是一个 tuple algorithm，只能放进去 tuple like shape or stride，无法处理 layout。其功能是将 tuple 内嵌套的 tuple 进行 product reduce（把所有的元素进行相乘）
+
+   > From Claude Code Kimi
+   >
+   > If you have a tuple like (make_tuple(2, 3), make_tuple(4, 5), 6), then:
+   >   - product_each would return (6, 20, 6)
+   >
+   > This function is commonly used in layout operations to compute the total size or stride for each dimension in tensor layouts.
+
+   而 `product` 则更为粗暴，就是把 tuple 中所有的元素进行相乘
+
+2. `tile_to_shape`
+
+   > From Claude Code Kimi
+   >
+   > The tile_to_shape function takes a smaller layout (called a "block" or "layout atom") and repeats/tiles it across a larger target shape, ensuring the final result has exactly the specified target shape.
+   >
+   > Commonly used in shared memory layouts: Take a small swizzled layout atom and tile it across full CTA dimensions
+
+   这是一个高级的 layout product function，能够将基本 layout 元素进行重复，以输出一个 layout 其 shape 为给定 shape。不过使用该函数有一个限制：所有的 shape 都必须是 static，而不能是 dynamic
+
+   ```c++
+   auto tile = make_layout(make_shape(_2{}, _3{}));
+   auto target_shape = make_shape(_4{}, _9{});
+   auto out_layout = tile_to_shape(tile, target_shape);
+   ```
+
+   其中还有第三个输入参数，一般不指定
+
+   ```c++
+     template <class Shape, class Stride, class TrgShape, class ModeOrder = LayoutLeft>
+     CUTE_HOST_DEVICE constexpr
+     auto tile_to_shape(Layout<Shape,Stride> const& block,
+                        TrgShape const& trg_shape,
+                        ModeOrder const& ord_shape = {})
+   ```
+
+   > From Claude Code Kimi
+   >
+   > Key Parameters
+   >
+   >   - block: The layout to repeat/tile (the "layout atom")
+   >   - trg_shape: The target shape you want the final layout to have
+   >   - ord_shape: Optional ordering that specifies which dimensions to tile first (defaults to column-major order)
+
+   code examples
+
+   ```c++
+   auto tile1 = make_layout(make_shape(_2{}, _3{}));
+   auto target_shape = make_shape(_4{}, _9{});
+   auto out_layout1 = tile_to_shape(tile1, target_shape);
+   // ((_2,_2),(_3,_3)):((_1,_6),(_2,_12))
+   auto out_layout2 = tile_to_shape(tile1, target_shape, LayoutRight{});
+   // ((_2,_2),(_3,_3)):((_1,_18),(_2,_6))
+   ```
 
 ## Partition Tensor
 

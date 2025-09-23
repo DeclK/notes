@@ -397,6 +397,8 @@ pip install -e . --no-build-isolation
    2. 设置的 threashold 过高（0.7）
    3. 学习率过大（1e-3），模型效果没有调整到最优
 
+   现在又出现一个新的结果：我使用了更多的数据 (1.8x)，但是没有获得更好的结果，我改变了 batch size (4->2) & eagle3 length (5->7)，最终的 accept length 变化为 (4.8->4.5)。更改 batch size 主要是显存因素考虑，我认为理论上 batch size 应该没有这么大的影响。我把实验配置改回 batch size 4, eagle3 length 5，结果又出奇的好，accept length 为了 5.5。难道 batch size 的力量真的有这么大？还是 eagle3 length 在起作用？还需要补充一个实验 ablation 实验
+
 5. top1 accuracy 不是绝对的指标
 
    训练出来的有的模型虽然第一个 token 的命中 accuracy 不是最高的，但是整体的 accept length 还要更高。还是应当综合考虑
