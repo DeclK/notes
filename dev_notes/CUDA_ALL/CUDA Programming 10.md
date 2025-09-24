@@ -119,7 +119,7 @@ This operation typically follows one of these forms, where matrix `C` serves as 
 
 A notable requirement of WGMMA is that operand `B` must always be stored in shared memory (SMEM). In contrast, operand `A` can be located in either SMEM or register memory (RMEM), and the accumulator `C` is always held in RMEM.
 
-这里提了一个很重要的规则：B 矩阵一定是保存在 shared memory 当中的，而 A 矩阵既可以在 shared memory 也可以在 global memory。累加器 C 必须在 register memory
+这里提了一个很重要的规则：B 矩阵一定是保存在 shared memory 当中的，而 A 矩阵既可以在 shared memory 也可以在 register memory。累加器 C 必须在 register memory
 
 SM90 MMA atoms are then labeled as `SM90_MxNxK_XYZ_SS` or `SM90_MxNxK_XYZ_RS`
 

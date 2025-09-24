@@ -204,6 +204,8 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
    auto out_layout2 = tile_to_shape(tile1, target_shape, LayoutRight{});
    // ((_2,_2),(_3,_3)):((_1,_18),(_2,_6))
    ```
+   
+   除了使用 `LayoutLeft{}` 之外还可以使用 `Step<_1, _2, _3>{}` 来等价，意思是重复的顺序是按照维度的从左到右。`Step<_3, _2, _1>{}` 就等价于 `LayoutRight{}`
 
 ## Partition Tensor
 
