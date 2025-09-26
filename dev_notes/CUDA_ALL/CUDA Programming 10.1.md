@@ -232,6 +232,20 @@ if (warp_group_idx == WarpGroupCnt - 1) {
 
 ## mbarrier & pipeline
 
+在 GEMM 计算中最核心的需求就是打满算力，而打满算力的核心就是高效的流水线，高效流水线的核心则是准确的同步机制。我将在这一小节里讨论如何利用 mbarrier 建立 producer-consumer 流水线模型的同步机制
+
+mbarrier 将分为两类
+
+- full barrier
+
+  维护 shared memory 是否完成写入的状态。如果未完成写入，则 consumer 无法运行
+
+- empty barrier
+
+  维护 shared memory 是否完成计算的状态。如果未完成计算，则 producer 无法运行
+
+对于有 N 个 stage 的流水线来说，就有 N 个 full barrier & empty barrier pair
+
 sync for tma 都是利用 mbarrier & pipeline 完成
 
 能否用相同的 pipeline 思想，在 sm80 中实现？似乎不需要，可以直接使用 wait one in-flight 算法

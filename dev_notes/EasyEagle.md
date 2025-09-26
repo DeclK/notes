@@ -393,11 +393,13 @@ pip install -e . --no-build-isolation
 
    我在一开始的 scaling 实验中得到了错误结论：4x of the data, 3% improved the acc len。其中有三个原因：
 
-   1. 所保存的 checkpoint 处于 loss 的震荡区域，没有完全收敛！这是导致错误结论的最根本原因
+   1. ~~所保存的 checkpoint 处于 loss 的震荡区域，没有完全收敛。这是导致错误结论的最根本原因~~
    2. 设置的 threashold 过高（0.7）
    3. 学习率过大（1e-3），模型效果没有调整到最优
 
-   现在又出现一个新的结果：我使用了更多的数据 (1.8x)，但是没有获得更好的结果，我改变了 batch size (4->2) & eagle3 length (5->7)，最终的 accept length 变化为 (4.8->4.5)。更改 batch size 主要是显存因素考虑，我认为理论上 batch size 应该没有这么大的影响。我把实验配置改回 batch size 4, eagle3 length 5，结果又出奇的好，accept length 为了 5.5。难道 batch size 的力量真的有这么大？还是 eagle3 length 在起作用？还需要补充一个实验 ablation 实验
+   现在又出现一个新的结果：我使用了更多的数据 (1.8x)，但是没有获得更好的结果，我改变了 batch size (4->2) & eagle3 length (5->7)，最终的 accept length 变化为 (4.8->4.5)。更改 batch size 主要是显存因素考虑，我认为理论上 batch size 应该没有这么大的影响。我把实验配置改回 batch size 4, eagle3 length 5，结果又出奇的好，accept length 为了 5.5。经过补充实验排除了 batch size 的影响，影响因素是 length。所以我之前的结论：**保存的 checkpoint 处于 loss 的震荡区域是完全错误的**，实际上是因为我忽略了对比的模型除了 epoch & learning rate 不一样，他们的 eagle3 length 也是不一样的。而做了这么多实验，scaling 的效果都是 length 为 5 的时候展现出来。**所以 scaling 没有出现的根本原因：eagle3 length 太大**
+
+   这里的结论我认为隐藏了更深层的原因，length 并不是越长越好，过长的 length 影响了学习。如果我们能找到这个原因，修改模型的训练方法，使得其能够面对更难的学习目标时，仍然不被影响，并且能够从难的目标中获得合适的反馈，从而提升模型能力
 
 5. top1 accuracy 不是绝对的指标
 

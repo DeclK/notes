@@ -13,9 +13,6 @@ From Linear Algebra to the Essence of Eigen
 
 参考材料：
 
-- [低秩近似之路（二）：SVD](https://www.spaces.ac.cn/archives/10407) 
-- [SVD分解(一)：自编码器与人工智能](https://www.spaces.ac.cn/archives/4208) 
-- [白板机器学习-降维](https://www.bilibili.com/video/BV1aE411o7qd)
 - [线性代数的本质](https://www.3blue1brown.com/topics/linear-algebra)
 
 ## 线性代数的本质
@@ -342,25 +339,169 @@ $$
 
 ## SVD
 
-- 引理1：谱定理
+[低秩近似之路（二）：SVD](https://www.spaces.ac.cn/archives/10407)
 
-  谱定理的几何直觉：
+[SVD分解(一)：自编码器与人工智能](https://www.spaces.ac.cn/archives/4208) 
 
-- 引理2：正交变换不改变矩阵范数
+[白板机器学习-降维](https://www.bilibili.com/video/BV1aE411o7qd)
 
-  直观理解很容易：旋转不改变长度，只改变方向
+### 谱定理
 
-- 证明：SVD 的存在性
+对于任意实对称矩阵 $ \boldsymbol M \in \mathbb{R}^{n \times n}$ 都存在谱分解（也称特征值分解）
+$$
+\boldsymbol{M} = \boldsymbol{U} \boldsymbol{\Lambda} \boldsymbol{U}^\top
+$$
+ 其中 $\boldsymbol U,\boldsymbol{\Lambda} \in \mathbb{R}^{n \times n}$，并且 $\boldsymbol{U}$ 是正交矩阵 $\boldsymbol{\Lambda} = \operatorname{diag}(\lambda_1, \cdots, \lambda_n)$ 是对角矩阵
 
-- 应用1：低秩近似，简易自编码器（最小重构代价）
+谱定理的几何特性：实对称矩阵代表的线性变换会将单位圆缩放为椭圆，椭圆的缩放方向为特征向量，在 [zhihu](https://zhuanlan.zhihu.com/p/1914024366347388318) 中有二维的可视化结果。这说明实对称矩阵的变换没有旋转（rotation），也没有剪切（shear），只有单纯的缩放，因为任何的旋转和剪切效应都会破坏实对称性质
 
-- 应用2：PCA 降维（最大投影方差）
+证明谱定理最简单的方式是数学归纳法。假设对于 $n-1$ 维的实对称矩阵能够被对角化，证明 $n$ 维的实对称矩阵能够被对角化。对于一维的矩阵，显然成立，第一块积木推倒。现在对于实对称矩阵 $ \boldsymbol M \in \mathbb{R}^{n \times n}$，设 $\lambda_1$ 是其一个非零特征值（可以证明实对称矩阵至少有一个特征值），对应的特征向量为 $\boldsymbol{u}_1$。将 $\boldsymbol{u}_1$ 扩展成为一组正交基，其余的基向量为 $\boldsymbol{Q} = (\boldsymbol{q}_2, \ldots, \boldsymbol{q}_n)$
 
-  理解在机器学习的世界里：什么是特征值？什么是特征向量？
-  
-- 从谱定理重新定义特征值与特征向量
+现在将矩阵 $(\boldsymbol u_1, \boldsymbol Q)^\top \boldsymbol M (\boldsymbol u_1,\boldsymbol Q)$ 表示为分块矩阵：
+$$
+(\boldsymbol u_1, \boldsymbol Q)^\top \boldsymbol M (\boldsymbol u_1,\boldsymbol Q) = \begin{pmatrix}
+     \lambda_1 & \boldsymbol{0} \\
+     \boldsymbol{0} & \boldsymbol{B}
+     \end{pmatrix}
+$$
+其中 $\boldsymbol B=\boldsymbol Q^\top \boldsymbol M \boldsymbol Q$，是一个 $n-1$ 维的实对称矩阵。根据数学归纳假设，该矩阵可以被对角化，所以将其表示为 $\boldsymbol{B} = \boldsymbol{V} \boldsymbol{\Lambda}_1 \boldsymbol{V}^\top$，其中 $\boldsymbol V$ 是 $n-1$ 维的正交矩阵，通过将 $\boldsymbol B$ 展开，然后把 $\boldsymbol V$ 移到左侧可得到
+$$
+(\boldsymbol Q \boldsymbol V)^\top \boldsymbol M (\boldsymbol Q \boldsymbol V) = \boldsymbol{\Lambda}_1
+$$
+于是乎，我们可以得到
+$$
+(\boldsymbol u_1, \boldsymbol Q \boldsymbol V)^\top \boldsymbol M (\boldsymbol u_1,\boldsymbol Q \boldsymbol V) = \begin{pmatrix}
+     \lambda_1 & \boldsymbol{0} \\
+     \boldsymbol{0} & \boldsymbol{\Lambda_1}
+     \end{pmatrix}
+$$
+此时我们就证明了 n 维实对称矩阵也是可以被对角化的
 
-  存在一组正交的向量，他们在经过线性变换之后仍然是正交的，而变换过后的特征向量的伸缩尺度即为特征值。这些特征值就是矩阵的谱
+### SVD 的存在性证明
+
+有了谱定理过后能够比较轻松地证明 SVD 存在性。为了更符合机器学习的习惯，我这里用 $\boldsymbol M \in \mathbb{R}^{n \times k}$ 来表示，其中可以理解为 $n$ 数据的数量，而 $k$ 则表示数据的维度，这个 notation 在之后讨论 PCA 的时候也会使用。现在我们先拿出 SVD 的结论：
+
+对于任意矩阵 $\boldsymbol M \in \mathbb{R}^{n \times k}$，都可以找到如下形式的奇异值分解（SVD，Singular Value Decomposition）
+$$
+\boldsymbol M=\boldsymbol U \boldsymbol \Sigma \boldsymbol V^\top
+$$
+其中 $\boldsymbol U \in \mathbb R^{n\times n}, \boldsymbol V\in \mathbb R^{k\times k}$ 都是正交矩阵，$\boldsymbol\Sigma \in \mathbb R^{n\times k}$ 是非负对角阵
+$$
+\boldsymbol{\Sigma}_{i, j}=\left\{\begin{array}{ll}
+\sigma_{i}, & i=j \\
+0, & i \neq j
+\end{array}\right.
+$$
+并且对角线元素从大到小排布：$\sigma_1\ge \sigma_2 \ge \sigma_3\ge...\ge0$，这些对角线元素就称为奇异值
+
+在证明 SVD 的存在性之前，可以直观推倒：如果矩阵是一个实对称矩阵，那么 SVD 结论就退化成为谱定理，即：谱定理是 SVD 中的特例情况。但事实还要更有趣一点，谱定理和 SVD 可以有更复杂的互动：我们可以简单地构造实对称矩阵 $\boldsymbol M^\top \boldsymbol M $ 或者 $\boldsymbol M \boldsymbol M^\top$，这样的矩阵就符合谱定理。而如果我们将 SVD 的结论带入到上面构造的对称矩阵当中
+$$
+\boldsymbol{M}\boldsymbol{M}^{\top}=\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}\boldsymbol{V}\boldsymbol{\Sigma}^{\top}\boldsymbol{U}^{\top}=\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{\Sigma}^{\top}\boldsymbol{U}^{\top}\\
+\boldsymbol{M}^{\top}\boldsymbol{M}=\boldsymbol{V}\boldsymbol{\Sigma}^{\top}\boldsymbol{U}^{\top}\boldsymbol{U}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}=\boldsymbol{V}\boldsymbol{\Sigma}^{\top}\boldsymbol{\Sigma}\boldsymbol{V}^{\top}
+$$
+有趣的事情发生了，我们直接得到了 $\boldsymbol{M}\boldsymbol{M}^{\top}$ 和 $\boldsymbol{M}^{\top}\boldsymbol{M}$ 的谱分解结果！换句话说：SVD 分解中的 $\boldsymbol U, \boldsymbol V, \boldsymbol \Sigma$ 其实就是谱分解中对应的特征向量、特征值的平方根
+
+其实以上互动也给我们证明 SVD 的存在性提供了很好的方向：从某一个实对称矩阵的谱分解出发（e.g. $\boldsymbol{M}^{\top}\boldsymbol{M}$），获得其特征向量（e.g. $\boldsymbol V$），利用 SVD 的形式直接构造出另外一组向量 $\boldsymbol U$，我们只需要证明这一组向量是相互正交的，即可证明 SVD 的存在性
+
+我们设 $\boldsymbol{M}^{\top}\boldsymbol{M}$ 的谱分解为 $\boldsymbol{M}^{\top}\boldsymbol{M} =\boldsymbol V \boldsymbol \Lambda\boldsymbol V^\top$，并且不失一般性设 $\boldsymbol M$ 的 rank 为 $r$，$\boldsymbol \Lambda$ 的特征值排列为降序排列，并且由于 $\boldsymbol{M}^{\top}\boldsymbol{M}$ 是半正定矩阵，其特征值都为非负数
+
+OK，一切准备就绪，开始构造 $\boldsymbol U$
+$$
+\boldsymbol{\Sigma}_{[:r,:r]}=(\boldsymbol{\Lambda}_{[:r,:r]})^{1/2},\quad \boldsymbol U_{[:n,:r]}=\boldsymbol M\boldsymbol V_{[:k,:r]}\boldsymbol{\Sigma}_{[:r,:r]}^{-1}
+$$
+由于 rank 的限制，只构造了 $r$ 个向量。现在我们来证明这 r 个向量是相互正交的
+$$
+\begin{aligned}
+\boldsymbol{U}_{[:n,:r]}^{\top}\boldsymbol{U}_{[:n,:r]} & =\boldsymbol{\Sigma}_{[:r,:r]}^{-1}\boldsymbol{V}_{[:k,:r]}^{\top}\boldsymbol{M}^{\top}\boldsymbol{M}\boldsymbol{V}_{[:k,:r]}\boldsymbol{\Sigma}_{[:r,:r]}^{-1} \\
+& =\boldsymbol{\Sigma}_{[:r,:r]}^{-1}\boldsymbol{V}_{[:k,:r]}^{\top}\boldsymbol{V}\boldsymbol{\Lambda}\boldsymbol{V}^{\top}\boldsymbol{V}_{[:k,:r]}\boldsymbol{\Sigma}_{[:r,:r]}^{-1} \\
+& =\boldsymbol{\Sigma}_{[:r,:r]}^{-1}\boldsymbol{I}_{[:r,:k]}\boldsymbol{\Lambda}\boldsymbol{I}_{[:k,:r]}\boldsymbol{\Sigma}_{[:r,:r]}^{-1} \\
+& =\boldsymbol{\Sigma}_{[:r,:r]}^{-1}\boldsymbol{\Lambda}_{[:r,:r]}\boldsymbol{\Sigma}_{[:r,:r]}^{-1} \\
+& =\boldsymbol{I}_{r}
+\end{aligned}
+$$
+可以看到，基于谱分解的结论，很快就消除了各个部分，得到了正交结论。此时可以直接把 $\boldsymbol U_{[:n,:r]}$ 扩充成为完整的正交基即可得到完成的 $\boldsymbol U$ 矩阵。但是我们其实还没有直接证明 SVD 的存在，因为不管是我们构造的 $\boldsymbol U_{[:n,:r]}$ 还是扩充的 $\boldsymbol U$ 都没有直接地以 SVD 的形式给出，$\boldsymbol M$ 始终在等式的右侧并且与其他矩阵相乘。不过我们现在手上的材料足够多，要直接证明 SVD 的形式已经不难了
+
+我们首先从未扩充版本的 SVD 形式开始推，直接带入我们之前的 $\boldsymbol U_{[:n,:r]}$ 结论
+$$
+\boldsymbol{U}_{[:n,:r]}\boldsymbol{\Sigma}_{[:r,:r]}\boldsymbol{V}_{[:k,:r]}^{\top}=\boldsymbol{M}\boldsymbol{V}_{[:k,:r]}\boldsymbol{\Sigma}_{[:r,:r]}^{-1}\boldsymbol{\Sigma}_{[:r,:r]}\boldsymbol{V}_{[:k,:r]}^{\top}=\boldsymbol{M}\boldsymbol{V}_{[:k,:r]}\boldsymbol{V}_{[:k,:r]}^{\top}
+$$
+现在只需要证明 $\boldsymbol{M}\boldsymbol{V}_{[:k,:r]}\boldsymbol{V}_{[:k,:r]}^{\top} = \boldsymbol M$ 然后扩充我们的结论为完整的 SVD 即可
+$$
+\begin{aligned}
+\boldsymbol{M} & = \boldsymbol{M} \boldsymbol{V} \boldsymbol{V}^{\top} \\
+  & = \begin{pmatrix} \boldsymbol{M} \boldsymbol{V}_{[:k,:r]} & \boldsymbol{M} \boldsymbol{V}_{[:k, r:]} \end{pmatrix} \begin{pmatrix} \boldsymbol{V}_{[:k,:r]}^{\top} \\ \boldsymbol{V}_{[:k, r:]}^{\top} \end{pmatrix} \\
+  & = \begin{pmatrix} \boldsymbol{M} \boldsymbol{V}_{[:k,:r]} & \boldsymbol{0}_{k \times (k-r)} \end{pmatrix} \begin{pmatrix} \boldsymbol{V}_{[:k,:r]}^{\top} \\ \boldsymbol{V}_{[:k, r:]}^{\top} \end{pmatrix} \\
+  & = \boldsymbol{M} \boldsymbol{V}_{[:k,:r]} \boldsymbol{V}_{[:k,:r]}^{\top}
+\end{aligned}
+$$
+上述证明的关键就是在第三个等式，利用了特征值为0的特征向量的性质：$\boldsymbol M \boldsymbol v_i=0$
+
+最后将 $\boldsymbol{U}_{[:n,:r]}\boldsymbol{\Sigma}_{[:r,:r]}\boldsymbol{V}_{[:k,:r]}^{\top}=\boldsymbol M$ 进行扩充，即可得到完整的 SVD 形式
+$$
+\boldsymbol M=\boldsymbol U \boldsymbol \Sigma \boldsymbol V^\top
+$$
+
+### 降维
+
+废了不少劲证明了 SVD 的存在性，但是还是没体会到其妙处。现在我们通过机器学习中的降维为例子，来一探 SVD 的妙处。参考 [zhihu-白板机器学习-降维](https://zhuanlan.zhihu.com/p/326074168)
+
+首先我们可能希望了解：我们为什么需要降维？我们从一个高维的反直觉思维开始：在高维当中单位球体的体积趋近于 0，而单位立方体的体积永远都是1，高维球体体积的计算公式如下：
+$$
+V_n = \frac{\pi^{n/2}}{\Gamma(n/2+1)}
+$$
+分母伽马函数的增长速度远超分子，所以随着维度的增加，体积迅速减少。这体现了高维空间的数据稀疏性。稀疏性的本质来源于维度灾难，这里有另一个直观的解释
+
+> From DeepSeek
+>
+> 1. **一维空间（一条线）**：
+>
+>    假设我们有一条长度为1米的线段。我们在这条线上均匀地撒上100个点。这些点会非常密集，相邻点之间的距离大约是1厘米。空间感觉很“满”。
+>
+> 2. **二维空间（一个正方形）**：
+>
+>    现在，我们扩展到一个1米 x 1米的正方形平面。为了保持和线上同样的“密度”（即单位面积内的点数），我们需要多少点？我们需要 10,000 个点！因为现在点不仅要覆盖长度，还要覆盖宽度。如果还是只有100个点，它们在这个平面上就会显得非常稀疏、孤零零的。
+>
+> 3. **三维空间（一个立方体）**：
+>
+>    再进一步，到一个1米 x 1米 x 1米的立方体。要保持同样的密度，我们需 1,000,000 个点！如果还是只有100个点，那么这些点就像宇宙中寥寥无几的星星，彼此之间的距离非常遥远。
+
+球壳上的体积变得异常的大，你可以想象将多维球壳向外扩展 10%，将会带来体积的爆炸性增长，这就是因为每一个维度都要向前扩展 10% 形成了维度灾难，此时增加的球壳体积会远远超过球体的体积
+
+维度灾难带来的部分挑战：
+
+1. 距离度量失效：高维空间中的各个点的距离都差不多（e.g. 数据都集中在球壳上，距离原点的距离都是一样的），导致了以距离为基础的机器学习方法直接失效（KNN、聚类）
+2. 采样困难：在高维空间中的采样随着维度增加指数上升
+
+所以降维能够带来计算和度量上的便利，并且我们常常希望找到事物中的核心影响因素，保留最重要的维度，所以降维的好处是不言而喻的。不过我觉得仍要从两面性来看待维度灾难：
+
+1. 希望简化计算复杂度时，使用降维能够极其有效地带来收益
+2. 希望增加模型能力/容量时，利用维度的上升也可带来模型容量的快速提升
+
+#### 最大投影方差
+
+PCA 降维的核心思想在于：对原始特征空间的重构，利用一组新的正交基来
+
+PCA 降维
+
+理解在机器学习的世界里：什么是特征值？什么是特征向量？
+
+#### 最小重构代价
+
+低秩近似，简易自编码器（最小重构代价）
+
+#### SVD 与降维
+
+
+
+### Review Eigen
+
+从变换角度来看特征值和特征向量
+
+存在一组正交的向量，他们在经过线性变换之后仍然是正交的，而变换过后的特征向量的伸缩尺度即为特征值。这些特征值就是矩阵的谱
+
+从优化角度来看特征值和特征向量
+
+如何理解 $\boldsymbol M^\top \boldsymbol M$ 和 $\boldsymbol M \boldsymbol M^\top$ 具有相同的特征值
 
 ## Question
 
@@ -381,3 +522,5 @@ $$
   [浅谈神经网络中激活函数的设计](https://spaces.ac.cn/archives/4647)
 
   [梯度下降和EM算法](https://www.spaces.ac.cn/archives/4277)
+  
+- 矩阵分块与矩阵求导的基础
