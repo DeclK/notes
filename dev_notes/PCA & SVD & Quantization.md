@@ -443,7 +443,9 @@ $$
 
 ### 降维
 
-废了不少劲证明了 SVD 的存在性，但是还是没体会到其妙处。现在我们通过机器学习中的降维为例子，来一探 SVD 的妙处。参考 [zhihu-白板机器学习-降维](https://zhuanlan.zhihu.com/p/326074168)
+废了不少劲证明了 SVD 的存在性，但是还是没体会到其妙处。现在我们通过机器学习中的降维为例子，来一探 SVD 的妙处。
+
+参考 [zhihu-白板机器学习-降维](https://zhuanlan.zhihu.com/p/326074168)
 
 首先我们可能希望了解：我们为什么需要降维？我们从一个高维的反直觉思维开始：在高维当中单位球体的体积趋近于 0，而单位立方体的体积永远都是1，高维球体体积的计算公式如下：
 $$
@@ -479,29 +481,103 @@ $$
 
 #### 最大投影方差
 
-PCA 降维的核心思想在于：对原始特征空间的重构，利用一组新的正交基来
+最大投影方差的思路是：寻找一个方向，数据点在该方向上的投影方差最大（i.e. 该方向是最能区分数据之间差别的方向）。接下来做一些 Notation：
 
-PCA 降维
+1. 数据样本 $X \in \mathbb R^{n\times k}$，数据样本个数为 $n$，维度为 $k$
 
-理解在机器学习的世界里：什么是特征值？什么是特征向量？
+2. 中心矩阵 $H \in \mathbb R^{n\times n}$，其作用是将数据进行中心化，等价于 `X - torch.mean(X, dim=0, keep_dim=True)`
+   $$
+   H = I_n - \frac{1}{n}1_n1_n^\top
+   $$
+   其中 $1_n$ 为一个全 1 的向量 $1_n \in \mathbb R^{n\times1}$。中心化过后的数据样本即为 $HX = X-\overline X$。中心矩阵有两个常用的性质 $H^T=H$，$H^2=H$，其中第二个性质也比较好理解：对中心化过后的数据再做中心化是不变的
+
+3. 数据的方差矩阵 $S \in \mathbb R^{k\times k}$表示
+   $$
+   S=(X-\overline X)^\top(X-\overline X)=(HX)^\top(HX)=X^\top H X
+   $$
+   真正的方差就是求对 $S$ 求和，然后除以样本个数
+
+4. 
+
+接下来可以直接根据思路写出优化目标：投影的方差最小。我们先写出投影的方差矩阵
+$$
+L=(Xu)^TH(Xu)=u^\top X^\top H Xu=u^\top Su
+$$
+接着可以写出优化目标，找到最优的方向 $u$ 使得方差最大
+$$
+L=\operatorname*{argmax}_{u} u^{T}Su \\ \text{s.t.} \ u^{T}u=1
+$$
+解这个方法直接用 lagrange 乘子法
+$$
+Lagrange(u, \lambda) = u^{T} S u + \lambda(1 - u^{T} u) \\
+\frac{\partial L}{\partial u} = 2 S u - 2 \lambda u = 0 \\
+S u = \lambda u
+$$
+**最终发现，我们要找到的 $u$ 就是矩阵 $S$ 的特征向量，$\lambda$ 就是对应的特征值！此时最优的 $L=\lambda$，那么我们就选择特征值最大的特征向量即可**。此时我们可以根据特征值的大小，选择最重要的 topk 个特征向量作为投影方向
 
 #### 最小重构代价
 
-低秩近似，简易自编码器（最小重构代价）
+我认为最小重构代价更为直观一点，更能贴合我们降维的目的：维度降低，但是信息量减少最少。在 [zhihu-白板机器学习-降维](https://zhuanlan.zhihu.com/p/326074168) 中使用了构造一个正交基的方法来证明最小重构代价，最后只需要放弃特征值最小的特征向量即可。这里我整理我自己的思路，最终推导出和最大投影方差相同的结论
+
+我同样聚焦于一个向量：把（已中心化）数据投影到向量上 $u$，计算得到投影过后的新数据坐标，要求新数据与原始数据的 F-范数最小
+$$
+L=\operatorname*{argmin}_u ||X-(Xu)u^\top||_F^2
+$$
+接下来的证明求助了 DeepSeek，我自己是没证出来的，其中运用了 trace 的性质
+
+> From DeepSeek
+>
+> 由于Frobenius范数的平方等于矩阵迹的形式，有：
+> $$
+> J(\mathbf{u}) = \operatorname{tr} \left( (\mathbf{X} - \mathbf{X} \mathbf{u} \mathbf{u}^T)^T (\mathbf{X} - \mathbf{X} \mathbf{u} \mathbf{u}^T) \right)
+> $$
+> 展开括号内的表达式
+> $$
+> (\mathbf{X} - \mathbf{X} \mathbf{u} \mathbf{u}^T)^T (\mathbf{X} - \mathbf{X} \mathbf{u} \mathbf{u}^T) = \mathbf{X}^T \mathbf{X} - \mathbf{X}^T \mathbf{X} \mathbf{u} \mathbf{u}^T - \mathbf{u} \mathbf{u}^T \mathbf{X}^T \mathbf{X} + \mathbf{u} \mathbf{u}^T \mathbf{X}^T \mathbf{X} \mathbf{u} \mathbf{u}^T
+> $$
+> 令 $\mathbf{S} = \mathbf{X}^T \mathbf{X}$，带入上式得到
+> $$
+> J(\mathbf{u}) = \operatorname{tr} \left( \mathbf{S} - \mathbf{S} \mathbf{u} \mathbf{u}^T - \mathbf{u} \mathbf{u}^T \mathbf{S} + \mathbf{u} \mathbf{u}^T \mathbf{S} \mathbf{u} \mathbf{u}^T \right)
+> $$
+> 由 trace 性质可以将其展开 [wiki-trace](https://en.wikipedia.org/wiki/Trace_(linear_algebra)) 为四项
+>
+> - $\operatorname{tr}(\mathbf{S})$ 是常数，与 $\mathbf{u}$ 无关。
+> - $\operatorname{tr}(\mathbf{S} \mathbf{u} \mathbf{u}^T) = \operatorname{tr}(\mathbf{u}^T \mathbf{S} \mathbf{u}) = \mathbf{u}^T \mathbf{S} \mathbf{u}$（因为 $\mathbf{u}^T \mathbf{S} \mathbf{u}$ 是标量）。参考 [wiki-trace](https://en.wikipedia.org/wiki/Trace_(linear_algebra)) 有性质：$\operatorname tr(AB)=\operatorname tr(BA)$
+> - $\operatorname{tr}(\mathbf{u} \mathbf{u}^T \mathbf{S}) = \operatorname{tr}(\mathbf{u}^T \mathbf{S} \mathbf{u}) = \mathbf{u}^T \mathbf{S} \mathbf{u}$。
+> - $\operatorname{tr}(\mathbf{u} \mathbf{u}^T \mathbf{S} \mathbf{u} \mathbf{u}^T)$：注意 $\mathbf{u}^T \mathbf{S} \mathbf{u}$ 是标量，记为 $c$，则 $\mathbf{u} \mathbf{u}^T \mathbf{S} \mathbf{u} \mathbf{u}^T = c \mathbf{u} \mathbf{u}^T$，所以 $\operatorname{tr}(c \mathbf{u} \mathbf{u}^T) = c \operatorname{tr}(\mathbf{u} \mathbf{u}^T) = c \mathbf{u}^T \mathbf{u} = c$（因为 $\mathbf{u}^T \mathbf{u} = 1$）。因此，这一项也是 $\mathbf{u}^T \mathbf{S} \mathbf{u}$.
+>
+> 所以整个优化方程化简为：
+> $$
+> J(\mathbf{u}) = \operatorname{tr}(\mathbf{S}) - \mathbf{u}^T \mathbf{S} \mathbf{u} - \mathbf{u}^T \mathbf{S} \mathbf{u} + \mathbf{u}^T \mathbf{S} \mathbf{u} = \operatorname{tr}(\mathbf{S}) - \mathbf{u}^T \mathbf{S} \mathbf{u}
+> $$
+> 由于第一项为常数，所以最终的优化目标变为
+> $$
+> J(\mathbf{u}) = \operatorname*{argmin}_u- \mathbf{u}^T \mathbf{S} \mathbf{u}
+> $$
+
+把优化目标再一转换，马上就得到了和最大投影方差相同的结论。我们只要选择特征值最大的特征向量，就能够最好地减少重构前后矩阵的误差
 
 #### SVD 与降维
 
+OK，又绕了一大圈，讲了降维。那么 SVD 与降维之间有什么关系？现在提出 intuition：**对数据做 SVD 就是在对其进行降维**。可以看到 SVD 当中的特征向量矩阵 $\boldsymbol V$，其实就是 $\boldsymbol{M}^{\top}\boldsymbol{M}$ 的特征向量矩阵，而如果我们把 $\boldsymbol M \in \mathbb R^{n\times k}$ 看做中心化过后的数据 $X \in \mathbb R^{n\times k}$，**此时 $\boldsymbol V$ 就是 PCA 中一直寻找的主成分！**而 $\boldsymbol U \boldsymbol \Sigma$ 就是投影过后的坐标，因为 $\boldsymbol M \boldsymbol V =\boldsymbol U \boldsymbol \Sigma$。另外由于矩阵 $\boldsymbol U$ 的正交性，其坐标向量是相互正交的
 
+#### SVD 与低秩近似
 
-### Review Eigen
+TODO：**Eckart-Young-Mirsky定理**对 F-范数的证明，这其中需要对矩阵求导有一定的熟悉性 [低秩近似之路（一）：伪逆](https://spaces.ac.cn/archives/10366)。虽然通过以上降维的论证，我们知道如何计算主成分，但是低秩近似的证明与降维当中的优化目标并不一样，不过神奇的是二者的答案都指向了 SVD。**这更一步加深了 SVD 与低秩相关的 intuition**
 
-从变换角度来看特征值和特征向量
+同时在 [SVD分解(一)：自编码器与人工智能](https://www.spaces.ac.cn/archives/4208)  提到了一种观点：SVD 与自编码器的定价性。优化一个没有激活函数的3层 MLP，等价于 SVD 的求解
+$$
+M_{m\times n}≈M_{m\times n}C_{n\times r}D_{r\times n}
+$$
+而进行 SVD 分解可以得到，此时的最优性是有保证的
+$$
+M_{m\times n}≈U_{m\times r} \Sigma_{r\times r} V_{n\times r}^T
+$$
+如果我们利用反向传播去优化矩阵 $C_{n\times r}$ 和 $D_{r\times n}$ 最终的结果一定会收敛于 $M_{m\times n}C_{n\times r}=U_{m\times r} \Sigma_{r\times r}$，以及 $D_{r\times n}= V_{n\times r}^T$
 
-存在一组正交的向量，他们在经过线性变换之后仍然是正交的，而变换过后的特征向量的伸缩尺度即为特征值。这些特征值就是矩阵的谱
+**Review Eigen & Eigen Value**
 
-从优化角度来看特征值和特征向量
-
-如何理解 $\boldsymbol M^\top \boldsymbol M$ 和 $\boldsymbol M \boldsymbol M^\top$ 具有相同的特征值
+从以上的分析中，我们其实并没有刻意地去寻找特征向量，而特征值和特征向量的形式，非常自然地从我们的推导之中出现了。这意味着特征值和特征向量在最优化中是具有显著的意义的。而“特征”一词的意义，在其中显得更加明显：如果我们选择这些特征值大的特征向量，对矩阵进行重构，那么重构前后矩阵的信息获得了最优的保留，也就是说：我们保留了矩阵的“特征”。
 
 ## Question
 
@@ -524,3 +600,5 @@ PCA 降维
   [梯度下降和EM算法](https://www.spaces.ac.cn/archives/4277)
   
 - 矩阵分块与矩阵求导的基础
+
+  [矩阵求导术-上](https://zhuanlan.zhihu.com/p/24709748) 我应该在研究生时期就看过这一篇，不过当时完全没看明白
