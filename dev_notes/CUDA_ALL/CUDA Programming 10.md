@@ -494,6 +494,10 @@ warp specialization 的代码其实很简单，就是一个 if-else 分支
 >
 > - **设计合理性**：虽有效率牺牲，但通过寄存器资源再分配 (dealloc & alloc) 和简化同步，整体收益为正。这在内存受限的 GEMM 内核中尤为关键。
 
+Named Barrier 有什么作用？
+
+在 [StackOverflow](https://stackoverflow.com/questions/53662484/cuda-how-to-use-barrier-sync) 中有了回答，可以认为 barrier 是一个计数的围栏，当抵达这个围栏的线程数量到达规定数量时，这个 barrier 才会放行。在 Hopper Gemm 当中可以作为 warp groups 内的 sync
+
 ## Main Functions
 
 有几个关键的组成部分

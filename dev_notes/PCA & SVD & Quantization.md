@@ -1,4 +1,4 @@
-# PCA & SVD & Quantization
+# Linear Algebra: PCA & SVD
 
 From Linear Algebra to the Essence of Eigen
 
@@ -9,11 +9,7 @@ From Linear Algebra to the Essence of Eigen
 3. 特征向量与基之间有什么关系？
 4. 特征向量在实际应用中会有什么用处？
 
-能否从特征向量出发，完成对 SVD 的代数&几何理解。然后从 PCA 出发，发现 SVD 与特征的实际含义。最后再利用 SVD 的特性来说明其在模型量化当中的应用 [SVDQuant](https://arxiv.org/abs/2411.05007)
-
-参考材料：
-
-- [线性代数的本质](https://www.3blue1brown.com/topics/linear-algebra)
+希望在这篇笔记过后，能够有一些 intuition 的建立：SVD 与降维之间有着显著的关联，特征向量可以是数据的主成分
 
 ## 线性代数的本质
 
@@ -563,7 +559,52 @@ OK，又绕了一大圈，讲了降维。那么 SVD 与降维之间有什么关�
 
 #### SVD 与低秩近似
 
-TODO：**Eckart-Young-Mirsky定理**对 F-范数的证明，这其中需要对矩阵求导有一定的熟悉性 [低秩近似之路（一）：伪逆](https://spaces.ac.cn/archives/10366)。虽然通过以上降维的论证，我们知道如何计算主成分，但是低秩近似的证明与降维当中的优化目标并不一样，不过神奇的是二者的答案都指向了 SVD。**这更一步加深了 SVD 与低秩相关的 intuition**
+虽然通过以上降维的论证，我们知道如何计算主成分，但是低秩近似的证明与降维当中的优化目标并不一样，不过神奇的是二者的答案都指向了 SVD。**这更一步加深了 SVD 与低秩相关的 intuition是**
+
+定义低秩近似的优化问题：
+$$
+\underset{A,B}{argmin}\|AB-M\|_{F}^{2}
+$$
+其中 $A\in\mathbb{R}^{n\times r},B\in\mathbb{R}^{r\times m},M\in\mathbb{R}^{n\times m},r<\min(n,m)$，说白了，这就是要寻找矩阵 $ M $的“最优 $ r $ 秩近似”。这里直接给出结论，最优解和最小值分别为
+$$
+A=U\Sigma,B=V^T\\
+\min_{A,B}|AB-M\|_{F}^{2}=\sum_{i=1}^r{\sigma_i^2}
+$$
+其中 $U,\Sigma,V,\sigma$ 就是 $M$ 的奇异值分解中对应的各个矩阵和奇异值，为了满足 rank 的要求，我们只取前 $r$ 个特征值/特征向量即可，即：$U\in \mathbb R^{n\times r}, \Sigma \in \mathbb R^{r\times r}, V \in \mathbb R^{m\times r}$。注意：该解为最优解之一，不保证唯一性，可能存在其他矩阵也能达到最小值
+
+这一节本质就是对 **Eckart-Young-Mirsky定理** 的在F-范数下的证明。在这个过程中也自然地引出了伪逆的定义。证明过程还是比较复杂，这里我只简单记录两个知识点
+
+1. Moore-Penrose 伪逆的定义，[低秩近似之路（一）：伪逆](https://spaces.ac.cn/archives/10366)
+
+   伪逆定义的出发点其实是寻找最优解
+   $$
+   \underset{B}{argmin}\|AB-I\|_{F}^{2}
+   $$
+   通过矩阵求导的方式最终我们可以推理得到
+   $$
+   A^\dagger = \lim_{\epsilon\to0} (A^\top A + \epsilon I_r)^{-1} A^\top
+   $$
+   如果 $A^\top A$ 可逆，可以证明伪逆等价于 $A^{-1}$。不过这个形式有点难看，因为有极限的存在，该极限保证了可逆操作的合法性。实际上我们可以利用谱分解写一个更好看的形式，首先我们有谱分解
+   $$
+   A^TA=U\Lambda U^\top
+   $$
+   带入到伪逆公式当中
+   $$
+   \begin{aligned} \left(\boldsymbol{A}^{\top} \boldsymbol{A}+\epsilon \boldsymbol{I}_{r}\right)^{-1} \boldsymbol{A}^{\top} & =\left(\boldsymbol{U} \boldsymbol{\Lambda} \boldsymbol{U}^{\top}+\epsilon \boldsymbol{I}_{r}\right)^{-1} \boldsymbol{A}^{\top} \\ & =\left[\boldsymbol{U}\left(\boldsymbol{\Lambda}+\epsilon \boldsymbol{I}_{r}\right) \boldsymbol{U}^{\top}\right]^{-1} \boldsymbol{A}^{\top} \\ & =\boldsymbol{U}\left(\boldsymbol{\Lambda}+\epsilon \boldsymbol{I}_{r}\right)^{-1} \boldsymbol{U}^{\top} \boldsymbol{A}^{\top} \end{aligned}
+   $$
+   可以看到，这里的可逆符号转移仅作用于对角矩阵，不过由于 $UA$ 矩阵在 rank > r 过后的向量也全部为零（可由 $(UA)^T(UA)=\Lambda$ 证明），所以把可逆矩阵中的零分之一的情况完全抵消（零乘以任何数都是零），所以直接把极限给拿掉得到形式
+   $$
+   A^\dagger =  U\Lambda^{-1} U^\top A^\top
+   $$
+   现在有了 SVD 分解，我们可以把 $UA$ 也简化表达。注意上面讨论的所有 $U$ 其实是 SVD 分解中的 $V$，而我们下面所写的式子按照 $A=U\Sigma V^\top$ 来写伪逆形式：
+   $$
+   A^\dagger =  V\Sigma^\dagger U^\top
+   $$
+   其中 $\Sigma^\dagger$ 就是 $\Sigma$ 中的非零元素取倒数然后转置
+
+2. 单位正交矩阵不改变矩阵范数
+
+   这很好理解：旋转不改变长度。也可以通过 trace 性质轻松证明
 
 同时在 [SVD分解(一)：自编码器与人工智能](https://www.spaces.ac.cn/archives/4208)  提到了一种观点：SVD 与自编码器的定价性。优化一个没有激活函数的3层 MLP，等价于 SVD 的求解
 $$
@@ -573,11 +614,11 @@ $$
 $$
 M_{m\times n}≈U_{m\times r} \Sigma_{r\times r} V_{n\times r}^T
 $$
-如果我们利用反向传播去优化矩阵 $C_{n\times r}$ 和 $D_{r\times n}$ 最终的结果一定会收敛于 $M_{m\times n}C_{n\times r}=U_{m\times r} \Sigma_{r\times r}$，以及 $D_{r\times n}= V_{n\times r}^T$
+如果我们利用反向传播去优化矩阵 $C_{n\times r}$ 和 $D_{r\times n}$ 最终的估计误差一定会收敛于 SVD 分解结果的估计误差，在此可以“近似”地认为：$M_{m\times n}C_{n\times r}=U_{m\times r} \Sigma_{r\times r}$，以及 $D_{r\times n}= V_{n\times r}^T$
 
 **Review Eigen & Eigen Value**
 
-从以上的分析中，我们其实并没有刻意地去寻找特征向量，而特征值和特征向量的形式，非常自然地从我们的推导之中出现了。这意味着特征值和特征向量在最优化中是具有显著的意义的。而“特征”一词的意义，在其中显得更加明显：如果我们选择这些特征值大的特征向量，对矩阵进行重构，那么重构前后矩阵的信息获得了最优的保留，也就是说：我们保留了矩阵的“特征”。
+从以上的分析中，我们其实并没有刻意地去寻找特征向量，而特征值和特征向量的形式，非常自然地从我们的推导之中出现了。这意味着特征值和特征向量在最优化中是具有显著的意义的。而“特征”一词的意义，在其中显得更加明显：如果我们选择这些特征值大的特征向量，对矩阵进行重构，那么重构前后矩阵的信息获得了最优的保留，也就是说：我们保留了矩阵的“特征”
 
 ## Question
 
@@ -601,4 +642,94 @@ $$
   
 - 矩阵分块与矩阵求导的基础
 
-  [矩阵求导术-上](https://zhuanlan.zhihu.com/p/24709748) 我应该在研究生时期就看过这一篇，不过当时完全没看明白
+  [矩阵求导术-上](https://zhuanlan.zhihu.com/p/24709748) 我应该在研究生时期就看过这一篇，不过当时完全没看明白。当我接触了过一些 trace 相关的技巧后，再来看感觉轻松很多，很多思想都非常值得学习，而且配合了不少例子，绝对是一篇不可多得的高质量博客。**这里仅讨论标量对矩阵的求导，不讨论向量/矩阵对矩阵的求导。**矩阵对矩阵的求导遵循另外的求导法则
+  
+  向量对矩阵求导从形式上来说非常简单，就是对每一个元素逐个求导，最后形成矩阵
+  $$
+  \frac{\partial f}{\partial X}=\left[\frac{\partial f}{\partial X_{ij}}\right]
+  $$
+  然而，这个定义在计算中并不好用，实用上的原因是对函数较复杂的情形难以逐元素求导；哲理上的原因是逐元素求导破坏了**整体性**。所以我们希望在求导时不拆开矩阵，而是直接通过矩阵运算，从整体出发推导出结果。首先我们复习一下一元微分和多元微分
+  $$
+  df = f'(x)dx\\
+  df = \sum_{i=1}^{n} \frac{\partial f}{\partial x_i} dx_i = \frac{\partial f}{\partial x}^T d\boldsymbol{x}
+  $$
+  多元微分中，我们可以把其看待成为导数与微分之间的内积。现在我们来看矩阵微分
+  $$
+  df = \sum_{i=1}^{m} \sum_{j=1}^{n} \frac{\partial f}{\partial X_{ij}} dX_{ij} = \operatorname{tr} \left( \frac{\partial f}{\partial X}^T dX \right)
+  $$
+  我们把矩阵微分也用矩阵乘法 + trace 的形式表达出来了。其中使用了一个非常重要的 trace trick：$\sum_{i,j} A_{ij}B_{ij}=\operatorname {tr}(A^TB)$，可以看到 trace 在矩阵求导的过程中是非常常见的形式，所以会频繁使用到一些 trace trick，所以掌握常用的 trace trick 是非常有必要的（好在这些 trick 都不是很复杂，也很好理解）
+  
+  在进行矩阵求导之前，回顾我们是如何对一元函数求导的：我们首先建立了初等函数的求导结果、推导出求导的四则运算、建立复合函数的求导法则（i.e. 链式求导法则），通过利用链式求导法则和四则运算法则将函数求导进行逐渐的拆分，直到只对初等函数进行求导，最终将结果整合起来，获得最终的导数表达。**所以，现在我们建立了矩阵求导的矩阵形式，我们还需要建立矩阵微分的运算法则来拆解复杂的矩阵函数**
+  
+  1. 基础运算
+     - 加减法：$d(X\pm Y)=dX\pm dY$
+     - 矩阵乘法：$d(XY)=(dX)Y+XdY$
+     - 转置：$d(X^{T})=(dX)^{T}$
+     - 迹：$d\operatorname{tr}(X)=\operatorname{tr}(dX)$
+  
+  2. 逆
+     - $dX^{-1}=-X^{-1}dXX^{-1}$。此式可在$XX^{-1}=I$两侧求微分来证明。
+  
+  3. 行列式
+     - $d|X|=\operatorname{tr}(X^{\#}dX)$，其中 $X^{\#}$ 表示 $X$ 的伴随矩阵，在X可逆时又可以写作 $d|X|=|X|\operatorname{tr}(X^{-1}dX)$。此式可用 Laplace 展开来证明，详见张贤达《矩阵分析与应用》第279页。
+  
+  4. 逐元素乘法
+     - $d(X\odot Y)=dX\odot Y+X\odot dY$，$\odot$ 表示尺寸相同的矩阵逐元素相乘。
+  
+  5. 逐元素函数
+  
+     - $d\sigma(X)=\sigma^{\prime}(X)\odot dX$，$\sigma(X)=[\sigma(X_{ij})]$ 是逐元素标量函数运算，$\sigma^{\prime}(X)=[\sigma^{\prime}(X_{ij})]$ 是逐元素求导数
+  
+  6. 复合函数
+  
+     无法直接套用一元的复合函数公式，因为我们没有矩阵对矩阵求导的定义。所以唯一的方法是将符合函数中的微分形式进行带入
+     $$
+     df=\operatorname{tr}(\frac{\partial f}{\partial Y}^TdY)=\operatorname{tr}(\frac{\partial f}{\partial Y}^Tdg(X))
+     $$
+  
+  法则看上去很多，但是基本都符合我们之前的一元情况，除了逆和行列式。也如之前所说，**要完成矩阵求导，我们还需要一些 trace trick**
+  
+  1. 矩阵乘法的 trace 展开：$\operatorname{tr}(A^\top B)=\operatorname{tr}(B^\top A)=\Sigma_{i,j}A_{ij}B_{ij}$
+  
+  2. 标量套上迹：$a = \operatorname{tr}(a)$
+  
+  3. trace 转置性质：$\operatorname{tr}(A^{T}) = \operatorname{tr}(A)$
+  
+  4. trace 线性性质：$\operatorname{tr}(A \pm B) = \operatorname{tr}(A) \pm \operatorname{tr}(B)$
+  
+  5. trace 中矩阵乘法可交换：$\operatorname{tr}(AB) = \operatorname{tr}(BA)$，需要保证 $AB, BA$ 是可行的矩阵乘法。该性质还可拓展为 trace 循环
+     $$
+     \operatorname{tr}(ABC)=\operatorname{tr}(BCA)=\operatorname{tr}(CAB)
+     $$
+  
+  6. trace 中矩阵乘法/逐元素乘法可交换：$\operatorname{tr}(A^{T}(B \odot C)) = \operatorname{tr}((A \odot B)^{T} C)$ 两侧都等于 $\sum_{i,j} A_{ij} B_{ij} C_{ij}$
+  
+     左侧：$\operatorname{tr}(A^T(B \odot C)) = \sum_{i,j} A_{ij} (B \odot C)_{ij} = \sum_{i,j} A_{ij} B_{ij} C_{ij}$
+  
+     右侧：$\operatorname{tr}((A \odot B)^T C) = \sum_{i,j} (A \odot B)_{ij} C_{ij} = \sum_{i,j} A_{ij} B_{ij} C_{ij}$
+  
+  由于 trace 的引入，我们可以对矩阵的乘法顺序方便地进行交换，从而将 $dX$ 放到最右侧，所以我们通常用的技巧是：把标量导数套上 trace，通过 trace trick 和微分符号与 trace 可互换的性质，调整 $dX$ 到所需位置，最后对比 $\operatorname{tr}(\frac{\partial f}{\partial X}^TdX)$ 和 $\operatorname{tr}(g(X)dX)$，我们即可确定 $g(X)=\frac{\partial f}{\partial X}$
+  
+  我们以最常见的两个例子来说明
+  
+  1. **Example 1:** $f=a^TXb$，其中 $a\in \mathbb R^{m\times1}, b\in \mathbb R^{n\times 1}, X\in \mathbb R^{m\times n}$
+  
+     思路：先利用标量套上 trace 不变的性质，变为 trace 形式，然后利用 trace 矩阵乘法可交换性质把 $dX$ 换到最右侧
+     $$
+     df=\operatorname{tr}(a^{T}dXb)=\operatorname{tr}(ba^{T}dX)=\operatorname{tr}((ab^{T})^{T}dX)
+     $$
+     按照上述思路与 $\operatorname{tr}(\frac{\partial f}{\partial X}^TdX)$ 形式对比，我们可以立刻得到导数为
+     $$
+     \frac{\partial f}{\partial X}=ab^{T}
+     $$
+  
+  2. **Example 2:** $f = \operatorname{tr}(W^T X^TX W)$，其中 $X \in \mathbb R^{m\times k}, W \in \mathbb R^{k\times n}$，这其实就是求解 F-范数平方的导数 $f=||XW||_F^2$，其中我们关注的是 $W$ 的导数
+  
+     思路：既然已经套上 trace 了，直接利用四则运算中的矩阵乘法微分进行拆分，然后逐个求解。为了简便我们用 $M=X^TX$ 来表示一个对称矩阵
+     $$
+     df = \operatorname{tr}((dW)^T M W) + \operatorname{tr}(W^T M dW) = \operatorname{tr}(W^T M^T dW) + \operatorname{tr}(W^T M dW)
+     $$
+     上述第二个等号利用了 trace 的转置性质，现在结果已经明了
+     $$
+     \frac{\partial f}{\partial W}=(M^T+M)W=2MW=2X^TXW
+     $$
