@@ -238,19 +238,21 @@ mbarrier 将分为两类
 
 - full barrier
 
-  维护 shared memory 是否完成写入的状态。如果未完成写入，则 consumer 无法运行
+  维护 shared memory 是否完成写入的状态。如果未完成写入，则对应 shared memory consumer 无法运行
 
 - empty barrier
 
-  维护 shared memory 是否完成计算的状态。如果未完成计算，则 producer 无法运行
+  维护 shared memory 是否完成计算的状态。如果未完成计算，则对应 shared memory producer 无法运行
+
+首先我将建立一个清晰的 producer-consumer 模型，然后我再来介绍如何使用同步机制保证流水线模型的正确运行
 
 对于有 N 个 stage 的流水线来说，就有 N 个 full barrier & empty barrier pair
 
-sync for tma 都是利用 mbarrier & pipeline 完成
+同步的本质是什么？我个人认为核心的目标是避免 racing 产生，即当多个操作访问相同资源时，必须利用同步机制来确定执行顺序
+
+sync for shared memory 都是利用 mbarrier & pipeline 完成。
 
 能否用相同的 pipeline 思想，在 sm80 中实现？似乎不需要，可以直接使用 wait one in-flight 算法
-
-除此之外还有一个 named barrier 不知道有什么作用？
 
 ## fence & visibility
 
@@ -289,5 +291,17 @@ multi-stage in epilogue, 这个 multi-stage 形式也在 Ampere Gemm 当中出�
    可能这也是现在出现各个 DSL 的原因：构建自己熟悉的抽象，然后构建高效的算法。而如果要解决这两个问题就必须要学会阅读 PTX，构建自己的功能抽象；然后熟悉各个流水线算法的流程，以清晰的代码、文档逻辑进行展现
 
    阅读 PTX 可能是更难的，我现在能做的是熟悉 cute 当中的 PTX 抽象，理解其功能以方便构建高效算法，好消息是 cute 可能在可读性和可用性上也在努力（python DSL），这也是 Tri Dao 最近在 GPU mode 上推荐的，[link](https://zhuanlan.zhihu.com/p/1951029558313714196)。虽然 DeepGemm 的封装很少，但是要理解其用法也没那么容易，因为 CUDA 的 doc 并不好看。总之这个领域对新手从来都不是友好的
-   
+
 2. AwesomeCute 和 DeepGemm 当中的矩阵乘法实现是不一样的，我认为 DeepGemm  的实现跟简洁，少了一些 in-flight 操作，还没测试过性能
+
+3. 如何对 wait one in-flight pipeline 进行合理抽象/模块化，通过定义 pipeline 的各个模块以形成高效的 pipeline 代码
+
+4. tensor core 与 cta 之间的关系是什么？一个 cta 可以调动多个 tensor core 吗？
+
+   > From Kimi
+   >
+   > **每个 warp 一次只能使用一个 Tensor Core**，但一个 CTA 可以包含多个 warp，因此**一个 CTA 可以并发地使用多个 Tensor Core**（取决于其 warp 数量与调度情况）。
+
+   A100 有 108 个 SM processor，每一个 SM 有 4 个 tensor core。而 H100 有 132 个 SM processor，每一个 SM 同样也有 4 个 tensor core，所以共有 528 个 tensor core
+
+5. pingpong 会使用 scheduler 同时计算两个 tile 的 gemm，但是 producer 只有一个，shared memory 是如何管理的？

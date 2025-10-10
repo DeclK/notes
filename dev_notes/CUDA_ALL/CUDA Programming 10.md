@@ -299,7 +299,7 @@ Finally, each thread, whether consumer or producer, keeps track of a phase to ma
    - Initializing the current phase to 0.
    - Initializing the expected arrival count to `count`.
    - Initializing the pending arrival count to `count`.
-   - Initializing the *tx-count* to 0.
+   - Initializing the `tx-count` to 0.
 
 2. [arrive](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-arrive-on) 会 decreament pending count
 
