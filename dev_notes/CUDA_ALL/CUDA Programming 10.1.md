@@ -246,6 +246,38 @@ mbarrier 将分为两类
 
 首先我将建立一个清晰的 producer-consumer 模型，然后我再来介绍如何使用同步机制保证流水线模型的正确运行
 
+**我的 producer-consumer 模型**
+
+为了简单且不失一般性地构建模型，我定义在该模型中，有一个 prodcuer 和一个 consumer，并且存在有 3 个 buffer 用于存放数据。在更复杂的模型中，可以有更多的 producer & consumer & buffer
+
+对于每一个 buffer 有两个 barrier：empty barrier & full barrier，只有当 buffer empty 时才能进行 produce，只有当 buffer full 时才能进行 consume
+
+TODO：一个简单的 producer-consumer 模型
+
+**我的同步机制**
+
+如果让我来设计一个同步机制的话，我会考虑让每一个 barrier 有 0/1 两种状态，0 代表 barrier 生效，1 代表 barrier 可通行。举个例子：对于 empty barrier 来说，0 代表 `isEmpty=0`，那么 empty barrier 生效，producer 无法写入；1 代表 `isEmpty=1`，此时 empty barrier 可通行，producer 可写入
+
+在初始化时，所有 buffer 的 `isEmpty=1, isFull=0`，然后 producer 和 consumer 都从 buffer0 开始工作，二者工作完成后需要设置 barrier 以确保同步
+
+- 当 producer 完成写入过后，需要设置 `isFull=1, isEmpty=0`
+- 当 consumer 完成计算过后，需要设置 `isFull=0, isEmpty=1`
+
+TODO：我的同步机制一些图解
+
+这样就能保证 producer 在写入时，consumer 不会读取；consumer 在计算时，producer 不会写入。我认为这样的同步机制相当直观，但是 cutlass cute 并没有使用这样的机制
+
+**cutlass cute 同步机制**
+
+cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个 data）。每一个 barrier 将有一个计数器 `x`，作为同步标准。举个例子：对于 empty barrier 来说，当 `x=1` 时，代表等待第 1 个数据完成计算；对于 full barrier 来说，当 `x=1` 时，代表等待第 1 个数据完成生产
+
+TODO：以下 barrier 设置是错误的，需要正确的说法，把 pipeline states 和 barrier count 合并起来考虑
+
+> 在初始化时，empty barrier 都 wait 0 data，即不需要等待；full barrier 等待 1, 2, 3 data 完成生产，producer 和 consumer 都从 buffer0 开始工作，二者完成工作后需要设置 barrier 状态以确保同步
+>
+> - 当 producer 完成写入过后，empty barrier 设置为 wait 当前 data `x`，full barrier 设置为 wait `x+3` 个 data 完成写入（即，consumer 可以立即展开计算）
+> - 当 consumer 完成计算过后，
+
 对于有 N 个 stage 的流水线来说，就有 N 个 full barrier & empty barrier pair
 
 同步的本质是什么？我个人认为核心的目标是避免 racing 产生，即当多个操作访问相同资源时，必须利用同步机制来确定执行顺序
@@ -302,6 +334,10 @@ multi-stage in epilogue, 这个 multi-stage 形式也在 Ampere Gemm 当中出�
    >
    > **每个 warp 一次只能使用一个 Tensor Core**，但一个 CTA 可以包含多个 warp，因此**一个 CTA 可以并发地使用多个 Tensor Core**（取决于其 warp 数量与调度情况）。
 
-   A100 有 108 个 SM processor，每一个 SM 有 4 个 tensor core。而 H100 有 132 个 SM processor，每一个 SM 同样也有 4 个 tensor core，所以共有 528 个 tensor core
+   A100 有 108 个 SM processor，每一个 SM 有 4 个 tensor core。而 H100 有 132 个 SM processor，每一个 SM 同样也有 4 个 tensor core，所以共有 528 个 tensor core。另外一个**“巧合”**：一个 warp group 正好是 4 个 warp，我认为这正好对应了一个 warp group 正好调用 4 个 tensor core 完成 gemm 计算
+
+   这也解决了我对 pingpong & cooperative schedule 的疑惑：如果 pingpong 每次只有一个 warp group 在进行 mma 计算，是否会浪费算力？答案是不会的，因为一个 cta 会使用 4 个 tensor core，而一个 sm 上只有 4 个，所以算力不会被浪费。那么 cooperative 的优势又在哪里呢？根据 [Pingpong Schedule并不是万能钥匙](https://zhuanlan.zhihu.com/p/1935338652726204054)，因为 cooperative schedule 会用两个 warp group 以竞争的方式完成一个 tile 的计算，会利用对方在使用 cuda core 进行 FMA (e.g. blockwise scaling) 的时候抢占 tensor core 进行 mma 计算。 相比于 H20，H100 及更强的算力芯片中，cuda core 的 FMA 时间占比会显著增加，所以使用 cooperative gemm 能够更有效地掩藏其中的时间，即使其不能掩藏 epilogue 用时，整体上耗时也比 pingpong schedule 更少。而且由于 mainloop 的时间显著减少，epilogue 也无法很好地被掩藏，同时 cooperative 能够以更大块的数据（更少的 tma store 指令）进行 gmem 的写回所以 cooperative 的优势更加凸显
 
 5. pingpong 会使用 scheduler 同时计算两个 tile 的 gemm，但是 producer 只有一个，shared memory 是如何管理的？
+
+6. 为什么 cutlass 不按照我的同步机制来设置呢？感觉挺直观的
