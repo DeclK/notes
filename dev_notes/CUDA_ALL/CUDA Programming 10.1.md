@@ -269,14 +269,17 @@ TODO：我的同步机制一些图解
 
 **cutlass cute 同步机制**
 
-cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个 data）。每一个 barrier 将有一个计数器 `x`，作为同步标准。举个例子：对于 empty barrier 来说，当 `x=1` 时，代表等待第 1 个数据完成计算；对于 full barrier 来说，当 `x=1` 时，代表等待第 1 个数据完成生产
+cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个 data）。每一个 barrier 将有一个计数器 `x`，作为同步标准。具体来说：对于 empty barrier 来说，当 `x=1` 时，代表只有 data index 小于 1 的数据能够被写入；对于 full barrier 来说，当 `x=1` 时，代表只有 data index 小于 1 的数据能够被计算
 
-TODO：以下 barrier 设置是错误的，需要正确的说法，把 pipeline states 和 barrier count 合并起来考虑
+在初始化时，3 个 empty barrier 计数器初始化为 1、2、3，而 3 个 full barrier 计数器初始化为 0、1、2。data index 从 0 开始，producer 和 consumer 都从 buffer0 开始工作，二者工作完成后需设置 barrier 计数器以确保同步
 
-> 在初始化时，empty barrier 都 wait 0 data，即不需要等待；full barrier 等待 1, 2, 3 data 完成生产，producer 和 consumer 都从 buffer0 开始工作，二者完成工作后需要设置 barrier 状态以确保同步
->
-> - 当 producer 完成写入过后，empty barrier 设置为 wait 当前 data `x`，full barrier 设置为 wait `x+3` 个 data 完成写入（即，consumer 可以立即展开计算）
-> - 当 consumer 完成计算过后，
+- 当 producer 完成写入过后，更新 full barrier count += buffer count (3 in our case)
+- 当 consumer 完成写入过后，更新 empty barrier count += buffer count
+
+而对于 cutlass 来说还进行了两个改进：
+
+1. 使用 1-bit 计数器计算 barrier 计数器
+2. 使用 pipeline states 来替代 data index
 
 对于有 N 个 stage 的流水线来说，就有 N 个 full barrier & empty barrier pair
 
