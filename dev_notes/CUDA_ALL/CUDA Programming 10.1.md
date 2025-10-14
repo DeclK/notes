@@ -248,7 +248,7 @@ mbarrier 将分为两类
 
 **我的 producer-consumer 模型**
 
-为了简单且不失一般性地构建模型，我定义在该模型中，有一个 prodcuer 和一个 consumer，并且存在有 3 个 buffer 用于存放数据。在更复杂的模型中，可以有更多的 producer & consumer & buffer
+为了简单且不失一般性地构建模型，我定义在该模型中，有一个 prodcuer 和一个 consumer，并且存在有 3 个 buffer 用于存放数据（stages=3）。在更复杂的模型中，可以有更多的 producer & consumer & buffer
 
 对于每一个 buffer 有两个 barrier：empty barrier & full barrier，只有当 buffer empty 时才能进行 produce，只有当 buffer full 时才能进行 consume
 
@@ -269,35 +269,117 @@ TODO：我的同步机制一些图解
 
 **cutlass cute 同步机制**
 
-cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个 data）。每一个 barrier 将有一个计数器 `x`，作为同步标准。具体来说：对于 empty barrier 来说，当 `x=1` 时，代表只有 data index 小于 1 的数据能够被写入；对于 full barrier 来说，当 `x=1` 时，代表只有 data index 小于 1 的数据能够被计算
+cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个 data）。每一个 barrier 将有一个计数器 `x`，作为同步标准。具体来说：对于 empty barrier 来说，当 `x=1` 时，**代表只有 data index 小于 1 的数据能够被写入**；对于 full barrier 来说，当 `x=1` 时，代表只有 data index 小于 1 的数据能够被计算
 
 在初始化时，3 个 empty barrier 计数器初始化为 1、2、3，而 3 个 full barrier 计数器初始化为 0、1、2。data index 从 0 开始，producer 和 consumer 都从 buffer0 开始工作，二者工作完成后需设置 barrier 计数器以确保同步
 
 - 当 producer 完成写入过后，更新 full barrier count += buffer count (3 in our case)
-- 当 consumer 完成写入过后，更新 empty barrier count += buffer count
+- 当 consumer 完成计算过后，更新 empty barrier count += buffer count
+
+TODO：cutlass cute data index 同步机制
 
 而对于 cutlass 来说还进行了两个改进：
 
 1. 使用 1-bit 计数器计算 barrier 计数器
-2. 使用 pipeline states 来替代 data index
 
-对于有 N 个 stage 的流水线来说，就有 N 个 full barrier & empty barrier pair
+   这是因为，producer 能够超越 consumer 的 stages 数量不会超过 3（buffer 总数），即超过的 stages 数量被限制到了一轮以内。所以 empty barrier & full barrier 之间的 count 差值只有可能有两个值：{1, 2}。我们此时就可以用 1-bit {0, 1} 的状态来表示这两个差值。此刻应该有一个直觉：重要的不是这是第几批数据，而是这是**第几轮**数据，一轮数据即为完成一次所有 buffer 的写入/读取所需的数据。**如果把之前的 counter & index 按照轮数进行递增仍然能够获得正确的同步流水线**
 
-同步的本质是什么？我个人认为核心的目标是避免 racing 产生，即当多个操作访问相同资源时，必须利用同步机制来确定执行顺序
+2. 使用 1-bit 计数器计算 data index
 
-sync for shared memory 都是利用 mbarrier & pipeline 完成。
+   为了配合 1-bit 计数器，data index 也要 1-bit 化。我们希望：对于同一轮的数据拥有相同的 1-bit data index。那么计算公式也很明了
 
-能否用相同的 pipeline 思想，在 sm80 中实现？似乎不需要，可以直接使用 wait one in-flight 算法
+   ```python
+   data_index = 0
+   for i in range(count // stages):
+       data_index ^= 1
+   ```
+
+   需要注意的是：虽然 data index 在一轮 stages 中是不变的，但是不同 buffer 对应的数据仍是不同的
+
+而在 cutlass 当中并不把这两个 1-bit 计数器称之为 counter，而是称之为 **phase**。此时 barrier 的同步机制变为：**当 barrier phase 和 data index phase 相同时，barrier 生效；反之 barrier 可通行**。producer 和 consumer 的更新规则变为：
+
+- **当 producer 完成写入过后，full barrier phase flip**
+- **当 consumer 完成计算过后，empty barrier phase flip**、
+
+TODO: phase 同步机制
+
+为了构建以上功能，cutlass 使用了两个对象 `mbarrier` & `pipeline_staes` 来进行管理。其中 `mbarrier` 就对应着上述的 full barrier & empty barrier，`pipeline_states` 则对应着 data index
+
+- mbarrier 的内部机制
+
+  通过阅读 PTX doc 知道了 mbarrier 管理同步的机制
+
+  1. mbarrier 实际上有4个成员：phase, arrive count, pending count, tx-count
+
+     mbarrier 的[初始化](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-init)只传入一个 `count`，此时
+
+     - Initializing the current phase to 0.
+     - Initializing the expected arrival count to `count`.
+     - Initializing the pending arrival count to `count`.
+     - Initializing the `tx-count` to 0.
+
+  2. [arrive](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-arrive-on) 会 decreament pending count
+
+  3. [expect_tx](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-expect-tx-operation)(bytes) 会增加 tx-count  += bytes
+
+  4. tma copy 会自动调用 [complete_tx](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-complete-tx-operation)，会减少 tx-count -= bytes。查看 tma load 的 ptx 就可以看到其中有 complete_tx 的 qualifier 字段
+
+  5. 当 pending count = 0 以及 tx-count = 0 时，触发 [phase complete](https://docs.nvidia.com/cuda/parallel-thread-execution/#parallel-synchronization-and-communication-instructions-mbarrier-phase-completion) 条件，此时：
+
+     1. phase flip: phase ^= 1
+     2. pending count 还原会 `count`
+
+- pipeline states 的内部机制
+
+  其实 pipeline states 有两个核心成员：`phase` & `stage_idx`，我们通常对 pipeline states 进行递增来进行 phase 计算
+
+  ```c++ 
+    template <int kStage = Stage> struct PipelineState {
+      uint32_t phase;
+      uint32_t stage_idx;
+  	void operator++(int) {
+        if ((++stage_idx) == kStage) {
+          phase ^= 1;
+          stage_idx = 0;
+        }
+      }
+  ```
 
 ## fence & visibility
 
-在之前的很多小节里都触及了 fence sync，这里再统一总结一下
+在之前的很多小节里都触及了 fence sync，并且很多文档都喜欢以 visibility 来描述 fence 的作用，visibility 表面上很具象，实际上理解起来很抽象。个人觉得还是以最本质的 fence 功能来理解：确保代码的执行顺序。一般来说使用 xx fence 意味着某个操作不能够越过 fence 进行执行，例如：
 
-- `warpgroup_fence_operand(acc)`
+```c++
+// smem write
+tma_store_fence()
+// tma store
+```
+
+这意味着 tma store 操作必须要在 smem write 完成之后再开始发起。而需要 fence 的本质原因是因为 tma 和 smem 是不同的硬件，他们之间的操作其实是不可见的，由于 relaxed consistency model 的原因，导致 tma store 的操作可能会提前执行，所以需要 fence 来保证不同硬件之间的操作顺序
+
+而一般 fence 的使用都是惯例性的（大家都会在固定的地方进行使用），所以我不太想花费太多内容阐述原理，而是简单的指出在哪些地方需要使用 fence
+
+- smem barrier fence
+
+  ```c++
+  // Make initialized barrier visible in async proxy
+  cutlass::arch::fence_view_async_shared();
+  cutlass::arch::fence_barrier_init();
+  // sync for barrier initialization
+  (size(ClusterShape{}) > 1) ? cute::cluster_sync() : __syncthreads();
+  ```
+
+  我们希望 smem barrier 的创建、初始化都必须在 tma 操作开始之前完成，并且必须使用同步操作保证所有线程都完成
+
+- tma store fence
+
+  `tma_store_fence` 和 `fence_view_async_shared` 竟然是一样的 PTX！TODO: 这其中应该都暗含了一个本质功能
+
+- tensor core acc fence
 
   [[QST] What can go wrong without cute::warpgroup_fence_operand(accum) in GEMM](https://github.com/NVIDIA/cutlass/discussions/1375)
 
-  我的理解：在 wgmma launch 过后，会先进行计算（此时称为 in-flight 状态，指令还未完成）。在这个期间，编译器可能会改变其他操作的执行顺序，让其他操作在 wgmma 的计算过程中，使用这些 acc。为了保证这些 acc 不被其他操作所占用，必须使用 `warpgroup_fence_operand(acc)` 来保护这些寄存器，一直等warpgroup_fence_operand(acc)待，直到 wgmma 计算完成过后写入到其中
+  我的理解：在 wgmma launch 过后，会先进行计算（此时称为 in-flight 状态，指令还未完成）。在这个期间，编译器可能会改变其他操作的执行顺序，让其他操作在 wgmma 的计算过程中，使用这些 acc。为了保证这些 acc 不被其他操作所占用，必须使用 `warpgroup_fence_operand(acc)` 来保护这些寄存器，直到 wgmma 计算完成过后写入到其中
 
   ```
   warpgroup_fence_operand(acc);
