@@ -364,7 +364,7 @@ tma_store_fence()
   ```c++
   // Make initialized barrier visible in async proxy
   cutlass::arch::fence_view_async_shared();
-  cutlass::arch::fence_barrier_init();
+  cutlass::arch::fence_barrier_init();	// cluster wise
   // sync for barrier initialization
   (size(ClusterShape{}) > 1) ? cute::cluster_sync() : __syncthreads();
   ```
@@ -373,7 +373,33 @@ tma_store_fence()
 
 - tma store fence
 
-  `tma_store_fence` 和 `fence_view_async_shared` 竟然是一样的 PTX！TODO: 这其中应该都暗含了一个本质功能
+  `tma_store_fence` 和 `fence_view_async_shared` 竟然是一样的 PTX！显然二者应该指向了同一个功能，但是用了不同的包装而已。查看 [PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy) 文档可以知道，该 fence 是作用在 async & generic proxy 对相同 memory 操作之间的
+
+  > Accessing the same memory location across multiple proxies needs a cross-proxy fence. For the *async proxy*, `fence.proxy.async` should be used to synchronize memory between *generic proxy* and the *async proxy*.
+
+  更具体的说，当我们使用 tma 对 smem 进行操作时，都需要考虑使用 fence 进行同步，因为 tma 中的 copy 操作都是在 async proxy 中完成。tma 总共有两个功能，其中都会涉及 smem 的修改
+
+  1. tma load
+
+     tma load 不仅会对 smem 进行写入，而且还修改 mbarrier 状态来进行流水线同步，而 mbarrier 也是 smem 当中的对象。所以说我们在使用 mbarrier 之前也需要使用 `fence`，来让初始化正确执行（确保在 init barrier 后）
+
+     ```cpp
+     // init mbarrier
+     fence
+     // use mbarrier
+     ```
+
+     另外根据 PTX 的描述，在 tma load/store 完成过后会隐式地调用 fence，所以我们不需要在 tma store 完成过后使用 fence
+
+  2. tma store
+
+     通常在 epilogue 当中，我们会把写入 smem 的数据写入到 gmem 当中，所以在使用 tma store 之前需要使用 fence 来让 tma store 正确执行（确保在 smem 写入后）
+
+     ```c++
+     // smem write
+     fence
+     // tma store
+     ```
 
 - tensor core acc fence
 
@@ -392,6 +418,12 @@ tma_store_fence()
 ## Scheduler
 
 persistant warp
+
+swizzle = 4, cluster shape = (2, 1, 1), along N dim (row direction)，H100 当中只有132个 SM，如果按照这样的 cta 安排，会有 8x16=128 个 tiles 是 aligned，另外还剩4个tiles 怎么办？我如何使用 layout algebra 来快速完成这一计算过程
+
+在 [zhihu](https://zhuanlan.zhihu.com/p/1905383022901059783) 中还提到了，DeepGemm 其实还考虑了 cluster 不对齐的情况，这又是什么？
+
+还可参考 [blog](https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/) 当中 threadblock rasterization 小节，进行可视化理解
 
 ## Coorperative & PingPong
 
