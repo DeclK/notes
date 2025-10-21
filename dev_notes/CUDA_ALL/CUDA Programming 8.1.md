@@ -513,11 +513,17 @@ new_tCrC_0 = retile(tCrC_0)
 
 new_tCrC_0.layout() == tCrC_1.layout()
 
-for x, y in tCrC.coord():
+for x, y in tCrC_1.coord():
 	new_tCrC_0[x, y] == tCrC_1[x, y]
 ```
 
 有的兄弟，有的。这个 function 就是 `retile`。有了 `retile` 过后，就能够在各个形态进行丝滑转换，我们无论是在进行 mma 计算，还是在进行数据 copy，就可以构建同一份 register 数据的不同排布，以确保在 `cute::copy & cute::gemm` 在进行坐标 index 的时候获得了正确的数据
+
+那这个 retile 到底是如何计算的呢？其实如果你已经知道了各个 layout，直接利用这个 layout 来构造 tensor 就行，即核心仍然是获得 layout
+
+```cpp
+new_tCrC_0 = make_tensor(tCrC_0.data(), tCrC_1.layout())
+```
 
 我之前对于 retile & tiled copy 没有那么熟，所以认为要用更多的概念来进行区分。实际上从始至终，我们都是在 block level 上进行编程，更多由重复所带来的功能，都可以由 `cute::gemm & cute::copy` 进行完成。而由于 copy & mma block 之间，对数据的划分各有不同，所以产生了对数据 layout 的操作转换，这带来了极大的学习困难
 
@@ -997,6 +1003,8 @@ xxxyy yyy
    另外我们并不在意数据有多少行，因为有更多的行数，只是增加了 $x$ bit 的数量，并不改变 mask bit。这些多余的 $x$ bit 就会像之前的例子中直接被划掉 $\cancel x$
 
 在之后的 hgemm 实践中，我们会对一个 (128, 32) 的 block tile 进行读写，使用 128bit 的向量化读取，根据公式得到 `Swizzle<B=2, S=3, M=3>`
+
+update 2025/10/20 在 zhihu 上也看到一个推导 swizzle 的 [repo](https://github.com/melonedo/algebraic-layouts) 可以看下和我的公式是否一致
 
 ### Epilogue
 

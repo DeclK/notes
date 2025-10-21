@@ -83,6 +83,12 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
    select<0>(x.shape()) // (256,)
    ```
 
+   另外如果输入了多个 index，意味着对嵌套 tuple 的 select 操作
+
+   ```cpp
+   // x.shape = (2, (2, 2))
+   get<1, 0>(x.shape) // 2
+
 6. `rank<idx>(x)`
 
    获得 rank (i.e. dimensionality)
