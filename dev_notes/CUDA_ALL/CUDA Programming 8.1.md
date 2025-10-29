@@ -241,9 +241,34 @@ TV2MN: Layout(shape=[4, 2, 2], stride=[2, 1, 8])
 TV2Memory: Layout(shape=[(2, 2) 2, 2], stride=[8, 1, 4, 2])
 ```
 
+##### Inverse
+
+同样的，在函数中也存在逆函数。在 layout algebra 中的逆函数定义可参考 [reed-zhihu](https://zhuanlan.zhihu.com/p/662089556) 中的 two line notation 表示形式。所谓的 two line 就是：input domain 为一个 line，output domain 为一个 line，下面举一个例子
+
+```python
+# Layout(shape=[2, 3], stride=[3, 1])
+# [0, 1, 2]
+# [3, 4, 5]
+
+coord: [0, 1, 2, 3, 4, 5]
+value: [0, 3, 1, 4, 2, 5]
+
+# sort the pair according to value
+coord: [0, 2, 4, 1, 3, 5]
+value: [0, 1, 2, 3, 4, 5]
+
+# switch coord and value as new layout
+coord: [0, 1, 2, 3, 4, 5]
+value: [0, 2, 4, 1, 3, 5]
+```
+
+但是问题在于 inverse 过后 layout 形式是什么样的呢？具体来说，他们的 shape & stride 应该如何得到？在 [Lei Mao's blog](https://leimao.github.io/blog/CuTe-Inverse-Layout/) 当中证明了 compact layout inverse 过后的 shape & stride 应当如何计算。而在 [写给大家看的 CuTe 教程：Layout compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008) 中提到，通常 inverse 过后还会使用 `with_shape` 来构建我们期望的 layout shape，所以对 output domain 的 shape 需要进行格外的关注，这将在 inverse 后构建 new shape 发挥作用。具体的例子在 retile 部分中，计算 `(t, v) -> (m, n)` layout 进行展示
+
 #### 组合运算
 
-有了 layout algebra 所定义的基础运算就可以定义一些更复杂更有用的运算：divide & product。我这里只整理 logical divide & zipped divide
+有了 layout algebra 所定义的基础运算就可以定义一些更复杂更有用的运算：divide & product
+
+##### divide
 
 divide 是划分数据中最常用的方法，尤其是 zipped divide。我先介绍 logical divide 的一维运算公式（B 是维度为1的 layout，A 没有限制）
 
@@ -268,6 +293,45 @@ zipped_divide  : ((TileM,TileN), (RestM,RestN,L,...))
 <img src="CUDA Programming 8.1/divide1.png" alt="divide1.png" style="zoom:33%;" />
 
 在上面的例子中 Tiler 是不连续的，而我们更常会遇到的 Tiler 是最简单的 stride 为 1 的 Tiler。如 `B = Layout([4], [1])`，这样就会以 4 为单位切分该轴。zipped divide 会将 Tiler 维度直接提到最前面来，以方便我们进行索引操作，通常这个维度可以是 thread，这样通过索引就获得具体某个线程所对应的数据
+
+通常我们遇到的情况都是：A & B 都是 1-dim，如果 A 为多维 layout，那么就需要谨慎看待，最后的结果一般不是我们想要的。举个例子
+
+```python
+l1 = Layout([5, 4], [1, 30])
+l2 = Layout([4], [1])
+# logical_divide(l1, l2) won't work
+A size: 20
+complement of B: Layout(shape=[5], stride=[4])
+concated (B, c_B): Layout(shape=[4, 5], stride=[1, 4])
+```
+
+原因在于 concated layout 无法和 A 进行 compose。不过好消息是在进行数据 divide 时，通常是对 MN shape 进行 divide，这是一个非常规整的 domain，满足我们在 by-mode divide 时各个 mode dim 都是 1 的需求
+
+##### product
+
+这里有个割裂感：我们说 product 为 divide 的逆运算，但实际上我发现二者并不能进行可逆操作。例如 `C != A.product(B).div(B)`。但是这个定义并不符合我们的直觉，严谨的数学定义在 [Lei Mao's blog](https://leimao.github.io/article/CuTe-Layout-Algebra/) 中有所阐述。这里以一个 [2D exmaple](https://docs.nvidia.com/cutlass/latest/media/docs/cpp/cute/02_layout_algebra.html#logical-product-2-d-example) 作为说明
+
+<img src="CUDA Programming 8.1/image-20251027162320196.png" alt="image-20251027162320196" style="zoom: 67%;" />
+
+这个 product 的结果非常直观：把 `(2, 5): (5, 1)` 进行重复，重复维度为 `(3, 4)`。在我的期望中，直接使用 tiler `<3:1, 4:1>` 就能完成上述功能，但实际上用的 tiler 为 `<3:5, 4:6>`，这就是因为 product 的定义并不是我们想象中的直观，仍然是根据 complement & compose 来定义的。为了让 product 功能与我们的编程直觉相符，cute 直接构建了几种常见的 api 方便调用，参考 [reed zhihu](https://zhuanlan.zhihu.com/p/662089556)
+
+| 乘法模式 | 乘积的shape      |
+| -------- | ---------------- |
+| logical  | ((x, y), (z, w)) |
+| zipped   | ((x, y), (z, w)) |
+| tiled    | ((x, y), z, w)   |
+| blocked  | ((x, z), (y, w)) |
+| raked    | ((z, x), (w, y)) |
+
+需要注意的是，这些操作是 layout product layout，而不是 layout product tiler。所以他们都是 rank sensitive 的，即两个 layout 的维度必须一致。同时和 divide 一样，通常使用在相对规整的 domain，跟具体来说 layout 的 size 和 cosize 一致。否则存在空洞的话，product 也可能无法进行，举一个例子
+
+```cpp
+auto l1 = make_layout(make_shape(_4{}, _5{}), make_stride(Int<30>{}, _1{}));
+auto l2 = make_layout(make_shape(_2{}, _4{}));
+// can't do logical_product(l1, l2)
+```
+
+这里点出一个 product 和 divide 的重要差异：divide 习惯使用 layout divide tiler，而 product 习惯使用 layout product layout。前者不是 rank sensitive
 
 #### 直观总结
 
@@ -506,26 +570,23 @@ auto lxtiler_rake = raked_product(l, tiler);
 
    假设 r2s copy atom 的 mn shape 为 `(m, 2n)`，每一个 thread 有 8 个 values，那么 `tCrC_1.shape = (8, M//m, N//2n)`
 
-以上三种划分，最终得到了三种数据 `tCrC_0/1/2`，而这**三种数据实际上包含了相同的数据内容**，但是他们的排布完全不同。能不能有一个 function 能够将 `tCrC_0/1/2` 之间的排布进行相互转换，例如将 `tCrC_0` 的排布，转换成为 `tCrC_1` 的排布，并且二者对应位置的数据也相同：
-
-```python
-new_tCrC_0 = retile(tCrC_0)
-
-new_tCrC_0.layout() == tCrC_1.layout()
-
-for x, y in tCrC_1.coord():
-	new_tCrC_0[x, y] == tCrC_1[x, y]
-```
-
-有的兄弟，有的。这个 function 就是 `retile`。有了 `retile` 过后，就能够在各个形态进行丝滑转换，我们无论是在进行 mma 计算，还是在进行数据 copy，就可以构建同一份 register 数据的不同排布，以确保在 `cute::copy & cute::gemm` 在进行坐标 index 的时候获得了正确的数据
-
-那这个 retile 到底是如何计算的呢？其实如果你已经知道了各个 layout，直接利用这个 layout 来构造 tensor 就行，即核心仍然是获得 layout
+以上三种划分，最终得到了三种数据 `tCrC_0/1/2`，而这**三种数据实际上包含了相同的数据内容**，更具体来说，这三个 tensor 的 `tensor.data()`，指向的是同一片内存，但是他们的排布 `tensor.layout()` 完全不同。实际上 retile 干的事情就是这样，把相同拥有相同 data 的 tensor 转换为所需要的 layout，本质上就是做了这么一件事
 
 ```cpp
-new_tCrC_0 = make_tensor(tCrC_0.data(), tCrC_1.layout())
+// retile A tensor to B tensor's layout
+A_retiled = make_tensor(A.data(), B.layout())
 ```
 
+但是这个 B 的 layout 计算有时候并不是那么明显的，所以 retile 将 B layout 计算都隐藏起来了。拥有了 retile 过后，就能够在各个形态进行丝滑转换，我们无论是在进行 mma 计算，还是在进行数据 copy，就可以构建同一份 register 数据的不同排布，以确保在 `cute::copy & cute::gemm` 在进行坐标 index 的时候获得了正确的数据
+
 我之前对于 retile & tiled copy 没有那么熟，所以认为要用更多的概念来进行区分。实际上从始至终，我们都是在 block level 上进行编程，更多由重复所带来的功能，都可以由 `cute::gemm & cute::copy` 进行完成。而由于 copy & mma block 之间，对数据的划分各有不同，所以产生了对数据 layout 的操作转换，这带来了极大的学习困难
+
+**补充（2025/10/28）：retile solved by compose & inverse**
+
+[写给大家看的 CuTe 教程：Layout compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008) 受到其中的例子启发，我又重新审视了一下 retile，并且更深入地对 product/divide 和 inverse 进行了练习，获得了一些不错的经验
+
+1. 如何利用 compose & inverse 完成 layout 转换，其中有什么需求？
+2. 如何利用 inverse 完成 mma atom layout 的推导？其中 inverse 过后，如果使用 `with_shape` 方法构建所需的形状？bear in mind with both shapes，在 inverse 之后 product 的维度会在末尾
 
 #### ThrCopy
 
@@ -590,7 +651,7 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 
 3. target tv layouts, `TiledLayout_TV` 以及其对应的 tiler size `TilerMN`
 
-   描述 tv layouts 到 `(M, N)` 的映射，这针对的是 dst tv layouts。`(M, N)` 描述 src & dst tensor 的形状，`TiledLayout_TV` 就是上节 TiledCopy 中使用的 `layout_tv`
+   描述 `(t, v) -> (m, n)` 的映射，这针对的是 dst tv layouts。`(M, N)` 描述 src & dst tensor 的形状，`TiledLayout_TV` 就是上节 TiledCopy 中使用的 `layout_tv`
 
 从这些已知条件出发：需要完成对 src tensor & dst tensor 的数据进行 tv 分配，各自线程进行 copy，使得 copy 完成后符合 `TiledLayout_TV` 要求。这个过程就是整个 TiledCopy，完成这个过程有2个关键点需要完成
 
@@ -637,7 +698,7 @@ src_tv_2_mn = dst_tv_2_mn.compose(src_tv_2_dst_tv)
 该图定义了 src tv 和 dst tv 之间的映射。可以看到如下的特征
 
 ```python
-DST						 	   SRC		 
+DST						SRC		 
 ----------------------------
 T0~T3    V0~V1 <=> T0  V0~V7
 T4~T7    V0~V1 <=> T1  V0~V7
@@ -1015,6 +1076,8 @@ update 2025/10/20 在 zhihu 上也看到一个推导 swizzle 的 [repo](https://
 针对这个问题，cute 中专门提供了 Epilogue 来通过共享内存作为中间媒介。先将寄存器数据存储到共享内存，然后再从共享内存中以更连续、更高位宽的形式存储到全局内存中去。对于 half 元素来说应该至少让一行有 8 个元素进行运输，这样就能用 128bit 的向量化存储指令了
 
 ## hgemm 实践
+
+**TODO：这部分整理还是混乱，尤其是我推翻了之前的 block/tile atom 假设**。最好以 tiled base 把整个思路简化。另外似乎 smem -> tensor core 这个阶段不需要流水线同步？因为没有看到 async 相关指令。只有 gmem -> smem 阶段有 async 同步指令
 
 问题定义：
 

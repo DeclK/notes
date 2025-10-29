@@ -69,6 +69,24 @@ Andrej Karpathy 对这篇论文很认可，其似乎指明了一个方向：所�
 
 总结下来：论文利用 SAM + Conv + CLIP + DeepSeek-MoE 的结构，构建了高效的通用 OCR 模型，其中 vision tokens 能够显著地少于生成的 text tokens。这种 window/local + global 的形式再一次证明了其有效性，**能够很高效地保留细节和全局的完整信息**，如果不完整，将无法很好地完成 OCR 工作。虽然论文没有用很 fancy 的算法，但是能够把 vision tokens 的数量降这么多，也是需要胆量的
 
+## Another Work
+
+智谱看到了 DeepSeek-OCR 大爆，然后自己手上又有一个相似故事的论文，连夜开源论文和代码 [Glyph: Scaling Context Windows via Visual-Text Compression](https://github.com/thu-coai/Glyph/blob/main)
+
+智谱的论文与 DeepSeek-OCR 讲述问题的区别：
+
+- Glyph 不是用 OCR 领域出发来阐述算法效果，而是真正使用了 LLM 领域中的 LongBench （类似长上下文中的大海捞针任务）来说明 vision token 对文本的压缩率很高
+- Glyph 的训练方式完全遵从 LLM 的训练方式：Pretrain + SFT + RL，即 Pretrain + Post train 的训练流程，希望能打造一个真的能和 LLM 一样的通用智能模型。他们并没有构造一个新的模型结构，而是直接用了智谱的 VLM 作为 base model 进行训练（GLM-4.1V-9B-Base）
+- Glyph 还针对如何将文本渲染为图像这一环节进行了探索，他们有一套优化的步骤，能根据文本来生成一套渲染为图像最优的 configurations（dpi, page size, font size, alignment, indent, spacing...）
+
+<img src="DeepSeek-OCR/image-20251023105246589.png" alt="image-20251023105246589" style="zoom:80%;" />
+
+核心的实验结果如下图，一句话来来说：在长上下文场景下的 benchmark 和相参数量的 LLM 打平，并且 context window 显著地小，压缩率约为 3x~4x
+
+![image-20251023105340163](DeepSeek-OCR/image-20251023105340163.png)
+
+智谱 Glyph 的工作量其实比 DeepSeek-OCR 要多得多，愿景应该也更大，想要直接在 LLM 领域中的 benchmark 拿出好的效果来，所以被抢先也是情理之中😂。由于 DeepSeek-OCR 的切入点更小，模型结构也并不复杂，并且做出来的压缩效果十分惊艳（9x~20x），再加上 DeepSeek 本身的省钱背书，所以出圈很快
+
 ## Question
 
 - SAM & CLIP & DeepSeek 的预训练效果在其中发挥了多少作用？如果更换其他的基础模型是否还能有这样高的压缩效果？论文是一点 ablation 没做
