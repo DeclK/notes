@@ -262,7 +262,66 @@ coord: [0, 1, 2, 3, 4, 5]
 value: [0, 2, 4, 1, 3, 5]
 ```
 
-但是问题在于 inverse 过后 layout 形式是什么样的呢？具体来说，他们的 shape & stride 应该如何得到？在 [Lei Mao's blog](https://leimao.github.io/blog/CuTe-Inverse-Layout/) 当中证明了 compact layout inverse 过后的 shape & stride 应当如何计算。而在 [写给大家看的 CuTe 教程：Layout compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008) 中提到，通常 inverse 过后还会使用 `with_shape` 来构建我们期望的 layout shape，所以对 output domain 的 shape 需要进行格外的关注，这将在 inverse 后构建 new shape 发挥作用。具体的例子在 retile 部分中，计算 `(t, v) -> (m, n)` layout 进行展示
+上述 two line notation 用于理解 inverse 是比较直观的，但是对于理解 inverse 过后 layout 形式是怎么样的，没有太大帮助。具体来说，他们的 shape & stride 应该如何得到？在 [Lei Mao's blog](https://leimao.github.io/blog/CuTe-Inverse-Layout/) 当中证明了 compact layout inverse 过后的 shape & stride 应当如何计算，不过 blog 当中的叙述顺序对我来说略显晦涩，我这里用我自己的思考逻辑来整理
+
+Conditions:
+
+- Layout function: $f_L(x)$
+
+- shape & stride 为 $S=(s_0,s_1,...,s_n),D=(d_0,d_1,...d_n)$
+
+- natural layout funciton 将多维坐标 $(x_0, x_1, ...,x_n)$ 映射为 $x$
+  $$
+  x=x_0+x_1·s_0+...+x_n·\prod_0^{n-1}s_i
+  $$
+
+Target:
+
+- 找到 inverse layout: $f_{L'}(x)$ 使得满足
+  $$
+  f_{L'}(f_L(x)) = x
+  $$
+
+- inverse layout $L'$ shape & stride 为 $S'=(s_0',s_1',...,s_n'),D'=(d_0',d_1',...d_n')$
+
+现在开始正式推导。对于输入 $x$ 对应的 $L$ 坐标为 $(x_0, x_1, ..., x_n)$，我们设其输出为 $x'$
+$$
+f_L(x)=x'
+$$
+输出 $x'$ 所对应的 $L^{-1}$ 坐标为 $(x_1',x_2',...,x_n')$，由 $L'$ shape 的 natural layout function 完成映射。由等式条件得
+$$
+\begin{aligned}
+f_{L'}(f_L(x)) &= f_{L'}(x') \\
+               &= f_{L'}(x_0',x_1',...,x_n') \\
+               &= x_0' \cdot d_0' + x_1' \cdot d_1' + \cdots + x_n' \cdot d_n' \\
+               &= x \\
+               &= x_0 + x_1 \cdot s_0 + \cdots + x_n \cdot \prod_{i=0}^{n-1} s_i
+\end{aligned}
+$$
+其中最重要的等式为
+$$
+x_0' \cdot d_0' + x_1' \cdot d_1' + \cdots + x_n' \cdot d_n' =x_0 + x_1 \cdot s_0 + \cdots + x_n \cdot \prod_{i=0}^{n-1} s_i
+$$
+下面的证明思路为：如果我们能够找到一个 permutation $I=\{i_0,i_1,...,i_n\}$，使得 $x_{i_0}'=x_0,x_{i_1}'=x_1,...,x_{i_n}'=x_n$，那么我们就能对应多项式的每一项，直接算出每一个 $d'$ 的值。现在我们来考察 $(x_0,x_1,...,x_n)$ 与 $(x_0',x_1',...,x_n')$ 之前的联系是什么，是否存在这样的 permutation
+
+他们之间的关系非常清晰
+$$
+(x_0,x_1,\ldots,x_n) \xleftrightarrow{L} x' \xleftrightarrow{N} (x_0',x_1',\ldots,x_n')
+$$
+这里的 $N$ 就是 inverse layout 的 natural function。现在问题转换为：对于一组  $(x_0,x_1,...,x_n)$ 与 $(x_0',x_1',...,x_n')$，他们彼此都是对方的 permutation，我们需要找到合适的 natural layout function 即可。其实对于第一个要求非常好满足（忽略 natural layout 限制），我们可以直接对 $L$ 中的 shape & stride 进行 permute 即可。以简单的 `Layout(shape=[2,3], stride=[3,1])` 为例子，当 permute shape & stride 时，坐标也随之 permute
+$$
+(x_0,x_1) \xleftrightarrow{(2,3):(3,1)} x' \xleftrightarrow{(3,2):(1,3)} (x_1,x_0)
+$$
+现在只需要考虑 natural layout 的限制即可，而答案也就随之浮出水面：只需要将 $L$ 的 shape & stride permute 成为一个 natural layout (left layout) 即可。更具体来说，根据 stride 的大小，从小到大进行排列，由于 layout 有 compact 保证，没有任何空洞，所以排列出来的 layout 必定也是 natural layout。所以此 permutation 存在且唯一，确定了 inverse layout 的 shape，其对应的 stride 也可由下面的式子进行计算
+$$
+d_{i_0}'=1,\\
+d_{i_1}'=s_0,\\
+...,\\
+d_{i_n}'=\prod_{i=0}^{n-1} s_i,\\
+$$
+那么根据上述结论，我们就找到了 $L'$ 的 shape & stride 了！**其中 shape 的结论会很 clean，就是将 $L$ 进行 sort 过后的 shape。从定性来说：原始 stride 小的 shape 在 inverse 过后会靠前；反之则会靠后**
+
+而在 [写给大家看的 CuTe 教程：Layout compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008) 中提到，通常 inverse 过后还会使用 `with_shape` 来构建我们期望的 layout shape，我们必须要了解 inverse 的输出形状到底是什么，才能正确地使用 `with_shape`。具体的例子在 retile 部分中，计算 `(t, v) -> (m, n)` layout 进行展示，其精妙地展示了 inverse 的一个核心作用：domain 的交换。如果我们获得了 `(m, n) -> (t, v)` 的映射，直接使用 inverse 就可以获得 `(t, v) -> (m, n)` 映射
 
 #### 组合运算
 
@@ -323,7 +382,7 @@ concated (B, c_B): Layout(shape=[4, 5], stride=[1, 4])
 | blocked  | ((x, z), (y, w)) |
 | raked    | ((z, x), (w, y)) |
 
-需要注意的是，这些操作是 layout product layout，而不是 layout product tiler。所以他们都是 rank sensitive 的，即两个 layout 的维度必须一致。同时和 divide 一样，通常使用在相对规整的 domain，跟具体来说 layout 的 size 和 cosize 一致。否则存在空洞的话，product 也可能无法进行，举一个例子
+上面只列举了 shape，对于 stride 而言，**相同 dimension 的 stride 也是一样的**：即任意乘法模式中所有 x 对应的 stride 都一样。需要注意的是，这些操作是 layout x layout，而不是 layout x tiler。所以他们都是 rank sensitive 的，即两个 layout 的维度必须一致。同时和 divide 一样，通常使用在相对规整的 domain，即 layout 的 size 和 cosize 一致。否则存在空洞的话，product 也可能无法进行，举一个例子
 
 ```cpp
 auto l1 = make_layout(make_shape(_4{}, _5{}), make_stride(Int<30>{}, _1{}));
@@ -331,7 +390,21 @@ auto l2 = make_layout(make_shape(_2{}, _4{}));
 // can't do logical_product(l1, l2)
 ```
 
-这里点出一个 product 和 divide 的重要差异：divide 习惯使用 layout divide tiler，而 product 习惯使用 layout product layout。前者不是 rank sensitive
+这里点出一个 product 和 divide 的重要差异：divide 习惯使用 layout divide tiler，而 product 习惯使用 layout product layout。另外一个实验是，product 的顺序是会改变结果的
+
+```cpp
+auto base_layout = make_layout(make_shape(_4{}, _3{}), make_stride(_4{}, _1{}));
+auto layout_x2 = blocked_product(base_layout, make_layout(make_shape(_1{}, _2{})));
+auto layout_x2_x2 = blocked_product(layout_x2, make_layout(make_shape(_2{}, _1{})));
+auto layout_x4 = blocked_product(base_layout, make_layout(make_shape(_2{}, _2{})));
+
+// Product order test
+// ((_4,_1),(_3,_2)):((_4,_0),(_1,_16))
+// (((_4,_1),_2),((_3,_2),_1)):(((_4,_0),_32),((_1,_16),_0))
+// ((_4,_2),(_3,_2)):((_4,_16),(_1,_32))
+```
+
+我先对 base layout 在第二个 dim 进行扩张，然后再对第一个维度进行扩张，其结果和同时扩张两个维度是不一致的
 
 #### 直观总结
 
@@ -550,44 +623,6 @@ auto lxtiler_rake = raked_product(l, tiler);
 
 在上述例子当中只需要一个 block 进行一次 copy 就能够完成 `(32, 32)` 大小的 copy 任务。还有一种情况，**一个 tiled copy 需要一个 block 进行多次来完成 `(32, 32)` 大小的 copy 任务**，例如将上述例子中的 copy atom 换为 `Copy_Atom<UniversalCopy<cute::uint32_t>, T>`，一个线程只会复制两个 fp16 元素，此时 128 个线程只能够复制 256 个 fp16 元素，很明显并不能够一次完成 `(32, 32)` 大小的 copy 任务。所以一个 tiled copy 会执行多次来完成该 copy 任务
 
-**NOTE:** 我们需要将 copy partition 和 atom partition 分开来看待，copy partition 会按照所给的 tiled tv layouts 进行分配，而 atom partition 只会按照 atom tv layouts 进行分配，这是一个错位点。**也正是由于这个原因，我们需要进行 `retile` 来使得二者进行对齐**。~~针对于二者的区别，我认为应当对二者概念进行更细粒度的区分：block atom，由于 thread 复制所产生的 atom 能力复制，定义了一个 block 操作的基本物理单位；tiled atom，由于 block atom 重复执行所产生的 atom 能力复制，定义了一个 block 操作的基本逻辑单位~~
-
-**补充（2025/09/17）：retile 到底要解决一个什么样的问题？结论：解决线程 register 的 layout 转换问题**
-
-我们在思考 copy 的问题时，其实还是更容易从整体去思考，例如把一个 MN shape 的数据进行划分，每一个线程获得各自的数据，然而最后我们都是面向 thread 编程，各个线程的 register 数据都是各自独立（互不可见）的，我们必须要将自己的视角进行转换。以下有三个划分视角：
-
-对于一个 MN shape 数据
-
-1. 我们可以使用 mma atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据 `tCrC_0`
-
-   假设 mma atom layout 的 mn shape 为 `(m, n)`，每一个 thread 有 4 个 values，那么 `tCrC_0.shape = (4, M//m, N//n)`
-
-2. 我们可以使用 s2r copy atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据 `tCrC_1`
-
-   假设 s2r copy atom 的 mn shape 为 `(2m, n)`，每一个 thread 有 8 个 values，那么 `tCrC_1.shape = (8, M//2m, N//n)` 
-
-3. 我们可以使用 r2s copy atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据为 `tCrC_2`
-
-   假设 r2s copy atom 的 mn shape 为 `(m, 2n)`，每一个 thread 有 8 个 values，那么 `tCrC_1.shape = (8, M//m, N//2n)`
-
-以上三种划分，最终得到了三种数据 `tCrC_0/1/2`，而这**三种数据实际上包含了相同的数据内容**，更具体来说，这三个 tensor 的 `tensor.data()`，指向的是同一片内存，但是他们的排布 `tensor.layout()` 完全不同。实际上 retile 干的事情就是这样，把相同拥有相同 data 的 tensor 转换为所需要的 layout，本质上就是做了这么一件事
-
-```cpp
-// retile A tensor to B tensor's layout
-A_retiled = make_tensor(A.data(), B.layout())
-```
-
-但是这个 B 的 layout 计算有时候并不是那么明显的，所以 retile 将 B layout 计算都隐藏起来了。拥有了 retile 过后，就能够在各个形态进行丝滑转换，我们无论是在进行 mma 计算，还是在进行数据 copy，就可以构建同一份 register 数据的不同排布，以确保在 `cute::copy & cute::gemm` 在进行坐标 index 的时候获得了正确的数据
-
-我之前对于 retile & tiled copy 没有那么熟，所以认为要用更多的概念来进行区分。实际上从始至终，我们都是在 block level 上进行编程，更多由重复所带来的功能，都可以由 `cute::gemm & cute::copy` 进行完成。而由于 copy & mma block 之间，对数据的划分各有不同，所以产生了对数据 layout 的操作转换，这带来了极大的学习困难
-
-**补充（2025/10/28）：retile solved by compose & inverse**
-
-[写给大家看的 CuTe 教程：Layout compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008) 受到其中的例子启发，我又重新审视了一下 retile，并且更深入地对 product/divide 和 inverse 进行了练习，获得了一些不错的经验
-
-1. 如何利用 compose & inverse 完成 layout 转换，其中有什么需求？
-2. 如何利用 inverse 完成 mma atom layout 的推导？其中 inverse 过后，如果使用 `with_shape` 方法构建所需的形状？bear in mind with both shapes，在 inverse 之后 product 的维度会在末尾
-
 #### ThrCopy
 
 利用 tiled copy 当中的 tiled tv layout & mn shape 对 tensor `(M, N)` 进行划分，得到每一个线程所拥有的 tensor，表达公式其实和 ThrMMA 是一样的
@@ -737,6 +772,49 @@ T28~T31  V2~V3 <=> T15 V0~V7
   - `cp_async_wait<0>`：等待所有之前提交的异步拷贝完成。
   - `cp_async_wait<1>`：允许最多 1 个批次的异步拷贝未完成（即等待除最新提交的 1 个批次外的其他所有批次完成）。
 - 通常用于实现流水线的同步，确保数据在计算之前已经加载到共享内存。
+
+### Problems solved with inverse（补充）
+
+**补充（2025/09/17）：retile 到底要解决一个什么样的问题？结论：解决线程 register 的 layout 转换问题**
+
+我们在思考 copy 的问题时，其实还是更容易从整体去思考，例如把一个 MN shape 的数据进行划分，每一个线程获得各自的数据，然而最后我们都是面向 thread 编程，各个线程的 register 数据都是各自独立（互不可见）的，我们必须要将自己的视角进行转换。以下有三个划分视角：
+
+对于一个 MN shape 数据
+
+1. 我们可以使用 mma atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据 `tCrC_0`
+
+   假设 mma atom layout 的 mn shape 为 `(m, n)`，每一个 thread 有 4 个 values，那么 `tCrC_0.shape = (4, M//m, N//n)`
+
+2. 我们可以使用 s2r copy atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据 `tCrC_1`
+
+   假设 s2r copy atom 的 mn shape 为 `(2m, n)`，每一个 thread 有 8 个 values，那么 `tCrC_1.shape = (8, M//2m, N//n)` 
+
+3. 我们可以使用 r2s copy atom 的 layout 对 MN shape 的数据进行划分，每一个线程的数据为 `tCrC_2`
+
+   假设 r2s copy atom 的 mn shape 为 `(m, 2n)`，每一个 thread 有 8 个 values，那么 `tCrC_1.shape = (8, M//m, N//2n)`
+
+以上三种划分，最终得到了三种数据 `tCrC_0/1/2`，而这**三种数据实际上包含了相同的数据内容**，更具体来说，这三个 tensor 的 `tensor.data()`，指向的是同一片内存，但是他们的排布 `tensor.layout()` 完全不同。实际上 retile 干的事情就是这样，把相同拥有相同 data 的 tensor 转换为所需要的 layout，本质上就是做了这么一件事
+
+```cpp
+// retile A tensor to B tensor's layout
+A_retiled = make_tensor(A.data(), B.layout())
+```
+
+但是这个 B 的 layout 计算有时候并不是那么明显的，所以 retile 将 B layout 计算都隐藏起来了。拥有了 retile 过后，就能够在各个形态进行丝滑转换，我们无论是在进行 mma 计算，还是在进行数据 copy，就可以构建同一份 register 数据的不同排布，以确保在 `cute::copy & cute::gemm` 在进行坐标 index 的时候获得了正确的数据
+
+我之前对于 retile & tiled copy 没有那么熟，所以认为要用更多的概念来进行区分。实际上从始至终，我们都是在 block level 上进行编程，更多由重复所带来的功能，都可以由 `cute::gemm & cute::copy` 进行完成。而由于 copy & mma block 之间，对数据的划分各有不同，所以产生了对数据 layout 的操作转换，这带来了极大的学习困难
+
+**补充（2025/10/28）：retile solved by compose & inverse**
+
+[写给大家看的 CuTe 教程：Layout compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008) 受到其中的例子启发，我又重新审视了一下 retile，并且更深入地对 product/divide 和 inverse 进行了练习，获得了一些不错的经验。现在对 retile 问题进行更具体的阐述：
+
+Condition：对于一个 gmem tensor A，使用了两种 partition 方式，`partition_A` & `partition_C`，划分过后每个线程所获得的数据分别为 `gA_as_A` 和 `gA_as_C`（注意这仍是 global memory）。并且已经申请了 register `rA_as_A` 用于 copy `gA_as_A`
+
+Target：构建 `rA_as_C` 的 register tensor 以满足
+
+**补充（2025/10/31）：mma tv layout solved by product & inverse**
+
+如何利用 inverse 完成 mma atom layout 的推导？其中 inverse 过后，如果使用 `with_shape` 方法构建所需的形状？bear in mind with both shapes，在 inverse 之后 product 的维度会在末尾，这是由 inverse 本身的性质决定，在之前已经讨论过：原 stride 小的维度 shape 靠前
 
 ## 核心优化
 
