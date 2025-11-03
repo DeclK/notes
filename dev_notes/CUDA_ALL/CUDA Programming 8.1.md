@@ -527,14 +527,15 @@ NOTE：绝大多数的情况下，都是在 MN 方向上重复 mma atom，几乎
 
 这里 `MMA_P_T` 就是 `PermutationMNK`，在例子中的具体值为 `M=(16x2), N=(8x2x2), K=(16)`，即 `32x32x16`。由此就形成了一个 `32x32x16` 的 Tiler，会将输入数据按照这个 Tiler 形状进行分割。可以看到我们在 `AtomLayoutMNK` 重复的基础上，再对 N 方向又扩大了一倍
 
-该参数其实有两个重要影响：
+该参数有两个功能：
 
-1. 影响 TiledMMA 数据排布，但该影响现在一般不会发生
+1. 对数据进行 permute，影响 data partition 结果（现在基本不使用该功能）
 
-   因为通常所使用的 tiler 是普通的 stride=1 的 layout，不会对数据进行任何的排布（permute）。如果 tiler 中某一个维度使用了特殊的 layout 例如 `Layout<Shape <_2,_4,_4>, Stride<_1,_8,_2>>`，这将会对数据进行重新的排布。这会将会影响 data partition 的结果，使得线程获得不一样的数据。但并不会影响最终的矩阵乘结果，因为 permutation 不改变 reduction 结果，并且最后数据在 copy 的过程中也会回到 permutation 之前的位置
-2. **影响 `get_layoutA/B/C_TV` & `tile_size`。我认为这其实是针对于 tiled copy 设计的一个接口，并不是针对于 tiled mma 本身所设计。**
+   如果 tiler 中某一个维度使用了特殊的 layout 例如 `Layout<Shape <_2,_4,_4>, Stride<_1,_8,_2>>`，这将会对数据进行重新的排布。但并不会影响最终的矩阵乘结果，因为 permutation 不改变 reduction 结果，并且最后数据在 copy 的过程中也会回到 permutation 之前的位置
 
-   设置了 `PermutationMNK` i.e. tiler 过后，threads 就会以该 tiler 为大小进行分配数据，形成对应的 tv layouts。通常该 tv layouts 会被 tiled copy 所使用，而不会被 tiled mma 所使用。以上述例子中的 B 矩阵来说明：其 tv layouts 所对应 NK 区域为 `(32, 16)`，即 tiler 中的 NK 大小，每一个 thread 所拥有的 values 为 8；需要注意的是在 mma atom 当中，每一个 thread 所拥有的 values 应该为 4（查看上面的 `BLayout`），所对应的 NK 区域为 `(16, 16)`。我们必须要分开看待这两个 tv layouts，前者用于 tiled copy partition，后者才是真正用于 tiled mma partition 的 tv layouts。**为了合理区分这两个 tv layouts 我以 tiled tv layouts 和 block tv layouts 来进行命名**，这一点在后面的 hgemm 实践中会有具体表现
+2. **影响 `get_layoutA/B/C_TV` & `tile_size`。不影响 data partition 结果**
+
+   该功能用于扩大 tiler size 以增加 A/B/C tv layouts 中的 v size，从而满足 tiled copy 对 v size 的要求（这一句话高度抽象，一定要配合之后对 tiled copy 的学习）。简单来说，有的 mma atom tv layouts 中，size of v 为 4，即每一个线程分配 4 个 values；而 ldmatrix copy atom 会要求 size of v 至少为 8。在此情形下，直接使用 mma tv layouts 将不会满足要求，而需要增加 v size，该需求就是利用 `PermutationMNK` 扩大 MN shape 而满足的
 
 #### ThrMMA
 
@@ -672,65 +673,28 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 
 为什么我始终强调逻辑位置 logical mem id，这是因为这些元素在内存中的位置与逻辑位置并不一致。最重要的是：**根据 logical memory id 我们可以构建一个 src tv -> dst tv 的映射关系，从而能够轻松获得 src tv 中的元素在 dst tv 当中的位置**
 
-#### 3 tv layouts & 1 tiler
+#### How to build?
 
-介绍完了 ldmatrix，我们发现 source tv layouts 和 dst tv layouts 是可以不一样的，一个线程的元素可能会跑到另外的线程当中。而对于目标 tv layouts，我们如何通过 copy atom 来完成整个 copy 过程以获得目标 tv layouts 呢？这其中涉及到 3 个 tv layouts 和一个 tiler size，这是已知条件：
+构建 tiled copy 的双核心逻辑
 
-1. src tv layouts, `AtomLayoutSrc`
+1. 对于使用 universal copy 的场景，直接使用 `make_tiled_copy` 构建所需的 mn shape，从而直接定义一个 cta block 的 copy 能力
+2. 对于 tv layouts 有特殊要求的 copy 场景（e.g. mma），此时需要考虑的是 tv layouts 与 copy atom 之间的合法性问题，即 copy atom 的整除要求（size of v 需要至少为 8）。此时一个 cta block 的 copy 能力是 mma atom mn shape 的重复，可通过 permutation mnk 参数进行调整
 
-   描述 copy atom src tv layouts 映射到的 logical memory id
+   对于 sm90 之后该问题不用考虑，mma 与 copy 之间的合法性总是能够得到满足，我们无需考虑 mma atom 需要重复几次以满足 copy 要求，只需要关注 cta tile 与 mma atom 之间的整除关系是否满足即可
 
-2. dst tv layouts, `AtomLayoutDst`
-
-   描述 copy atom dst tv layouts 映射到的 logical memory id
-
-3. target tv layouts, `TiledLayout_TV` 以及其对应的 tiler size `TilerMN`
-
-   描述 `(t, v) -> (m, n)` 的映射，这针对的是 dst tv layouts。`(M, N)` 描述 src & dst tensor 的形状，`TiledLayout_TV` 就是上节 TiledCopy 中使用的 `layout_tv`
-
-从这些已知条件出发：需要完成对 src tensor & dst tensor 的数据进行 tv 分配，各自线程进行 copy，使得 copy 完成后符合 `TiledLayout_TV` 要求。这个过程就是整个 TiledCopy，完成这个过程有2个关键点需要完成
-
-1. tiled layout tv 通常包含了多个 copy atom tv，需要计算 copy atom tv 需要如何重复以覆盖 tiled layout tv
-2. dst tensor 对应的 tv layout 已是已知条件，还需要计算 src tensor 所对应的 tv layout
-
-第一个关键点很容易完成，只需要一个 zipped divided
-
-```c++
-// ((t, v), (rest_t, rest_v)) -> (m, n)
-dst_tv_2_mn = zipped_divide(TiledLayout_TV,
-					AtomLayoutDst.shape)
-```
-
-这样我们就计算出了还需要重复的 t 和 v，分别以 `rest_t, rest_v` 标识
-
-第二个关键点也很容易完成，只需要一个 compose
-
-```c++
-// ((t, v), (rest_t, rest_v)) -> (m, n)
-src_tv_2_mn = dst_tv_2_mn.compose(src_tv_2_dst_tv)
-```
-
-这里就是 `AtomLayoutSrc` 和 `AtomLayoutDst` 发挥作用的时候，二者之间通过 logical memory id 构建了一个映射 src tv -> dst tv，该映射表示为 `src_tv_2_dst_tv`，将 `dst_tv_2_mn` 与 `src_tv_2_dst_tv` 进行 compose 过后就能够构建 src tv -> (m, n) 映射，完整映射路线为：src tv -> dst tv -> (m, n)
-
-至此整个 TiledCopy 关键点都已完成，结果必定满足 `TiledLayout_TV` 要求，因为我们一开始就是按照这个 tv layout 去分割 tensor，然后通过映射倒推出 src tensor 应该如何去分割以满足该要求
+考虑好了以上两个核心逻辑就可以清晰地计算 tiled copy 中的三个核心参数：copy atom, tiled tv layout, mn shape。此时一个大的 picture 正在浮现开来：tile centric CUDA programming。以 mma atom mn shape 作为基础的 building block，重复其 mn shape 构建 copy 合法的 building block，**构建出 tile we actually operate on**。cta problem will be built on top of tile，是 tile 的重复。我们的编程将通过 gemm & copy 接口完成对 tile level 的处理，而对于 tv partition 则尽可能交由 dsl 处理
 
 #### Copy 连续性要求
 
-在上述讨论过程中，我只聚焦在了 src tv & dst tv 之间的 logical memory id 转换，而忽略掉了 copy atom 本身对物理内存的连续性是有要求的。例如 ldmatrix 其实是要求 src tv 中每一个 thread 所拥有的 8 个 values 在 shared memory 中是连续的。这种约束也存在在 universal copy 当中
+我们通常不会考虑 copy 的连续性要求，因为由于 copy 与使用场景的强绑定性，连续性要求都是会被满足的，不过在此我仍然以 ldmatrix 为例子，看下该要求的基本形式。ldmatrix 其实是要求 src tv 中每一个 thread 所拥有的 8 个 values 在 shared memory 中是连续的。这种约束也存在在 universal copy 当中
 
 ```c++
-  using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint32_t>, T>;
-  // using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint16_t>, T>; // no errors
-  // using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint64_t>, T>; // cause errors
+using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint16_t>, T>; // 16-bit contiguous
+using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint32_t>, T>; // 32-bit contiguous
+using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint64_t>, T>; // 64-bit contiguous
 ```
 
-当我们使用 copy atom 为 `cute::uint64_t` 的大小时，在 hgemm 的例子当中就会报错，因为 64bit 代表 4 个 half 数据，但这 4 个数据 copy 到 shared memory 中的位置是不连续的，通过这个 copy atom 是无法完成的
-
-同样在 ldmatrix 过程也有连续性要求，先回顾一下 ldmatrix 当中的 src & dst tv layout
-
-<img src="CUDA Programming 8.1/image-20250811162318861.png" alt="image-20250811162318861" style="zoom: 25%;" />
-
-该图定义了 src tv 和 dst tv 之间的映射。可以看到如下的特征
+可以从 ldmatrix 中的 src tv 与 dst tv 之间的映射找到如下关系
 
 ```python
 DST						SRC		 
@@ -814,7 +778,11 @@ Target：构建 `rA_as_C` 的 register tensor 以满足
 
 **补充（2025/10/31）：mma tv layout solved by product & inverse**
 
+以上例子都需要有一个前提：不同的 partition 过后，thread 所获得的数据都是相同的。这个前提如何确保满足？我开始对 mma layout 进行了更多的研究，我发现 mma layout 只不过是同一种模式的复制粘贴，该模式很难从 layout 中看出来，也很难从 latex 可视化图像中看出。
+
 如何利用 inverse 完成 mma atom layout 的推导？其中 inverse 过后，如果使用 `with_shape` 方法构建所需的形状？bear in mind with both shapes，在 inverse 之后 product 的维度会在末尾，这是由 inverse 本身的性质决定，在之前已经讨论过：原 stride 小的维度 shape 靠前
+
+`with_shape` 的实现本质是一个 compose，这也指导我们，reshape 可以使用 compose 直接完成，尤其是对某一个 mode 做 reshape 的时候直接用 compose 会比较方便
 
 ## 核心优化
 

@@ -59,7 +59,7 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
 1. `take<begin, end>(x)`
 
-   说是 take，实际上是 slice，取 begin & end
+   说是 take，实际上是 slice，取 begin & end，end 为开区间
 
 2. `select<modes...,>(x)`
 
