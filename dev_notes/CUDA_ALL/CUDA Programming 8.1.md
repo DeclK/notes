@@ -772,17 +772,117 @@ A_retiled = make_tensor(A.data(), B.layout())
 
 [写给大家看的 CuTe 教程：Layout compose & Inverse](https://zhuanlan.zhihu.com/p/1962625273636845008) 受到其中的例子启发，我又重新审视了一下 retile，并且更深入地对 product/divide 和 inverse 进行了练习，获得了一些不错的经验。现在对 retile 问题进行更具体的阐述：
 
-Condition：对于一个 gmem tensor A，使用了两种 partition 方式，`partition_A` & `partition_C`，划分过后每个线程所获得的数据分别为 `gA_as_A` 和 `gA_as_C`（注意这仍是 global memory）。并且已经申请了 register `rA_as_A` 用于 copy `gA_as_A`
+Condition：对于一个 gmem tensor x，使用了两种 partition 方式（e.g. 不一样大小的 tiler），`partition_A` & `partition_C`，划分过后每个线程所获得的数据分别为 `gA` 和 `gC`，并且已经申请了 register `rA = make_fragment_like<AType>(gA)` 用于 copy `gA`
 
-Target：构建 `rA_as_C` 的 register tensor 以满足
+Target：以最小代价构建 `rC`
+
+有三个不一样的思路（包含错误思路），我都来分析一下：
+
+1. 直接使用 `gC` 的 shape 和 `rA` 的数据
+
+   ```cpp 
+   rC = make_tensor(rA.data(), make_layout(gC.shape()))
+   ```
+
+   这显然是行不通的，`gC` shape 所生成的 layout 是一个 natural layout，其 stride 和真正的 `rC` 是不一样的
+
+2. 使用 `make_fragment_like` 构建 `rC`
+
+   ```cpp
+   rC = make_fragment_like<AType>(gC)
+   ```
+
+   该方法的确能够获得正确的 `rC` layout，但是会额外申请寄存器，造成资源浪费。如果我们知道 `make_fragment_like` 计算 `rC` layout 的方法也是可行的
+
+3. 构建 `gC nn -> gA coord` 的映射，利用 compose 获得 `rC coord -> offset` 映射，该映射即为正确的 `rC` layout
+
+   首先我们来看几个 tensor layout 所代表的映射
+
+   - `gA` layout 是 `gA coord -> gmem offset`，即 tensor coordinate 到 gmem offset 的映射
+   - `gC` layout 是 `gC coord -> gmem offset`，类似 `gA`
+   - `rA` layout 是 `rA coord -> rmem offset`，即 tensor coordinate 到 register offset 的映射，其中 `rA` 的 shape 和 `gA` 是一致的
+   - `rC` layout 是 `rC coord -> rmem offset`，类似 `rA`
+
+   我们构建 `gC coord -> gA coord` 的桥梁就是：`gA & gC` 有着相同的 gmem offset domain，即他们的数据是一样的，此时我们可以通过 inverse + compose 构建映射
+
+   ```cpp
+   // gmem offset -> gA coord
+   inv_gA = left_inverse(gA)
+   // gC coord -> gA coord 
+   gC_to_gA = inv_gA.compose(gC) // gC -> gmem -> gA
+   ```
+
+   有了 `gC -> gA` 的映射过后，直接利用 compose `gA -> rmem offset` 的映射即可完成 `gC -> rmem offset` layout 的构建，因为 `gC` 和 `rC` 有相同的 shape，所以得到的就是 `rC` 的 layout
+
+   ```cpp
+   // rA & gA has the same shape
+   // gC -> (gA = rA) -> rmem offset
+   rC = rA.compose(gC_to_gA)
+   ```
 
 **补充（2025/10/31）：mma tv layout solved by product & inverse**
 
-以上例子都需要有一个前提：不同的 partition 过后，thread 所获得的数据都是相同的。这个前提如何确保满足？我开始对 mma layout 进行了更多的研究，我发现 mma layout 只不过是同一种模式的复制粘贴，该模式很难从 layout 中看出来，也很难从 latex 可视化图像中看出。
+以上例子都需要有一个前提：不同的 partition 过后，thread 所获得的数据都是相同的。这个前提如何确保满足？我开始对 mma layout 进行了更多的研究，我发现 mma layout 只不过是同一种模式的复制粘贴：不断地重复一个 8x8 的 tile，其 tv layout 可写作
 
-如何利用 inverse 完成 mma atom layout 的推导？其中 inverse 过后，如果使用 `with_shape` 方法构建所需的形状？bear in mind with both shapes，在 inverse 之后 product 的维度会在末尾，这是由 inverse 本身的性质决定，在之前已经讨论过：原 stride 小的维度 shape 靠前
+```python
+# tv -> mn
+mma_basic_layout = Layout(
+    shape=[4, 8, 2],
+    stride=[16, 1, 8]
+)
+```
 
-`with_shape` 的实现本质是一个 compose，这也指导我们，reshape 可以使用 compose 直接完成，尤其是对某一个 mode 做 reshape 的时候直接用 compose 会比较方便
+<img src="CUDA Programming 8.1/image-20251104210802954.png" alt="image-20251104210802954" style="zoom:50%;" />
+
+我们可以模仿 `make_tiled_copy` 中的方式，推导出这个 tv -> mn layout
+
+```cpp
+// (m1, n1) -> tid
+auto mn2tid = make_layout(make_shape(_8{}, _4{}), make_stride(_4{}, _1{}));
+// (m2, n2) -> vid
+auto mn2vid = make_layout(make_shape(_1{}, _2{}), make_stride(_0{}, _1{}));
+
+// ((m2, m1), (n2, n1)) -> (tid, vid)
+// raked product to make v comes first
+// ((_1,_8),(_2,_4)):((_0,_4),(_32,_1))
+auto mn2tv = raked_product(mn2tid, mn2vid); 
+
+// inverse & with shape
+// (tid, vid) -> (m, n)
+auto tv2mn = left_inverse(mn2tv).with_shape(make_shape(_32{}, _2{}));
+```
+
+其中 inverse 过后，如何确保 `with_shape` 一定是正确的？万一 inverse 过后的 shape 是 `(vid, tid)` 呢？不会，一定会是 `(tid, vid)`，这是由于 product & inverse 的性质所决定的：
+
+1. product 中，mn2vid 中的维度所对应的 stride 一定是被 multiply 的一方，这就决定了 vid 对应的 stride 会是最大的
+2. inverse 过后 stride 最大的 shape 会在最后（请回看 inverse 的推导过程）
+
+两个性质决定了 inverse 过后一定会是 `(tid, vid)` 的排列顺序，所以我们用 `with_shape` 能够很方便进行 reshape
+
+现在得到了 mma 中的 basic tv -> mn layout，那么上图中重复 4 次的 tv -> mn layout 如何得到？很简单，我们在其中使用一个 blocked product 重复 4 次即可
+
+```cpp 
+// repeat (2, 2) mn -> tv
+auto mn2tv_4x = blocked_product(mn2tv, make_layout(make_shape(_2{}, _2{})));
+// inverse to get (t, v, 2, 2) -> (m, n)
+// give all the repeat to v
+// ((_4,_8),(_2,_2,_2)):((_32,_1),(_16,_8,_128))
+auto tv2mn_2x = left_inverse(mn2tv_2x).with_shape(make_shape(_32{}, _8{}));
+```
+
+正如 product 和 inverse 的性质导致，重复的 mode 会在 inverse 之后的 shape 排在最后。我们有一个 `(2, 2)` 的 blocked product，不过我们到底是重复 4 次 t，还是重复 4 次 v，还是 tv 各自重复两次？这就需要根据需求进行 permute & reshape，在此情形下，是将 v 重复 4 次，所以直接用 with shape 即可，最后得到的 layout 和 mma traits 中的 layout 一模一样👏
+
+`with_shape` 的实现本质是一个 compose，这也指导我们，reshape 可以使用 compose 直接完成，尤其是对某一个 mode 做 reshape 的时候可以用 `compose(_, layout, ...)` 来跳过其他 mode。注意当 `layout.compose()` 传入多个 layout 的时候会自动使用 `make_tile(layouts)` 进行 by mode compose。所以对于 nested layout 中的某一个 mode 进行 reshape 时，也应当使用 `make_tile`
+
+然而对于 permute 没有优雅的方法，只有老老实实构建新的 tensor 了
+
+- `_` 在 product, divide, compose 当中的作用
+
+  在 compose 当中其实就是跳过某个 mode，另外没有 `make_layout(_ ,)`
+
+  divide，只有 `logical_divide(_, shape, ...)` 是跳过某一个 mode，其他的 divide 都很难成功，`zipped_divide` 只有针对两个 shape 的时候才会成功
+
+  product 无法使用 `_` 进行跳过，不然 `_` 会直接进入到 shape 当中，可以使用乘 1 的方式来跳过，最后使用 with shape 进行整合
 
 ## 核心优化
 
