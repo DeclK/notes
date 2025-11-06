@@ -682,7 +682,7 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 
    对于 sm90 之后该问题不用考虑，mma 与 copy 之间的合法性总是能够得到满足，我们无需考虑 mma atom 需要重复几次以满足 copy 要求，只需要关注 cta tile 与 mma atom 之间的整除关系是否满足即可
 
-考虑好了以上两个核心逻辑就可以清晰地计算 tiled copy 中的三个核心参数：copy atom, tiled tv layout, mn shape。此时一个大的 picture 正在浮现开来：tile centric CUDA programming。以 mma atom mn shape 作为基础的 building block，重复其 mn shape 构建 copy 合法的 building block，**构建出 tile we actually operate on**。cta problem will be built on top of tile，是 tile 的重复。我们的编程将通过 gemm & copy 接口完成对 tile level 的处理，而对于 tv partition 则尽可能交由 dsl 处理
+考虑好了以上两个核心逻辑就可以清晰地计算 tiled copy 中的三个核心参数：copy atom, tiled tv layout, mn shape。此时一个大的 picture 正在浮现开来：**tile centric CUDA programming**。以 mma atom mn shape 作为基础的 building block，重复其 mn shape 构建 copy 合法的 building block，**构建出 tile we actually operate on**。cta problem will be built on top of tile，是 tile 的重复。我们的编程将通过 gemm & copy 接口完成对 tile level 的处理，而对于 tv partition 则尽可能交由 dsl 处理
 
 #### Copy 连续性要求
 
@@ -794,7 +794,7 @@ Target：以最小代价构建 `rC`
 
    该方法的确能够获得正确的 `rC` layout，但是会额外申请寄存器，造成资源浪费。如果我们知道 `make_fragment_like` 计算 `rC` layout 的方法也是可行的
 
-3. 构建 `gC nn -> gA coord` 的映射，利用 compose 获得 `rC coord -> offset` 映射，该映射即为正确的 `rC` layout
+3. 构建 `gC coord -> gA coord` 的映射，利用 compose 获得 `rC coord -> offset` 映射，该映射即为正确的 `rC` layout
 
    首先我们来看几个 tensor layout 所代表的映射
 
