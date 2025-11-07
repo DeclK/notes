@@ -682,7 +682,11 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 
    对于 sm90 之后该问题不用考虑，mma 与 copy 之间的合法性总是能够得到满足，我们无需考虑 mma atom 需要重复几次以满足 copy 要求，只需要关注 cta tile 与 mma atom 之间的整除关系是否满足即可
 
-考虑好了以上两个核心逻辑就可以清晰地计算 tiled copy 中的三个核心参数：copy atom, tiled tv layout, mn shape。此时一个大的 picture 正在浮现开来：**tile centric CUDA programming**。以 mma atom mn shape 作为基础的 building block，重复其 mn shape 构建 copy 合法的 building block，**构建出 tile we actually operate on**。cta problem will be built on top of tile，是 tile 的重复。我们的编程将通过 gemm & copy 接口完成对 tile level 的处理，而对于 tv partition 则尽可能交由 dsl 处理
+考虑好了以上两个核心逻辑就可以清晰地计算 tiled copy 中的三个核心参数：copy atom, tiled tv layout, mn shape
+
+此时一个大的 picture 正在浮现开来：**tile centric CUDA programming**。核心问题：**What kinds of tile you want to choose to solve a cta problem?**
+
+对于 smem -> rmem 这个环节当中，我们利用 mma atom mn shape 作为基础的 building block，为了配合 copy atom 合法性，我们对其 mnk tile 进行了相应的重复，最终**构建出实际使用的 mnk tile**，cta problem 将由这个 tile 进行切分解决
 
 #### Copy 连续性要求
 
@@ -1223,150 +1227,33 @@ update 2025/10/20 在 zhihu 上也看到一个推导 swizzle 的 [repo](https://
 
 ## hgemm 实践
 
-**TODO：这部分整理还是混乱，尤其是我推翻了之前的 block/tile atom 假设**。最好以 tiled base 把整个思路简化。另外似乎 smem -> tensor core 这个阶段不需要流水线同步？因为没有看到 async 相关指令。只有 gmem -> smem 阶段有 async 同步指令
+我在之前的笔记中提出了一个：tile centric CUDA programming 的思路，在这一小节中我将沿着这个核心思路，并进行更详细地拓展，利用这些思想解决高性能 hgemm kernel。这些思路也是借鉴了 tilelang 的 [demo](https://github.com/tile-ai/tilelang?tab=readme-ov-file#gemm-example-with-annotations-layout-l2-cache-swizzling-and-pipelining-etc)
 
-问题定义：
+在此我提出一个 2-level tile 的概念：
 
-1. (M, N, K) = (512, 512, 512)
-2. block threads = 128
+1. first-level: CTA Tile。作为最高 level 的 tile，该 level 非常方便我们设计宏观的 pipeline，e.g.: multi-stage or producer-consumer pipeline
+2. second-level tile 会有许多种，其核心是具体解决 CTA tile 的各阶段问题，包含：各个阶段的 cta tile copy；计算 cta tile mma
 
-对 hgemm 当中的核心算法进行整理，并配合清晰的图解
+tilelang 将专注于 first-level tile programming，把 pipeline 和 second level tile 问题都自动解决了，这给我们设计 kernel 带来了极大的便利，这必定是以后的大趋势。不过在此我们仍然要讨论清楚这些细节
 
-### Define Atom
+- 可以从不同的 level 来设计流水线：from cta tile level to second-tile level，pipeline inside of a pipeline
 
-首先我需要先定义我们所能使用的工具：mma atom & copy atom。正如之前在 tiled copy 当中所分析的，我将以两个概念来构建 atom
+### Define tile
 
-1. basic atom：最小的操作单元，定义所需的基本工具。最小操作单元可以是 thread level，也可以是 warp level
-2. block atom (tiled atom)：结合 tv layout & mn shape 构建出具体的操作区域与 partition 方法，本质是 basic atom 的 block level 形态，也是实际编程中所使用的 atom。在对 basic atom 进行扩展时，其实就是将 basic atom 进行重复，以铺满 mn shap 空间。所谓的铺满，就是由 threads 增加所带来的重复效应，即 tv layouts 中的 t 维度进行扩张
+我们以 tile 为 centric 作为构建模块，而 tile 的核心参考就是 mma shape。以 `SM80_16x8x16_F16F16F16F16_TN` 作为 mma op，其 mnk shape 为 `(16, 8, 16)`，我们以此为基础推理出合理的 tile 设置。为了方便讨论，我们把条件设置更具体一些：使用 4 个 warps，以 `(2, 2)` 的 layout 进行排列
 
-#### Basic Atom
+1. mma mnk tile 的大小将从单个 warp 的形状 `(16, 8, 16)` 扩展为 4 个 warp 的形状 `(32, 16, 16)`
+2. g2s tile，一定要使用向量化读写，每一个 thread 将对应 128-bit 数据（i.e. 8 个 fp16），128 个线程则能够复制 1024 个 fp16 数据，我们可以构建一个 `(32, 32)` 的 tile
+3. s2r tile，需要满足 mma 的特殊 tv 要求，同时满足 ldsm 命令的合法性（size of v 必须为 8），我们需要在 mma shape 的 N 维度上进行扩展，构建出 `(32, 32, 16)` 的 tile，为什么要扩展两倍，请参考 TiledMMA & ldmatrix 小节
+4. r2s tile，可以使用 `(32, 32)` 的 tile，注意由于 register 的特殊排布，无法使用 128-bit 的向量化读写
+5. s2g tile，可以使用 `(32, 32)` 的 tile，使用高效的向量化读写
 
-1. mma atom
+以上是 second-level tile 的设置，对于 cta mnk tile 的设置我们可以设置为 `(128, 128, 32)`，其中有两个参考理由：
 
-   选择 mma op `SM80_16x8x16_F16F16F16F16_TN`，并且在 M, N 方向上重复 2 次，所以 128 个线程总共将处理 `(32, 16, 16)` 大小的 mma
+1. 我们需要较大的 cta tile size 来增加计算时间，从而掩藏 copy 时间
+2. 需要使用 double buffer，所以扩大了 k 方向大小
 
-2. copy atom
-
-   copy atom 会是最复杂的
-
-   1. Global to shared memory (G2S)
-
-      选择 copy op ` SM80_CP_ASYNC_CACHEGLOBAL<cute::uint128_t>`，128 个线程总共将处理 1024 个 half elements，可完成 `(32, 32)` 大小的 G2S copy
-
-   2. Shared memory to register (S2R)
-
-      选择 copy op `SM75_U32x4_LDSM_N`，128 个线程总共将处理 1024 个 half elements，可完成 `(32, 32)` 大小的 S2R copy
-
-   3. Register to shared memory (R2S)
-
-      选择 copy op `Copy_Atom<UniversalCopy<cute::uint32_t>, T>`，128 个线程总共将处理 256 个 half elements，可完成 `(32, 8)` 大小的 R2S copy
-
-   4. Shared memory to global (S2G)
-
-      选择 copy op `Copy_Atom<UniversalCopy<cute::uint128_t>, T>`，128 个线程总共将处理 1024 个 half elements，可完成 `(32, 32)` 大小的 S2R copy
-
-   NOTE: 在上面的叙述中我都使用的**“可完成”**来描述 block atom 完成的 MN shape，是因为在提供具体的 TV layouts & MN shape 之前，我只能知道其复制的总元素数量是多少
-
-#### Block Atom
-
-Tiled Atom 实际上都是围绕 copy atom，对于 mma atom 的核心定义，其实都在的 block atom 中完成了。即使是 tiled mma 当中定义的 PermutationMNK 也是针对于 tiled copy 所设计的
-
-我们需要根据 mma 的情况来给 block atom 赋予实际的 MN shape 以方便我们构建 gemm 算法
-
-1. tiled mma atom
-
-   在上述 basic atom 中已经描述完毕
-
-2. tiled copy atom
-
-   1. G2S
-
-      一般 G2S 和 S2G 是比较简单的，不需要特殊的 tv layouts。这里将其处理的 mn shape 设置为 `(32, 32)`，而 tiled tv layouts 的计算过程在 TiledCopy 小节中有介绍，其计算结果为 `((_4,_32),_8):((_256,_1),_32)`
-
-   2. S2R
-
-      此时由于 mma 对于 tv layouts 有特别的要求，所以 tiled tv layouts 必须遵守 mma tv layouts 要求以确保 copy 的正确性
-
-      - Matrix A，使用 tiled mma 中的 `get_layoutA_TV` 作为 tiled tv layouts，其 mn shape 为 `(32, 16)`，总复制元素数量为 1024
-      - Matrix B，使用 tiled mma 中的 `get_layoutB_TV` 作为 tiled tv layotus，其 mn shape 为 `(32, 16)`，总复制元素数量为 1024
-
-   3. R2S
-
-      此时由于 register 已经按照 mma tv layout C 进行排布，所以 tiled tv layouts 必须遵守 mma tv layouts C 要求以确保 copy 的正确性
-
-      - Matirx C，使用 tiled mma 中的 `get_layoutC_TV` 作为 tiled tv layouts，其 mn shape 为 `(32, 32)`，总复制元素数量为 1024
-
-      另外可以看到由于 R2S 的 block copy atom 实际上一次只能处理 256 个元素，**所以该 atom 需要重复 4 次才能完成复制任务**
-
-   4. S2G
-
-      与 G2S 一样，采取 mn shape `(32, 32)`，tiled tv layouts `((_4,_32),_8):((_256,_1),_32)`
-
-**补充：PermutationMNK, N = 2 的推导过程，实践 TiledCopy**
-
-**What We Have**: s2r copy atom, mma atom's tv layouts and NK shape, block threads
-
-**What We Want**: copy the NK data to register and satisfy mma tv layouts for 1 block
-
-一些更具体的参数值列在下方以方便我们的推导:
-
-```python
-# Conditions
-N = 8
-K = 16
-num_threads = 128 = 32 * 4
-AtomLayoutMNK = (2, 2, 1)		# 4 Atoms 
-copy_atom = SM75_U32x4_LDSM_N
-mma_atom = SM80_16x8x16_F16F16F16F16_TN
-# What's missing...
-PermutationMNK
-```
-
-现在我们就差定义好 `PermutationMNK` 就能够构建出 TiledMMA，让后利用方法 `get_layoutB_TV & get_layoutB_NK` 获得 NK 矩阵的 tv layout & MN shape，而这两个参数正是构建 TiledCopy 唯二需要的参数
-
-我们先看下我们需在此条件下，需要什么：
-
-<img src="CUDA Programming 8.1/image-20250525153845284.png" alt="image-20250525153845284" style="zoom:50%;" />
-
-我们需要复制的数据，其实就是 NK1 & NK2，但是注意到：Atom1 & Atom2 都需要 NK1，Atom2 & Atom4 都需要 NK2。所以需要的总数据其实是 2 倍的 NK1 & NK2，总共需要 copy 512 个元素
-
-```python
-one_atom = N * K = 8 * 16 = 128
-four_atom = 4 * one_atom = 128 * 4 = 512
-```
-
-在 `PermuationMNK` 都为 1 的情况下，可以得到对应的 matrxi B tv layout & nk shape
-
-```python
-B_dst_tv_layout = Layout(
-  # (n_threads, (v_per_thread, restNK)), (128, 4) in total
-	shape = ((4, 8, 2, 2), ((2, 2), (1, 1)))
-  stride = ((32, 1, 0, 8), ((16, 128), (0, 0)))
-)
-NK_shape = (16, 16)
-```
-
-OK，现在我们来尝试在此情况下使用 TiledCopy。在之前的分析中，我们需要使用 `src_tv_2_dst_tv` 与上述的 `B_dst_tv_layout` 进行 zipped divide & compose，以获得符合要求的 `B_src_tv_layout`，从而划分 src tensor。而 `src_tv_2_dst_tv` 这个 layout 是一个 `(t, v) -> (t, v)` 的映射，其中 `v = 8`，这是由 copy atom 决定的。而 `B_dst_tv_layout` 的 shape 只有 `(128, 4)`，其 `v = 4`，无法被 `v = 8` 进行 divide！于是乎，以上操作无法完成
-
-既然没有足够的 values，那么我们就可为其扩展足够的 values，此时 `PermutationMNK` 就可发挥大作用了（当我理解原理过后，我认为之前的 `ValLayoutMNK` 命名更为合理呢🤔）。我们可以选择在 K 维度上进行扩展，也可以选择在 N 维度上进行扩展，显然选择后者会是更合理的选择，因为在 K 维度上扩展的话，会连带影响 A 矩阵的 tv layout。以下就是将 N 维度扩展两倍过后的结果
-
-```python
-B_dst_tv_layout = Layout(
-  # (n_threads, (v_per_thread, restNK)), (128, 8) in total
-	shape = ((4, 8, 2, 2), ((2, 2), (2, 1)))
-  stride = ((64, 1, 0, 8), ((32, 256), (16, 0)))
-)
-NK_shape = (32, 16)
-```
-
-此时 `(128, 8)` 的大小正好有 1024 个 half 数据，这也正是一个 block 进行一次 copy 的最小数量（i.e. 每一个 threads copy 8 个 half 数据）。如果我们再继续扩展 `PermutationMNK` 可不可以呢？其实是可以的，但是也需要满足 compose 的合法要求，同时 values 数量会 > 1024，本质上变为重复一个 block atom 的能力，而该功能实际可由 `cute::copy` 去完成
-
-以上的分析回答了一个困扰许久的问题：`PermutationMNK` 到底有什么作用？**我的回答：增加 cta 中 TiledCopy 一次能 copy 的 values 数量**。同时以上的分析也让我真正懂得了如何去构建和使用 TiledCopy，让我对组成 TiledCopy 的两个参数：tv layout & mn shape 有了更具象化的理解
-
-1. tv layouts，是线程分割数据的核心，也是保证程序合法的重要参考
-2. mn shape，是对 gemm 进行 tile 区域划分的逻辑粒度
-
-### Define Shared Memory
+### Define Smem
 
 在 gemm 算法中定义 shared memory 主要从 3 个方面来考量：
 
@@ -1386,9 +1273,9 @@ NK_shape = (32, 16)
 2. matrix C 并不需要全部存储到 shared memory 当中，shared memory 只是作为一个中转站以方便进行向量化读取，所以需要 `(32, 32)` 大小即可，在 reed 所给代码中使用了 `(32, 32, 2)` 的大小，相当于申请了更大的 shared memory 作为中转，但在我的实验过程中发现加速效果不明显
 3. 根据之前的 swizzle 计算思路，我们只讨论一个 phase 当中的 shared memory 读取，也就是 `(8, 32)` 大小的 shared memory 读取。那么利用公式可以得到 `Swizzle<B=2, S=3, M=3>`，而在 reed 所给代码中则使用了 `Swizzle<B=3, S=3, M=3>` 其能够处理更大范围的 bank conflict
 
-![image-20250525154307996](CUDA Programming 8.1/image-20250525154307996.png)
+### Pipelines
 
-### GEMM Algorithm
+TODO：pipelines in Gemm (double buffer everywhere, abstract multistage as double buffer) question: is s2r copy async with mma?
 
 终于进入万众期待的 gemm 算法了，我主要想通过简要的图解来直观理解 gemm multi-stage 算法以及 TiledCopy & TiledMMA 在其中的使用方式
 
