@@ -252,7 +252,7 @@ mbarrier 将分为两类
 
 对于每一个 buffer 有两个 barrier：empty barrier & full barrier，只有当 buffer empty 时才能进行 produce，只有当 buffer full 时才能进行 consume
 
-TODO：一个简单的 producer-consumer 模型
+<img src="CUDA Programming 10.1/image-20251110145841354.png" alt="image-20251110145841354" style="zoom: 67%;" />
 
 **我的同步机制**
 
@@ -263,7 +263,7 @@ TODO：一个简单的 producer-consumer 模型
 - 当 producer 完成写入过后，需要设置 `isFull=1, isEmpty=0`
 - 当 consumer 完成计算过后，需要设置 `isFull=0, isEmpty=1`
 
-TODO：我的同步机制一些图解
+<img src="CUDA Programming 10.1/image-20251110145906680.png" alt="image-20251110145906680" style="zoom:80%;" />
 
 这样就能保证 producer 在写入时，consumer 不会读取；consumer 在计算时，producer 不会写入。我认为这样的同步机制相当直观，但是 cutlass cute 并没有使用这样的机制
 
@@ -276,7 +276,7 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
 - 当 producer 完成写入过后，更新 full barrier count += buffer count (3 in our case)
 - 当 consumer 完成计算过后，更新 empty barrier count += buffer count
 
-TODO：cutlass cute data index 同步机制
+![image-20251110145954462](CUDA Programming 10.1/image-20251110145954462.png)
 
 而对于 cutlass 来说还进行了两个改进：
 
@@ -301,7 +301,7 @@ TODO：cutlass cute data index 同步机制
 - **当 producer 完成写入过后，full barrier phase flip**
 - **当 consumer 完成计算过后，empty barrier phase flip**、
 
-TODO: phase 同步机制
+![image-20251110150007186](CUDA Programming 10.1/image-20251110150007186.png)
 
 为了构建以上功能，cutlass 使用了两个对象 `mbarrier` & `pipeline_staes` 来进行管理。其中 `mbarrier` 就对应着上述的 full barrier & empty barrier，`pipeline_states` 则对应着 data index
 

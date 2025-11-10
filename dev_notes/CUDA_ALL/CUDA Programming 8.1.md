@@ -1253,7 +1253,7 @@ tilelang 将专注于 first-level tile programming，把 pipeline 和 second lev
 1. 我们需要较大的 cta tile size 来增加计算时间，从而掩藏 copy 时间
 2. 需要使用 double buffer，所以扩大了 k 方向大小
 
-### Define Smem
+### Define smem
 
 在 gemm 算法中定义 shared memory 主要从 3 个方面来考量：
 
@@ -1275,130 +1275,30 @@ tilelang 将专注于 first-level tile programming，把 pipeline 和 second lev
 
 ### Pipelines
 
-TODO：pipelines in Gemm (double buffer everywhere, abstract multistage as double buffer) question: is s2r copy async with mma?
+在之前我只是对 reed multi-stage pipeline 进行了简单的描述。可是要自己构建一个流水线应该如何做到？其实流水线的核心非常简单，就是任务重叠，具体到 GPU model 当中就是数据搬运与计算的重叠。最简单有效的 pipeline 就是 double buffer pipeline，可以用下图表示，横向为时间
 
-终于进入万众期待的 gemm 算法了，我主要想通过简要的图解来直观理解 gemm multi-stage 算法以及 TiledCopy & TiledMMA 在其中的使用方式
+<img src="CUDA Programming 8.1/image-20251110150608284.png" alt="image-20251110150608284" style="zoom:67%;" />
 
-1. 根据 Tiler MNK 划分每一个 block 所需要处理的数据
+在重叠二者的编程中，有2个关键的要素：
 
-   <img src="CUDA Programming 8.1/image-20250525154406240.png" alt="image-20250525154406240" style="zoom: 50%;" />
+1. **在计算当前 data MMA 时，同时预取下一个 data**
+2. **在计算当前 data MMA 时，必须确保当前 data 填充完毕**
 
-   我们的问题一共需要 16 个 block 来完全解决，接下来的视角就缩小到单个 block 之内
+在具体实现时还有一些细节，例如计算 buffer index，以及在循环正式开始之前需要做的前置操作（e.g. 0-data load）等等。如果把 double buffer 进行扩展，有多个 buffer（也被称为 multi-stage），可以用下图表示
 
-2. 准备 shared memory & register data
+<img src="CUDA Programming 8.1/image-20251110170235632.png" alt="image-20251110170235632" style="zoom:67%;" />
 
-   在我们的 case 当中 shared memory 需要两个 `(128, 32, 3)` 大小的区域以应对 matrxi A & B，而 matrix C 的区域较小可以直接复用他们申请的空间。而对于 register data 则需要根据 thread mma 所分配的线程 tensor 大小进行申请，在我们的 case 中每个线程需要分别申请 register：`(8, 4, 2)`，`(4, 8, 2)`，`(4, 4, 8)` 给 matrix A & B & C
+以上展示了一个 4 buffer 的流水线过程。我们先预先发起 3 个 buffer 的数据搬运，在真实计算 MMA 0 的时候发起最后一个 buffer 的数据预取，这能够让我们预取更多的数据。我认为这并不是典型的 producer-consumer model，因为 producer 并不是持续地在进行搬运数据，而是在当前 MMA 计算时，同时去预取了下一个 data
 
-   <img src="CUDA Programming 8.1/image-20250525154435893.png" alt="image-20250525154435893" style="zoom:50%;" />
+在上图中 MMA 直接从 shared memory 中获得数据开始计算了，实际上在 sm80 架构上 MMA 需要从 register 获得数据进行计算。所以有一个 smem -> register 的数据搬运过程。这个过程也可以用 double buffer 的思路进行流水线并行，所以两个流水线构成了 pipeline in the pipeline。两个 pipeline 会有数据上的依赖性，具体来说 register pipeline 中要求对应的 shared memory 必须完成 copy，这一点需要在编程中显示确认。下图展示了一个 double register buffer 的 pipeline 示意图，每两个 register 将消耗一批 smem buffer，每两个 MMA 计算完成一批数据
 
-3. 构建 thread copy 以分配 matrix A & B 各个线程的数据：G2S & S2R
+<img src="CUDA Programming 8.1/image-20251110173829549.png" alt="image-20251110173829549" style="zoom:67%;" />
 
-   <img src="CUDA Programming 8.1/image-20250525154609316.png" alt="image-20250525154609316" style="zoom:50%;" />
+在实现过程中，我们可以逐层地实现 pipeline，把第 0 批的数据先预取好，然后直接开启 pipeline 循环。对于 epilogue 似乎没有使用 pipeline，可以直接按照常规的方案逐 tile 进行 regsiter -> smem -> gmem 搬运
 
-4. 进入流水线大小 K 循环
+### Pseudo code
 
-   流水线的原理在之前已经介绍清楚了。我还需要对三个点进行强化：
-
-   1. 流水线的不同时刻
-
-      我用连续的四个时刻来清晰理解流水线 & big/small k iteration 过程，具体流程也在图中标注
-
-      <img src="CUDA Programming 8.1/image-20250525154649885.png" alt="image-20250525154649885" style="zoom:80%;" />
-
-   2. `cp_async_fence` 的使用
-
-      该 function 应当被看做一个标记器，随着时间不断地进行标记，从而更新最新任务所在的时间点。在使用 `cp_async_wait<n>` 时会从最新的标记处往回看 n 个标记（包含自身），那么 n 个标记前的任务就不必等待了。在 reed 代码中巧妙地使用强制 `cp_async_fence` 时间标记，来保证所有的 async copy 被正确地等待完成
-
-      ```c++
-          if (itile_to_read < ntile) {
-            cute::copy(g2s_tiled_copy_a, tAgA_copy(_, _, _, itile_to_read), tAsA_copy(_, _, _, ismem_write));
-            cute::copy(g2s_tiled_copy_b, tBgB_copy(_, _, _, itile_to_read), tBsB_copy(_, _, _, ismem_write));
-            // cp_async_fence(); // it must be outside the if condition, or the next cp_async_wait will not work as expected
-            ++itile_to_read;
-            ismem_write = (ismem_write + 1) % kStage;
-          }
-	// force to fence here
-          cp_async_fence();
-      ```
-
-      如果我们将 fence 移动到 if 条件内就会导致最后几个 tile 无法被正确等待。如下图所示
-
-      <img src="CUDA Programming 8.1/image-20250525154712534.png" alt="image-20250525154712534" style="zoom:80%;" />
-
-   3. tiled copy & tiled mma 的使用
-
-      tiled copy & tiled mma 定义了我们操作 tensor 的粒度，不过我们真正想要完成的是某一个区域的 copy or mma 操作。好消息是，当 tensor 经过 thread copy or mma 切分过后，会生成两个维度以提供非常便捷的区域选择：$(\frac{M}{m}, \frac{N}{n})$
-
-      我们可以通过 `cute::copy & cute::gemm` api 完成所需的 copy or mma 操作，`cute::copy & cute::gemm` 会自动地通过多次使用 tiled atom 完成所需功能，我们要做的就是通过 slice & index 传入 tensor 所需部分
-
-      ```c++
-      // complete 1 small k iteration copy of matrix A
-      // tAsA			(CPY, CPY_M, CPY_K, kStage)
-      // tCrA_view	(CPY, CPY_M, CPY_K)
-      cute::copy(s2r_tiled_copy_a, tAsA(_, _, 0, ismem_read), tCrA_view(_, _, 0));
-      cute::copy(s2r_tiled_copy_b, tBsB(_, _, 0, ismem_read), tCrB_view(_, _, 0));
-      
-      // complete 1 small k iteration mma
-      cute::gemm(tiled_mma, tCrD, tCrA(_, _, 0), tCrB(_, _, 0), tCrD);
-      ```
-
-      在上面的代码当中，我们就完成了一个 small iteration 所需要的 S2R 操作以及 mma 计算。可以看到要完成这样的 S2R 操作需要 tiled atom 重复4次（用橘色标出），而完成这样的 mma 操作，则需要 16 次的 tiled atom 重复
-
-      <img src="CUDA Programming 8.1/image-20250525154854663.png" alt="image-20250525154854663" style="zoom: 67%;" />
-
-5. 完成 epilogue
-
-   我们对已经计算好的 register D `tCrD` 需要搬运到 global memory 中去。但是 register D 是按照 mma block atom 进行切分的，所以划分的 tensor shape 不符合 copy tiled atom 的形状，这也是我之前提到的错位。所以必须要使用 retile 来修复这种错位，让 register D 就像是使用 copy tiled atom partition 的一样
-
-   <img src="CUDA Programming 8.1/image-20250525154929405.png" alt="image-20250525154929405" style="zoom:50%;" />
-
-   经过 retile 过后，`tCrD` 的形状变为了 `tCrD_view`
-
-   ```c++
-   tCrD		(MMA, MMA_M, MMA_N) ((_2,_2),_4,_8):((_1,_2),_4,_16)
-   tCrD_view	(CPY, CPY_M, CPY_N) ((_2,(_2,_2)),_4,_4):((_1,(_2,_16)),_4,_32)
-   ```
-
-   可以看到我们是从 N 方向上把重复的两个维度放到了第一个维度上
-
-   然后我们就可以通过 `cute::copy` 进行愉快的工作了，在 reed 代码中使用了 `pipe = 2`，也就是说用 2 个 tiled atom 大小的 shared memory 作为中介进行传输，可以用下图表示
-
-   <img src="CUDA Programming 8.1/image-20250525154947246.png" alt="image-20250525154947246" style="zoom:50%;" />
-
-   在代码中，reed 将 M & N 维度进行了 group，从而直接用一维的 index 进行操作
-
-   ```c++
-     auto tCgC_s2gx = group_modes<1, 3>(tCgC_s2g);  // (CPY_, CPY_MN), ((_8,_1),(_4,_4)):((_1,_0),(4096,_32))
-     auto tCrC_r2sx = group_modes<1, 3>(tCrC_r2s);  // (CPY_, CPY_MN), ((_2,(_2,_2)),(_4,_4)):((_1,(_2,_16)),(_4,_32))
-   
-     int step = size<3>(tCsC_r2s);  // pipe = 2
-   #pragma unroll
-     for (int i = 0; i < size<1>(tCrC_r2sx); i += step) {
-       // reg -> shm with 2 pipe
-   #pragma unroll
-       for (int j = 0; j < step; ++j) {
-         cute::copy(r2s_tiled_copy_c, tCrC_r2sx(_, i + j), tCsC_r2s(_, 0, 0, j));
-       }
-       __syncthreads();
-   
-   #pragma unroll
-       // shm -> global with 2 pipe
-       for (int j = 0; j < step; ++j) {
-         cute::copy(s2g_tiled_copy_c, tCsC_s2g(_, 0, 0, j), tCgC_s2gx(_, i + j));
-       }
-   
-       __syncthreads();
-     }
-   }
-   ```
-
-### General way to build tv layouts
-
-如何构建 desired tiled copy or tiled mma tv -> mn layouts。整体的算法总结如下
-
-1. 首先定义一个 block 能够处理的 MN tile
-2. 该 tile 作为一个 tiler 在 MN domain 进行 zipped divide: `((TilerM,TilerN), (RestM,RestN))`
-3. 然后再在这个 tile 内部讨论 tv 的分布: `((T,V), (RestM, RestN))`，我们可以对 `(RestM,RestN)` 进行一些 permuation 以达到 grouping 目的，例如我们再以 `(2,2)` 为 tiler 去划分 `(RestM,RestN)`，然后将其集中到 T 维度上：`((T,(2,2)), (V, (RestM/2, RestN/2)))`，此时就可以整体看待这个 layout 作为一个新的 tv layouts
+TODO: pseudo code based on tile centric cuda programming & double buffer pipeline
 
 ## 总结
 
