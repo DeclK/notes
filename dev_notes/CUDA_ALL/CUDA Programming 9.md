@@ -97,6 +97,18 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
    用得最多的就是 `repeat<R>(_)`，通常用于展开 modes，其作用是将元素 x 重复 R 次，R 指代的是 rank。另外一个常用的是 `repeat_like(t, x)`，这在 [repeat_like doc](https://docs.nvidia.com/cutlass/media/docs/pythonDSL/cute_dsl_api/cute.html#cutlass.cute.repeat_like) 中有写其功能：构建一个 t-like tuple，其中的元素值为 x
 
+   在代码中经常会见到如下方式来计算 `R` (i.e. rank)
+
+   ```cpp
+   // layout = ((2, 2), 3) : ((1, 2), 4)
+   constexpr int R = decltype(rank<0>(layout))::value;
+   // R = 2
+   repeat<R>(_) // (_, _)
+   print(layout(repeat<R>(_), _)); // (2, 2, 3): (1, 2, 4)
+   ```
+
+   询问过 Kimi，其目的是为了确保 `R` 是一个编译时常量 (compile-time constant)，而不是一个 runtime value。我也测试过了，直接使用 `rank<0>` 结果也没问题，其返回值是一个 `_2{}` 对象
+
 8. `append<R>(x, y) ` & `prepend(x, y)` 
 
    [append doc](https://docs.nvidia.com/cutlass/media/docs/pythonDSL/cute_dsl_api/cute.html#cutlass.cute.append) 实际类似于 python list 的 extend 方法，而不是 append。其中参数 R 是 up to rank 的意思，会将 tuple 用 x padding 到 R rank 大小

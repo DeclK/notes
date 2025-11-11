@@ -404,12 +404,7 @@ auto layout_x4 = blocked_product(base_layout, make_layout(make_shape(_2{}, _2{})
 // ((_4,_2),(_3,_2)):((_4,_16),(_1,_32))
 ```
 
-我先对 base layout 在第二个 dim 进行扩张，然后再对第一个维度进行扩张，其结果和同时扩张两个维度是不一致的
-
-#### 直观总结
-
-1. complement 提供了重复的能力，让 tiler 通过重复覆盖目标 layout，以达到方便分割的目的。
-2. compose 提供了重排的能力，让 tiler 自由地选择目标 layout 中位置，以达到重新排列的目的。而重新排列过后的 layout 能够更方便我们进行操作，或者用特定排列方式满足一些物理硬件上的要求
+我先对 base layout 在第二个 dim 进行扩张，然后再对第一个维度进行扩张，其结果和同时扩张两个维度是不一致的。在之后的内容当中，我们可以使用组合运算和基础运算来获得所需的 layout 排布，在实践中学习
 
 ### MMA
 
@@ -688,60 +683,7 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 
 对于 smem -> rmem 这个环节当中，我们利用 mma atom mn shape 作为基础的 building block，为了配合 copy atom 合法性，我们对其 mnk tile 进行了相应的重复，最终**构建出实际使用的 mnk tile**，cta problem 将由这个 tile 进行切分解决
 
-#### Copy 连续性要求
-
-我们通常不会考虑 copy 的连续性要求，因为由于 copy 与使用场景的强绑定性，连续性要求都是会被满足的，不过在此我仍然以 ldmatrix 为例子，看下该要求的基本形式。ldmatrix 其实是要求 src tv 中每一个 thread 所拥有的 8 个 values 在 shared memory 中是连续的。这种约束也存在在 universal copy 当中
-
-```c++
-using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint16_t>, T>; // 16-bit contiguous
-using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint32_t>, T>; // 32-bit contiguous
-using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint64_t>, T>; // 64-bit contiguous
-```
-
-可以从 ldmatrix 中的 src tv 与 dst tv 之间的映射找到如下关系
-
-```python
-DST						SRC		 
-----------------------------
-T0~T3    V0~V1 <=> T0  V0~V7
-T4~T7    V0~V1 <=> T1  V0~V7
-...
-T28~T31  V0~V1 <=> T7  V0~V7
-----------------------------
-T0~T3    V2~V3 <=> T8  V0~V7
-T4~T7    V2~V3 <=> T9  V0~V7
-...
-T28~T31  V2~V3 <=> T15 V0~V7
-----------------------------
-```
-
-用语言描述一下第一行：dst T0~T3 线程的 V0~V1 数据，对应了 src T0 线程的 V0~V7 数据。对于 ldmatrix 而言，其要求 src thread 中的 V0~V7 在内存中是连续的。OK，现在我们就用 mma atom 的 tv layout 来实际看一下，其 src thread 中的 V0~V7 是否真的连续。以 `SM80_16x8x16_F16F16F16F16_TN` 中的 matrix A 的 (dst) tv layout 为例，用 `print_latex` 打出来得到如下排布
-
-<img src="CUDA Programming 8.1/image-20250811163804449.png" alt="image-20250811163804449" style="zoom: 33%;" />
-
-我们可以发现 T0~T3 的 V0~V1 数据，正好是横向连续的 MK 坐标，这也说明了 T0 线程的 V0~V7 就是连续的 MK 坐标，但是为了保证内存的连续，MK -> Memory 的映射必须是 LayoutRight 即 row-major 排布内存，否则这些横向连续的 MK 坐标所对应的数据在内存仍然不连续
-
-综上，在所给的 ldmatrix + mma layout + tensor layout 的条件下，copy 的连续性得到了满足。这也凸显出了三者的高度定制性：ldmatrix 必须和匹配的 mma layout 以及匹配的 tensor layout 进行使用，否则将会报错
-
-#### Async Copy
-
-在进行 copy 的时候经常会使用异步的 copy，即发出命令过后不会等待 copy 完成而是会继续执行后面的代码。但是我们也需要一些等待指令，以保证在计算时数据的确已经 copy 完成了。cutlass 提供了两个结构 `cp_async_fence & cp_async_wait` 用于完成这样的操作，在之后的 hgemm 实践中会有具体表现，这里先仅二者的功能
-
-`cp_async_fence`
-
-- 这是一个内存屏障（fence）操作，用于标记当前所有已提交的异步拷贝（`cp.async`）任务的完成点。
-- 它的作用是确保在该 `fence` 之前的所有 `cp.async` 操作（即从全局内存到共享内存的异步拷贝）被视为一个批次，后续的 `cp.async_wait` 可以对这些批次进行同步。
-- 它并不阻塞线程，只是标记一个任务提交的边界。
-
-`cp_async_wait`
-
-- 这是一个同步操作，用于等待之前提交的异步拷贝任务完成。
-- 参数 `N` 表示“等待除了最新的 `N` 个批次之外的所有批次完成”。例如：
-  - `cp_async_wait<0>`：等待所有之前提交的异步拷贝完成。
-  - `cp_async_wait<1>`：允许最多 1 个批次的异步拷贝未完成（即等待除最新提交的 1 个批次外的其他所有批次完成）。
-- 通常用于实现流水线的同步，确保数据在计算之前已经加载到共享内存。
-
-### Problems solved with inverse（补充）
+### 重要补充材料
 
 **补充（2025/09/17）：retile 到底要解决一个什么样的问题？结论：解决线程 register 的 layout 转换问题**
 
@@ -876,6 +818,8 @@ auto tv2mn_2x = left_inverse(mn2tv_2x).with_shape(make_shape(_32{}, _8{}));
 
 正如 product 和 inverse 的性质导致，重复的 mode 会在 inverse 之后的 shape 排在最后。我们有一个 `(2, 2)` 的 blocked product，不过我们到底是重复 4 次 t，还是重复 4 次 v，还是 tv 各自重复两次？这就需要根据需求进行 permute & reshape，在此情形下，是将 v 重复 4 次，所以直接用 with shape 即可，最后得到的 layout 和 mma traits 中的 layout 一模一样👏
 
+除了上述重复方法外，还有一个方法，参考自 `mma_atom.hpp` 当中的 `thrfrg_A`：从扩张过后的 MN -> MN tensor 开始，利用 zipped divide 获得 tensor `(AtomM, AtomN), (RestM, RestN)`，然后利用 compose atom tv layouts 获得 `(t, v), (RestM, RestN)` layout，最后通过简单的 flatten & group 也可获得正确的 layout
+
 `with_shape` 的实现本质是一个 compose，这也指导我们，reshape 可以使用 compose 直接完成，尤其是对某一个 mode 做 reshape 的时候可以用 `compose(_, layout, ...)` 来跳过其他 mode。注意当 `layout.compose()` 传入多个 layout 的时候会自动使用 `make_tile(layouts)` 进行 by mode compose。所以对于 nested layout 中的某一个 mode 进行 reshape 时，也应当使用 `make_tile`
 
 然而对于 permute 没有优雅的方法，只有老老实实构建新的 tensor 了
@@ -887,6 +831,59 @@ auto tv2mn_2x = left_inverse(mn2tv_2x).with_shape(make_shape(_32{}, _8{}));
   divide，只有 `logical_divide(_, shape, ...)` 是跳过某一个 mode，其他的 divide 都很难成功，`zipped_divide` 只有针对两个 shape 的时候才会成功
 
   product 无法使用 `_` 进行跳过，不然 `_` 会直接进入到 shape 当中，可以使用乘 1 的方式来跳过，最后使用 with shape 进行整合
+
+**Copy 连续性要求**
+
+我们通常不会考虑 copy 的连续性要求，因为由于 copy 与使用场景的强绑定性，连续性要求都是会被满足的，不过在此我仍然以 ldmatrix 为例子，看下该要求的基本形式。ldmatrix 其实是要求 src tv 中每一个 thread 所拥有的 8 个 values 在 shared memory 中是连续的。这种约束也存在在 universal copy 当中
+
+```c++
+using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint16_t>, T>; // 16-bit contiguous
+using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint32_t>, T>; // 32-bit contiguous
+using R2SCopyAtomC = Copy_Atom<UniversalCopy<cute::uint64_t>, T>; // 64-bit contiguous
+```
+
+可以从 ldmatrix 中的 src tv 与 dst tv 之间的映射找到如下关系
+
+```python
+DST						SRC		 
+----------------------------
+T0~T3    V0~V1 <=> T0  V0~V7
+T4~T7    V0~V1 <=> T1  V0~V7
+...
+T28~T31  V0~V1 <=> T7  V0~V7
+----------------------------
+T0~T3    V2~V3 <=> T8  V0~V7
+T4~T7    V2~V3 <=> T9  V0~V7
+...
+T28~T31  V2~V3 <=> T15 V0~V7
+----------------------------
+```
+
+用语言描述一下第一行：dst T0~T3 线程的 V0~V1 数据，对应了 src T0 线程的 V0~V7 数据。对于 ldmatrix 而言，其要求 src thread 中的 V0~V7 在内存中是连续的。OK，现在我们就用 mma atom 的 tv layout 来实际看一下，其 src thread 中的 V0~V7 是否真的连续。以 `SM80_16x8x16_F16F16F16F16_TN` 中的 matrix A 的 (dst) tv layout 为例，用 `print_latex` 打出来得到如下排布
+
+<img src="CUDA Programming 8.1/image-20250811163804449.png" alt="image-20250811163804449" style="zoom: 33%;" />
+
+我们可以发现 T0~T3 的 V0~V1 数据，正好是横向连续的 MK 坐标，这也说明了 T0 线程的 V0~V7 就是连续的 MK 坐标，但是为了保证内存的连续，MK -> Memory 的映射必须是 LayoutRight 即 row-major 排布内存，否则这些横向连续的 MK 坐标所对应的数据在内存仍然不连续
+
+综上，在所给的 ldmatrix + mma layout + tensor layout 的条件下，copy 的连续性得到了满足。这也凸显出了三者的高度定制性：ldmatrix 必须和匹配的 mma layout 以及匹配的 tensor layout 进行使用，否则将会报错
+
+**Async Copy**
+
+在进行 copy 的时候经常会使用异步的 copy，即发出命令过后不会等待 copy 完成而是会继续执行后面的代码。但是我们也需要一些等待指令，以保证在计算时数据的确已经 copy 完成了。cutlass 提供了两个结构 `cp_async_fence & cp_async_wait` 用于完成这样的操作，在之后的 hgemm 实践中会有具体表现，这里先仅二者的功能
+
+`cp_async_fence`
+
+- 这是一个内存屏障（fence）操作，用于标记当前所有已提交的异步拷贝（`cp.async`）任务的完成点。
+- 它的作用是确保在该 `fence` 之前的所有 `cp.async` 操作（即从全局内存到共享内存的异步拷贝）被视为一个批次，后续的 `cp.async_wait` 可以对这些批次进行同步。
+- 它并不阻塞线程，只是标记一个任务提交的边界。
+
+`cp_async_wait`
+
+- 这是一个同步操作，用于等待之前提交的异步拷贝任务完成。
+- 参数 `N` 表示“等待除了最新的 `N` 个批次之外的所有批次完成”。例如：
+  - `cp_async_wait<0>`：等待所有之前提交的异步拷贝完成。
+  - `cp_async_wait<1>`：允许最多 1 个批次的异步拷贝未完成（即等待除最新提交的 1 个批次外的其他所有批次完成）。
+- 通常用于实现流水线的同步，确保数据在计算之前已经加载到共享内存。
 
 ## 核心优化
 
@@ -1298,7 +1295,93 @@ tilelang 将专注于 first-level tile programming，把 pipeline 和 second lev
 
 ### Pseudo code
 
-TODO: pseudo code based on tile centric cuda programming & double buffer pipeline
+问题定义与上述相同：解决 `MNK = (4096, 4096, 1024)` 矩阵乘，CTA Tile 为 `(128, 128, 32)`，CTA threads 为 128，warp layout `(2, 2)`，smem 有 3 个 stages
+
+```cpp
+// CTATile_MNK = (128, 128, 32)
+// gA (CTATile_M, CTATile_K, num_k)
+// gB (CTATile_N, CTATile_K, num_k)
+// gC (CTATile_M, CTATile_N)
+// sA (CTATile_M, CTATile_K, stages)
+// sB (CTATile_N, CTATile_K, stages)
+
+// tiled_mma (32, 16, 16)
+// tiled_g2s (32, 32)
+// tiled_s2r (32, 32, 16)
+// tiled_r2s (32, 32)
+// tiled_s2g (32, 32)
+
+// register allocation
+int idx = threadIdx.x;
+auto thr_mma = tiled_mma.get_slice(idx); 
+t_rA = thr_mma.partition_fragment_A(gA(_, _, 0)); // (8, 128/32, 32/16)
+t_rB = thr_mma.partition_fragment_B(gB(_, _, 0)); // (4, 128/16, 32/16)
+t_rC = thr_mma.partition_fragment_C(gD(_, _)); // (8, 128/32, 128/16)
+clear(t_rC);
+
+// g2s copy partition
+t_g2s_gA = tiled_g2s.partition_S(gA); // (8, 128/32, 32/32, num_k)
+t_g2s_sA = tiled_g2s.partition_D(sA); // (8, 4, 1, stages)
+t_g2s_gB = tiled_g2s.partition_S(gB); // (8, 4, 1, num_k)
+t_g2s_sA = tiled_g2s.partition_D(sB); // (8, 4, 1, stages)
+
+// s2r copy partition
+t_s2r_sA = tiled_s2r_A.partition(sA); // (8, 4, 2, stages)
+t_s2r_rA = tiled_s2r_A.retile_D(t_rA); // (8, 4, 2)
+t_s2r_sB = tiled_s2r_B.partition(sB); // (8, 4, 2, stages)
+t_s2r_rB = tiled_s2r_B.retile_D(t_rB); // (8, 4, 2)
+
+// prepare before mainloop
+// 1. launch the stages - 1 copy
+// 2. launch s2r first small iter k copy
+int load_tile_idx = 0;
+int mma_tile_idx = 0;
+for (int istage=0; istage < stages - 1; istage++){
+    copy(tiled_g2s, t_g2s_gA(_, _, _, istage), t_g2s_sA(_, _, _, istage));
+    copy(tiled_g2s, t_g2s_gB(_, _, _, istage), t_g2s_sB(_, _, _, istage));
+    cp_async_fence(); // commit
+    load_tile_idx++;
+}
+cp_async_wait<stages - 2>();
+__syncthreads();
+copy(tiled_s2r_A, t_s2r_sA(_, _, 0, 0), t_s2r_rA(_, _, 0));
+copy(tiled_s2r_B, t_s2r_sB(_, _, 0, 0), t_s2r_rB(_, _, 0));
+
+// mainloop
+int num_k = size<3>(t_g2s_gA);
+int num_k_inner = size<2>(t_s2r_rA);
+int buffer_idx = 0;
+for (int itile = 0; itile < num_big_k; itile++) {
+    // load next k tile
+    if (load_tile_idx < num_k) {
+        buffer_idx = load_tile_idx % stages;
+        copy(tiled_g2s, t_g2s_gA(_, _, _, load_tile_idx), t_g2s_sA(_, _, _, buffer_idx));
+        copy(tiled_g2s, t_g2s_gB(_, _, _, load_tile_idx), t_g2s_sB(_, _, _, buffer_idx));
+        load_tile_idx++;
+    }
+    cp_async_fence();
+    
+    // small k iteration
+    for (int ik = 0; ik < num_k_inner; ik++) {
+        // load next small k tile
+        if (ik == num_k_inner - 1){
+            // make sure the next k tile complete
+            cp_async_wait<stages - 2>();
+            __syncthreads();
+        }
+        int ik_next = (ik + 1) % num_k_inner
+        // calculate read tile
+        int read_stage = (ik == num_k_iker - 1) ? itle % stages : (itile + 1) % stages
+        copy(tiled_s2r_A, t_s2r_sA(_, _, ik_next, read_stage), t_s2r_rA(_, _, ik_next));
+        copy(tiled_s2r_B, t_s2r_sB(_, _, ik_next, read_stage), t_s2r_rB(_, _, ik_next));
+        
+        // gemm
+        gemm(tiled_mma, t_rC, t_rA(_, _, ik), t_rB(_, _, ik), t_rC);
+    }
+}
+```
+
+可以看到大量代码其实不是在 mainloop 当中，而是在资源申请和数据切分，本身流水线还是非常清晰！
 
 ## 总结
 
