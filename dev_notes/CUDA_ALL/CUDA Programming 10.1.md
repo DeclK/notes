@@ -421,6 +421,17 @@ persistant warp
 
 swizzle = 4, cluster shape = (2, 1, 1), along N dim (row direction)，H100 当中只有132个 SM，如果按照这样的 cta 安排，会有 8x16=128 个 tiles 是 aligned，另外还剩4个tiles 怎么办？我如何使用 layout algebra 来快速完成这一计算过程
 
+从 layout algebra 的角度来说非常简单，就是 permute input domain，类似于 zipped divide
+
+对于一个 (64, 128) 的 shape 来说，按照上述的描述，先用 8 对第一个 mode 进行 divide，然后再 permute
+
+```cpp
+(64, 128):(1, 64) -> ((8, 8), 128):((1, 8), 64) ->
+(8, 128, 8):(1, 64, 8)
+```
+
+此时构成了一个 iteration order -> mn 的映射，这就是 threadblock swizzle 的本质，只是代码使用了简单的代数实现
+
 在 [zhihu](https://zhuanlan.zhihu.com/p/1905383022901059783) 中还提到了，DeepGemm 其实还考虑了 cluster 不对齐的情况，这又是什么？
 
 还可参考 [blog](https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/) 当中 threadblock rasterization 小节，进行可视化理解

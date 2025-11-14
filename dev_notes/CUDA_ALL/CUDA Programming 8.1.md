@@ -1316,7 +1316,7 @@ int idx = threadIdx.x;
 auto thr_mma = tiled_mma.get_slice(idx); 
 t_rA = thr_mma.partition_fragment_A(gA(_, _, 0)); // (8, 128/32, 32/16)
 t_rB = thr_mma.partition_fragment_B(gB(_, _, 0)); // (4, 128/16, 32/16)
-t_rC = thr_mma.partition_fragment_C(gD(_, _)); // (8, 128/32, 128/16)
+t_rC = thr_mma.partition_fragment_C(gC(_, _)); // (8, 128/32, 128/16)
 clear(t_rC);
 
 // g2s copy partition

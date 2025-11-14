@@ -21,3 +21,20 @@ notes when building kernels
 - 为什么要使用 `void* __restrict__` 作为数据传入类型
 
   CUDA 驱动层只传 `void*`，写成具体指针类型不会带来任何好处，通过 `void*` 指针配合模板特质类 `GemmTraits`，可以在**编译时**决定实际的数据类型。如果使用具体类型指针，需要为每种数据类型组合都定义不同的 kernel。
+  
+- 为什么要在 `get_launch_config` 中使用 static
+
+  为了在外面使用 `::` 解析符号来调用，否则这只能通过生成 object 来调用
+
+- lambda 函数可以传入 auto 参数，这是和普通函数的一大区别
+
+- cutlass host tensor 应该如何使用？
+
+- epilouge 中的 pipe 还是有一定作用的，增加 pipe 也许增加了带宽的利用率
+
+- 测试了我自己设置的 `swizzle<1, 3, 3>`，会产生 bank conflict，这是因为在 g2s 阶段写入是按照 32x32 进行写入的，此时会产生 2-way bank conflict，所以设计 smem 的时候需要考虑最大宽度读取情况
+
+- permutation mnk 是以 `make_tile` 定义，而不是使用 `make_layout`
+
+## sm90 gemm
+
