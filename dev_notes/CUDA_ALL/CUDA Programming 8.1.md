@@ -1083,13 +1083,13 @@ shared memory bank 一行能够装下 1024bit 的数据，矩阵的一行有 128
 
 不过我们可以通过 swizzle 来解决这一个问题：
 
-1. `M = 1`，一个基本单位包含 1 个 fp32 元素
+1. `M = 0`，一个基本单位包含 1 个 fp32 元素
 2. `S = 7`，一行包含 128 个基本单位
 3. `B = 5`，一共有 32 行
 
 我们的 swizzle bit version表示如下
 $$
-\underline{xxxxx}\ yy\underline {yyyyy}\ z
+\underline{xxxxx}\ yy\underline {yyyyy}
 $$
 第一列的列号为 `00000000`，32行的行号为 `00000~11111`，通过异或操作对应的 5bit 得到新的列号（公式中加下划线的部分）
 
@@ -1116,9 +1116,11 @@ $$
 
 另外再强调一个“显而易见”的事情：通常产生 bank conflict 的情况都是在访问“列”方向上，而不会出现在访问“行”方向上。因为一行中的数据本身就放在了不同的 bank 当中，并且我们讨论的范围还是一个 phase，即 32 个 bank 的总宽度，那么在访问连续的“行”数据时，一般是不会发生冲突的
 
+在以上两个例子中你会发现他们的 M + B 都等于 5，他们的 M + S 都等于 7，这并不是巧合，而是我们推导 Swizzle 所遵循的公式
+
 #### Logical & Physical view
 
-在上面两个例子都使用了同一个矩阵形状，而且这个矩阵形状的宽度正好和 shared memory bank 的宽度一致 (1024bit)，在实际应用过程中我们会遇到各种不同形状的矩阵。他们放到 shared memory 当中并不会像上面例子当中一样正好合适。所以这一节我将通过例子来介绍如何从逻辑视角转移到物理视角来直观计算 swizzle bits
+这一节我将通过例子来介绍如何从逻辑视角转移到物理视角来解释如何计算 swizzle bits
 
 **Example 1**
 
@@ -1152,7 +1154,11 @@ $$
 $$
 \underline x \ xx\underline y\ zzz
 $$
-此时我们的 swizzle 表示为 `Swizzle<B=1, S=3, M=3>` 就可以把这些冲突给解开
+此时我们的 swizzle 表示为 `Swizzle<B=1, S=3, M=3>` 就可以把这些冲突给解开。不过如果我们并不是使用 ldmatrix 的读取方式，仍有可能读取不连续的 8 行，所以此时设置 `Swizzle<B=2, S=3, M=3>` 才能解决掉所有冲突
+$$
+\underline{xx} \ x\underline {xy}\ zzz
+$$
+需要注意的是，ldmatrix 也可以使用 `Swizzle<B=2, S=3, M=3>` 来解决冲突，本质上该 swizzle 解决冲突的能力更强。按此推理，我们继续增加 B，使用 `Swizzle<B=3, S=3, M=3>` 也能够完全解决冲突。然而 B 的增加并不是没有上限的，其受限于逻辑 bank 的总数。在本例当中逻辑 bank 一共有 8 个，如果 B 超过 3 则没有足够的逻辑 bank 用于分配。B 也没有必要超过逻辑 bank 的总数，因为一个 phase 的大小就是逻辑 bank 的总大小，我们只需要考虑一个 phase 内可能产生冲突的情况
 
 **Example 2**
 
@@ -1164,55 +1170,57 @@ $$
 $$
 此时我们的 swizzle 表示为 `Swizzle<B=2, S=3, M=3>`，相比上一个例子多了一位的 mask bit，因为矩阵的一行会占一半的 bank，我们这样的读取方式会产生 4-way bank conflict，需要分配到 4 个不同的 bank 当中，所以 mask bit 需要为 2
 
-这里似乎凸显出了一个规律：$y$ 的数量和 `B` 是一致的，这是合理的。因为 $y$ 的数量决定了一行数据占据 bank 的比例，在 bank 所代表的这几个 bit 中，放入多少 $y$ bit 就会挤出多少 $x$ bit，挤出的 $x$ bit 就会形成 bank conflict（由 phase 正好占据一行 bank 保证）
-
-```python
-# 1 phase have 3 bit to occupy the bank
-xxx
-# put in 1 y bit, get out 1 x bit
-x xxy
-# put in 2 y bit, get out 2 x bit
-xx xyy
-# put in 3 y bit, get out 3 x bit
-xxx yyy
-# more y bit won't increase mask x bit
-xxxyy yyy
-```
+同样的 `Swizzle<B=3, S=3, M=3>` 也能够解决上述冲突
 
 #### General Methods
 
-我直接给出我总结的 swizzle 公式
+接下来我将给出 Swizzle 的通用公式，modified from [LeiMao-CuTe Swizzle](https://leimao.github.io/blog/CuTe-Swizzle/)
+
+Consitions：一个 phase 为 1024 bit，每个数据为 `k` bit，一行有 `X` 个，向量化读取一次读取 `V` 个元素
+
+Target：读取不同的列时不产生 bank conflict
 
 1. `M` 是最好计算的参数，根据向量化读取的情况决定
+   $$
+   M =\log_2{V}
+   $$
+   
 
-2. `S` 应该分两种情况讨论，假设一行数据元素为 `X`，每个元素为 `k` bit
+2. `B` 按照解决冲突能力最强的 swizzle 来计算，即访问一个 phase 所有的 bank 都在同一个 logic bank 当中的情况
+   $$
+   B=\log_2{\frac{1024}{k}} - M
+   $$
+   超过一个 phase 的情况则不在考虑范围内，因为不同 phase 之间不产生冲突
 
-   1. 一行数据未占满 bank：`S` 将计算一个 bank 会包含多少基本单元
-      $$
-      S=\log_2{\frac{1024}{k·2^M}}
-      $$
+3. `S` 的计算需要分情况讨论，这是因为 swizzle 要求 `S >= B`
 
-   2. 一行数据已占满 bank：`S` 将计算一行元素会包含多少基本单元
+   1. 一行数据 `X` 未占满 bank：`S` 和 `B` 相等
       $$
-      S=\log_2{\frac{X}{2^M}}
+      S=\log_2{\frac{1024}{k}} - M
       $$
+      此情况没有被 [LeiMao-CuTe Swizzle](https://leimao.github.io/blog/CuTe-Swizzle/) 所考虑，但是是必要的。其对应于上面例子中把 $x$ 移动到 $y$ bit 部分，不会产生额外的 bank conflict，并满足 `S >= B` 要求
+      
+   2. 一行数据 `X` 已占满 bank：`S` 将计算一行元素会包含多少基本单元
+      $$
+      S=\log_2{X}-M
+      $$
+      
+   3. 
 
    所以两个公式合成一个公式
    $$
-   S=\log_2{\frac{\max(1024,X·k)}{k·2^M}}
+   S=\log_2{\max{(\frac{1024}{k},X)}} -M
    $$
 
-3. `B` 的计算同样也按照 `S` 一样分两种情况讨论
-   $$
-   B=\log_2{\max(2^M, \frac{1024}{k·2^M})}
-   $$
-   这里没有考虑多种访存模式，而是直接考虑一个 phase 中，每个线程都是按照列排布读写数据，没有向行方向的更多排布，都是单列的。 这是因为在行方向上进行排布更不会产生 bank conflict，所以使用该 `B` 值也能满足其 bank conflict free 的要求
+4. 
 
-   另外我们并不在意数据有多少行，因为有更多的行数，只是增加了 $x$ bit 的数量，并不改变 mask bit。这些多余的 $x$ bit 就会像之前的例子中直接被划掉 $\cancel x$
+**该公式能够完美解决读取列数据产生 bank conflict 问题**
 
-在之后的 hgemm 实践中，我们会对一个 (128, 32) 的 block tile 进行读写，使用 128bit 的向量化读取，根据公式得到 `Swizzle<B=2, S=3, M=3>`
-
-update 2025/10/20 在 zhihu 上也看到一个推导 swizzle 的 [repo](https://github.com/melonedo/algebraic-layouts) 可以看下和我的公式是否一致
+不过还有一点我想要指出，以 fp16 的数据类型为例：如果一行数据很多，即 `X` 很多，那就需要大的 `S`，这意味着 $y$ bit 位数增加
+$$
+\underline{xxx} \ yy\underline {yyy}\ zzz
+$$
+访问的 $y$ bit 位置为 `00xxx or 01xxx or 10xxx or 11xxx` 时就会产生 bank conflict，他们都属于同一个逻辑 bank `xxx`。**这是由于我们尝试一次读取不连续的行元素**。如果我们总是读取连续的行元素，那么这种情况将不会发生，因为如果我们在读取连续的行元素时，如果出现了 bank conflict 的情况，说明这一行元素已经占满了完整的 bank 长度，也就是说会超过一个 phase 大小，从而避免 bank conflict
 
 ### Epilogue
 

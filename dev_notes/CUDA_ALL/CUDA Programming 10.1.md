@@ -44,7 +44,7 @@ make_tma_copy(CopyOp                  const& copy_op,
 
 4. `cta_tiler`，每一次 tma copy 的基本单位。通常就是 size of `slayout` 
 
-5. `cluster_size`，一个 cute `Int`，代表 size of cluster layout。如果 `cluster_size > 1` 的话，`copy_op` 必须是 multicast load，同时在 load 时，会把数据划分成 `cluster_size` 份，每一个 cluster 会 load 各自的数据，最后通过 multicast 的方式共享各自的数据，让每一个 cta 都拥有完整的数据。这个参数似乎只针对 load，对于 store 没有
+5. `cluster_size`，一个 cute `Int`，代表 size of cluster layout。如果 `cluster_size > 1` 的话，`copy_op` 必须是 multicast load，同时在 load 时，会把数据划分成 `cluster_size` 份，每一个 cluster 会 load 各自的数据，最后通过 multicast 的方式共享各自的数据，让每一个 cta 都拥有完整的数据。这个参数似乎只针对 load，对于 store 没有。这个功能在 gemm 会非常有用，例如对于同一列的 cta tile，他们都会共享 B matrix 数据，利用 cluster 内部的 multicast，能够极快地完成数据搬运。另外，表面上该参数非常灵活，实际我只看到了 cluster size 为 1 和 2 两种情况
 
    下面简单介绍一下 cluster 的概念
 

@@ -36,5 +36,23 @@ notes when building kernels
 
 - permutation mnk 是以 `make_tile` 定义，而不是使用 `make_layout`
 
+- 似乎现在不需要传入 mma traits & mma atom 给 make tiled mma 了，直接传 mma op 就行，具体特化 traits 会自动生成，我们可以去 `cute/atom` 当中找到对应的 traits，因为也不太好利用 vscode 自动跳转跳过去
+
 ## sm90 gemm
 
+- 如何实现 [zhihu]() 中所提到的，处理 scheduler 与 cluster size 不对齐的情况
+
+- 在 sm90 中出现了新的 level: cluster，是否需要重新更新我的 tile centric cuda programming 理论？我想我应该先实现 cooperative gemm，先不去考虑 pingpong，毕竟 deepgemm 本身也没有实现 pingpong
+
+- 在 sm90 当中 cta tile mnk 的设置似乎可以相当灵活，如何设置最优的 mnk 是一个需要弄清楚的问题，在 deepgemm `common.hpp` 当中是有答案的，不过我觉得使用固定的 cta tile mnk 会适合我目前的情况，先不做过多的扩展
+
+- 实际上在定义 atom 的时候，tiled mma & tiled copy 基本就已经被完全定义好了，全部都是高性能的不可分割的统一指令，不需要像 sm80 的 universal copy 一样还需要定义 thr & val layout
+
+  为什么跳转不到正确的 traits 定义上去
+
+  ```cpp
+  using mma_op = GMMA::MMA_64x128x16_F16F16F16_SS<ABMajor, ABMajor>;
+  using mma_traits = MMA_Traits<mma_op>;
+  ```
+  
+- epilogue 中 shared memory 没有这么大，应该小于 CTATile，应该如何理解？
