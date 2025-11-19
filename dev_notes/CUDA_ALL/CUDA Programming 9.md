@@ -113,6 +113,10 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
    [append doc](https://docs.nvidia.com/cutlass/media/docs/pythonDSL/cute_dsl_api/cute.html#cutlass.cute.append) 实际类似于 python list 的 extend 方法，而不是 append。其中参数 R 是 up to rank 的意思，会将 tuple 用 x padding 到 R rank 大小
 
+9. `remove<R>(layout)`
+
+   把 `R` mode 从 layout 当中移除
+
 以上操作其实都是完成 pytorch 当中的 view & permute & slice 操作。但对于 squeeze 这样的操作似乎没有特别好的方法？
 
 > From Kimi & Claude Code

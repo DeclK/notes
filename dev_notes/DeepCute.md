@@ -56,3 +56,11 @@ notes when building kernels
   ```
   
 - epilogue 中 shared memory 没有这么大，应该小于 CTATile，应该如何理解？
+
+  似乎在绝大部分场景中都无需去定义 ctatile，既然如此，为了简洁性且不发生歧义，我直接使用 `make_tma_copy` 并且放弃 CTATile 参数
+
+- 在 DeepGemm 当中使用了 align 1024 Btypes，这是为什么？
+
+  因为我们使用了 swizzle 128 layout，而这个 layout 就是以 8x1024 bit 为单位的
+
+- 在 Awesome cute 当中使用了 struct 作为 shared memory 的分配工具，这其实还挺方便的，不需要再手动去计算 address 了。并且由于 persistant warp scheduler 的存在，C tensor smem 也无法复用之前的 shared memory，使得 struct 显得更为合适
