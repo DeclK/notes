@@ -187,6 +187,44 @@ Layout_K_SW128_Atom_Bits  = ComposedLayout<Swizzle<3,4,3>, smem_ptr_flag, Layout
 
 也不是任意的 cta tile 都能找到合适的 smem layout，其必须要求 K 维度的大小必须是 multiple of 16/32/64/128 byte
 
+在 cute 当中使用 sm90 wgmma 类似于 sm80，都需要经历相同的三部曲，但是略有一些区别
+
+1. 根据 thread id 构建 `thr_mma`
+
+   ```cpp
+   auto thr_mma = tiled_mma.get_slice(threadIdx.x);
+   ```
+
+   由于 wgmma 会直接从 smem 当中获得数据，那么每一个 thread 所分配的数据其实都是一样的，可以参考 [WGMMA Fragments and Descriptors](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) 小节。所以通常我们在代码中看到的是利用 warp group id 来获得 `thr_mma`
+
+   ```cpp
+   auto thr_mma = tiled_mma.get_slice(threadIdx.x / 128);
+   ```
+
+   但是另外一个问题来了，我们会使用 warp specialization 的方式进行编程，其中 producer warp group 是不会参与 mma 计算的，那么如果 producer warp group 是 wg0，而 mma warp group 为 wg1，此时我们在 get slice 时应当选择 0 还是 1 呢？我认为应该选择 0，不过还需要验证，我认为 `tiled_mma` 对象并不会感知到其属于哪个 warp group，或者外部还有其他多少 threads / warp group，其只在乎自身所定义了多少 threads / warp group。所以我们在 `get_slice(x)` 时，其实是在对 tiled mma 内部所定义的 threads / warp group 进行切分
+
+2. 构建 fragments
+
+   在构建 fragments 之前还要用 `thr_mma` 进行数据划分，这是 sm80 上所没有的
+
+   ```cpp
+   Tensor t_sA = thr_mma.partition_A(smem_A); // ((MMA_M, MMA_K), REST_M, REST_K, ...)
+   ```
+
+   在 sm80 当中 `partition_fragments_A/B/C` 实际上是在构建 register 用于存储 smem 中的数据以进行 mma 计算。但是 sm90 wgmma 直接从 smem 当中获得数据，那这个 fragments 又是什么呢？同样在  [WGMMA Fragments and Descriptors](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) 小节当中获得了解答，这是一个 matrix descripter，虽然其本质也是 regsiter，但并不是用于存放数据，而是用于描述数据在 smem 当中的位置，可以直接传给 wgmma 使用，而不需要进行 smem -> register 的搬运
+
+   ```cpp
+   Tensor t_rA = thr_mma.partition_fragment_A(t_sA);
+   ```
+
+   
+
+3. 利用 `cute::gemm` 完成矩阵运算
+
+   ```cpp
+   gemm(tiled_mma, t_rA, t_rB, t_rC);
+   ```
+
 ## Warp Specialization
 
 现在的 tensor core 计算能力远强于数据的运输能力，所以一切的优化都围绕着如何打满 tensor core 的算力。这个过程叫做 "feading the beast"。总体上有两种优化技巧
@@ -267,7 +305,7 @@ mbarrier 将分为两类
 
 这样就能保证 producer 在写入时，consumer 不会读取；consumer 在计算时，producer 不会写入。我认为这样的同步机制相当直观，但是 cutlass cute 并没有使用这样的机制
 
-**cutlass cute 同步机制**
+**cutlass cute 同步机制 1.0**
 
 cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个 data）。每一个 barrier 将有一个计数器 `x`，作为同步标准。具体来说：对于 empty barrier 来说，当 `x=1` 时，**代表只有 data index 小于 1 的数据能够被写入**；对于 full barrier 来说，当 `x=1` 时，代表只有 data index 小于 1 的数据能够被计算
 
@@ -277,6 +315,8 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
 - 当 consumer 完成计算过后，更新 empty barrier count += buffer count
 
 ![image-20251110145954462](CUDA Programming 10.1/image-20251110145954462.png)
+
+**cutlass cute 同步机制 2.0**
 
 而对于 cutlass 来说还进行了两个改进：
 
@@ -296,12 +336,16 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
 
    需要注意的是：虽然 data index 在一轮 stages 中是不变的，但是不同 buffer 对应的数据仍是不同的
 
-而在 cutlass 当中并不把这两个 1-bit 计数器称之为 counter，而是称之为 **phase**。此时 barrier 的同步机制变为：**当 barrier phase 和 data index phase 相同时，barrier 生效；反之 barrier 可通行**。producer 和 consumer 的更新规则变为：
+而在 cutlass 当中并不把这两个 1-bit 计数器称之为 counter，而是称之为 **phase**： **phase 代表了这是第几轮的数据，更具体的来说，其确认了当前是奇数轮还是偶数轮**。此时 barrier 的同步机制变为：**当 barrier phase 和 data index phase 相同时，barrier 生效；反之 barrier 可通行**。producer 和 consumer 的更新规则变为：
 
 - **当 producer 完成写入过后，full barrier phase flip**
-- **当 consumer 完成计算过后，empty barrier phase flip**、
+- **当 consumer 完成计算过后，empty barrier phase flip**
 
 ![image-20251110150007186](CUDA Programming 10.1/image-20251110150007186.png)
+
+**cutlass cute 同步机制 3.0**
+
+在实际的编程的过程当中，将会按照 warp specialization 的形式进行开发，也就是说会分别开发 producer 和 consumer，他们的 pipeline states 可以不用保持一致，所以在一开始初始化时，可以把 producer 和 consumer 的 phase 都设置为 0，但是 producer 和 consumer 的 pipeline states phase 分别设置为 1 和 0，这样也能够达到上述流水线效果，只是完全不方便直观理解。但这么做的一个好处是，设置 pipeline states phase 的成本或许会比设置 mbarrier phase 的成本更低，因为一个是在 register level，一个是在 smem level
 
 为了构建以上功能，cutlass 使用了两个对象 `mbarrier` & `pipeline_staes` 来进行管理。其中 `mbarrier` 就对应着上述的 full barrier & empty barrier，`pipeline_states` 则对应着 data index
 
@@ -344,6 +388,8 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
         }
       }
   ```
+
+
 
 ## fence & visibility
 

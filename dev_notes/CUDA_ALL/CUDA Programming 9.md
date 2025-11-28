@@ -117,6 +117,18 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
    把 `R` mode 从 layout 当中移除
 
+10. `replace<R>(src_layout, dst_layout)`
+
+   将 `src_layout` 当中第 R 个 mode，替换成为 `dst_layout`
+
+11. `filter(layout)`
+
+    过滤掉 layout 当中 stride = 0 or shape = 1 的 static mode，如果传入一个一维的 layout，并且 stride = 0，则返回 `(_1: _0)` 
+
+12. `transform(layout, func)`
+
+    
+
 以上操作其实都是完成 pytorch 当中的 view & permute & slice 操作。但对于 squeeze 这样的操作似乎没有特别好的方法？
 
 > From Kimi & Claude Code
@@ -367,11 +379,26 @@ Rmsnorm, ref with flashinfer or pytorch or vllm
 
 使用 `__shfl_xor_sync` 先进行 warp 内部的 reduce，可显著加速（未测试过）。由于这个操作的存在，我们在构建 tensor 的时候就会多一个 warp 维度
 
-对线程数量的安排也比较讲究：类似于 silu and mul，尽量安排与数据量对应的线程数，知道达到一个 block 线程数量的上限。
+对线程数量的安排也比较讲究：类似于 silu and mul，尽量安排与数据量对应的线程数，直到达到一个 block 线程数量的上限。
 
 Tips
 
-似乎经过了  `__shfl_xor_sync` 过后，每一个线程所得到的 reduction sum 是一样的
+我们为什么需要洗牌函数？在 SIMT 架构之下，每一个线程之间的数据都是独有的，如果想要线程之间的数据进行沟通，都需要把数据放到 smem 当中。smem 是整个 CTA 共享的，有的我们希望先在 warp level 进行线程之间的交流，这样会比把数据放到 smem 当中来得更加快。这就是洗牌函数的目的，CUDA 提供了四种[洗牌函数]()[docs.nvidia.com](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#warp-shuffle-functions)，常用的其实就是 `__shfl_sync` 和 `__shfl_xor_sync`
+
+```cpp
+T __shfl_sync(unsigned mask, T var, int srcLane, int width=warpSize);
+T __shfl_xor_sync(unsigned mask, T var, int laneMask, int width=warpSize);
+```
+
+1. `__shfl_sync(unsigned mask, T var, int srcLane)`
+
+   Direct copy `var` from indexed lane `srcLane`
+
+2. `__shfl_xor_sync(unsigned mask, T var, int laneMask)`
+
+   Copy `var` from a lane based on bitwise XOR of own lane ID, i.e. `srcLane = laneMask xor OwnlaneId`
+
+   xor 运算实际上就是不进位的加法，既高效又不会出现越位的情况。如果我们将 `laneMask` 作为 offset 传入，在折半 reduction 当中会非常方便
 
 相比于 if 条件 `condition ? a : b` 似乎会是更快的选择
 

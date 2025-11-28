@@ -1185,7 +1185,6 @@ Target：读取不同的列时不产生 bank conflict
    M =\log_2{V}
    $$
    
-
 2. `B` 按照解决冲突能力最强的 swizzle 来计算，即访问一个 phase 所有的 bank 都在同一个 logic bank 当中的情况
    $$
    B=\log_2{\frac{1024}{k}} - M
