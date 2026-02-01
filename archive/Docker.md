@@ -347,7 +347,7 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
 4. 我个人常用的操作是：
 
    ```shell
-   docker run -it --gpus all --shm-size 8g -v /data:/data -v /project:/project --net host --name name image_id
+   docker run -it --gpus all --shm-size 8g -v /data:/data -v /project:/project --net host --name name --privileged image_id
    ```
 
     做了这几个事情：
@@ -359,6 +359,7 @@ docker build -t name:tag -f dockerfile_name FILE_PATH
    5. 配置网络，使得容器能够使用 host 网络。除了使用网络外，还能够让 docker 与 host X server 进行交流，使得像 matplotlib 这样的画图能够直接呈现在显示器上 
    6. 并给容器取名
    7. 指定 image id
+   8. container 内的 root 拥有真正的 root 权限。 否则，container 内的 root 只是外部的一个普通用户权限，这个 flag 通常需要用户本身拥有服务器的 sudo 权限，并且 windows 无法启用
 
    如果是使用 wsl，这么配置甚至能够直接使用 matplotlib，直接在 window 中弹出可视化窗口
 

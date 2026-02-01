@@ -357,26 +357,26 @@ $$
   &\geq \mathbb{E}_{q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x})} \left[ \log \frac{p_\theta(\boldsymbol{x}, \boldsymbol{z})}{q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x})} \right]
   \end{aligned}
 $$
-  其实推导出 ELBO 的方法有很多，都离不开两个步骤：
+其实推导出 ELBO 的方法有很多，都离不开两个步骤：
 
-  1. 引进隐变量，并使用贝叶斯公式将其进行转换
-     $$
-     p(x)=\frac{p(x,z)}{p(z|x)}
-     $$
+1. 引进隐变量，并使用贝叶斯公式将其进行转换
+$$
+ p(x)=\frac{p(x,z)}{p(z|x)}
+$$
 
-  2. 对等式的两侧乘以 $q_\phi$ (not $p_\theta$) 进行积分以获得关于 $z\sim q_\phi$ 的期望。这一步的积分看起来匪夷所思，如果从 KL 散度出发进行推导，这个积分才会比较自然地诞生，[zhihu](https://zhuanlan.zhihu.com/p/685814830) [Lilian's blog](https://lilianweng.github.io/posts/2018-08-12-vae/#loss-function-elbo)
-     $$
-     \text{KL}(q_\phi(z|x) \| p_\theta(z|x)) = \int_z q_\phi(z|x) \log \frac{q_\phi(z|x)}{p_\theta(z|x)} dz
-     $$
-     在上述博客中还介绍了 ELBO 的另一种常见形式，我也列在下面
-     $$
-     \begin{aligned}
-     ELBO &=\mathbb{E}_{q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x})} \left[ \log \frac{p_\theta(\boldsymbol{x}, \boldsymbol{z})}{q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x})} \right] \\
-     &= \log p_\theta(\boldsymbol{x|z}) - KL(q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x}) \parallel p_\theta(\boldsymbol{z}))
-     \end {aligned}
-     $$
-     有些文章认为第二项是一个正则化项，防止后验分布与先验分布之间有过大差距
-     
+2. 对等式的两侧乘以 $q_\phi$ (not $p_\theta$) 进行积分以获得关于 $z\sim q_\phi$ 的期望。这一步的积分看起来匪夷所思，如果从 KL 散度出发进行推导，这个积分才会比较自然地诞生，[zhihu](https://zhuanlan.zhihu.com/p/685814830) [Lilian's blog](https://lilianweng.github.io/posts/2018-08-12-vae/#loss-function-elbo)
+$$
+ \text{KL}(q_\phi(z|x) \| p_\theta(z|x)) = \int_z q_\phi(z|x) \log \frac{q_\phi(z|x)}{p_\theta(z|x)} dz
+$$
+ 在上述博客中还介绍了 ELBO 的另一种常见形式，我也列在下面
+$$
+ \begin{aligned}
+ ELBO &=\mathbb{E}_{q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x})} \left[ \log \frac{p_\theta(\boldsymbol{x}, \boldsymbol{z})}{q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x})} \right] \\
+ &= \log p_\theta(\boldsymbol{x|z}) - KL(q_{\boldsymbol{\phi}}(\boldsymbol{z}|\boldsymbol{x}) \parallel p_\theta(\boldsymbol{z}))
+ \end {aligned}
+$$
+ 有些文章认为第二项是一个正则化项，防止后验分布与先验分布之间有过大差距
+
 
 ### Proof of ELBO
 

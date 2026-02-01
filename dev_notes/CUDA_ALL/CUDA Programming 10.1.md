@@ -20,11 +20,13 @@ TMA 其实是 Hopper 架构中新引入的硬件单元，其功能是在 global 
 
    也许随着 GPU 的发展，之后的 register 只会参与 CUDA core 的计算，对于 tensor core 的计算数据将不会使用 register
 
-2. 能够以单线程发起传输，简化了线程对数据的划分问题，同时也节省了线程资源、register 资源（`pipeline_states` 中用于同步的 phase, stage idx）
+2. 能够以单线程发起传输，简化了线程对数据的划分问题，同时也节省了线程资源、register 资源
+
+3. 能够自动处理 out of boundary 数据问题
 
 ### tma descriptor
 
-也叫做 `CUtensorMap`。如前面所述，tma 的功能是 global mem 和 shared mem 之间的数据传输。从 global mem -> shared mem 的传输就是 tma load；反之就是 tma store。r不管是 tma load or tma store，都是由 tma descriptor 发起 
+也叫做 `CUtensorMap`。如前面所述，tma 的功能是 global mem 和 shared mem 之间的数据传输。从 global mem -> shared mem 的传输就是 tma load；反之就是 tma store。不管是 tma load or tma store，都是由 tma descriptor 发起 
 
 在 cute 中使用 `make_tma_copy` 的方式来构建 tma descriptor（实际上是一个 tiled copy 对象），其中有5个重要参数
 
@@ -56,7 +58,7 @@ make_tma_copy(CopyOp                  const& copy_op,
 
 ### tma load
 
-有了 cuTensorMap (i.e. `tma_load`) 过后，可以利用 `cute::copy` 来进行 tma load，实现 gmem -> smem 的数据传输，命令如下
+有了 `cuTensorMap` 过后，可以利用 `cute::copy` 来进行 tma load，实现 gmem -> smem 的数据传输，命令如下
 
 ```c++
 // tma_load is cuTensorMap  
@@ -82,7 +84,9 @@ if (is_tma_thread) {
 
 2. tma tensor
 
-   tma 进行 copy 时使用的是坐标（coordinate）而不是偏移（offset），所以需要有一个专门的 tensor 来表示，通过 `get_tma_tensor(shape(gmem_tensor))` 即可获得。tma tensor 与普通 tensor 最大的区别在于其 stride 是一个 vector 而不是一个 scaler
+   **tma 进行 copy 时使用的是坐标（coordinate）而不是偏移（offset），所以需要有一个专门的 tensor 来表示，通过 `get_tma_tensor(shape(gmem_tensor))` 即可获得。**参考 [NVIDIA TMA 全面分析](https://zhuanlan.zhihu.com/p/1945136522455122713)，tma 在搬运 tensor 的时候是根据首坐标 + box dim 来确定搬运数据的范围。即以 bounding box 为单位来搬运数据，bounding box 通常就是我们定义的 smem 大小。开发者只需定义“搬什么”，而无需关心“怎么搬”，避免与复杂的物理地址接触。另外 tma tensor 只针对于 gmem 使用，对于 smem 不需要使用 tma tensor 进行构建，可直接使用。
+
+   tma tensor 与普通 tensor 最大的区别在于其 stride 是一个 vector 而不是一个 scaler
 
    ```python
    Tensor(
@@ -125,7 +129,7 @@ if (is_tma_thread) {
     // cta data slice
     auto tma_store_per_cta = tma_store.get_slice(cluster_id);
 	
-    copy(tma_store.with(tma_load_mbar, mcast_mask),
+    copy(tma_store,
          tma_store_per_cta.partition_S(gmem_tensor_coord_cta),
          tma_store_per_cta.partition_D(smem_tensor));
 	// commit
@@ -139,7 +143,9 @@ tma_store_wait<0>();
 
 ## wgmma
 
-[blog1](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) [blog2](https://research.colfax-intl.com/cutlass-tutorial-design-of-a-gemm-kernel/)
+[CUTLASS Tutorial: Fast Matrix-Multiplication with WGMMA on NVIDIA® Hopper™ GPUs – Colfax Research](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/)
+
+[CUTLASS Tutorial: Efficient GEMM kernel designs with Pipelining – Colfax Research](https://research.colfax-intl.com/cutlass-tutorial-design-of-a-gemm-kernel/)
 
 一个 warp group 是由 4 个连续的 warps 构成，i.e. 128 个连续的线程。而 wgmma 就是由一个 warp group 协作执行的 mma，其支持更大的矩阵分块计算。wgmma 有几个特点：
 
@@ -163,29 +169,26 @@ TiledMMA tiled_mma = make_tiled_mma(
 );
 ```
 
-除此之外 wgmma 会对 smem 的排布有要求，cute 中有直接的接口可以生成符合要求的 smem layout `ss_smem_selector` + `tile_to_shape`，smem selector 传入参数为 major, datatype, tile size
-
-```c++ 
-  using SmemLayoutAtomA =
-      decltype(ss_smem_selector<GmmaMajorA, ABtype,
-                                decltype(cute::get<0>(CtaTile{})),	
-                                decltype(cute::get<2>(CtaTile{}))>());
-  using SmemLayoutA = decltype(tile_to_shape(
-                                  SmemLayoutAtomA{},
-                                  make_shape(shape<0>(CtaTile{}), shape<2>(CtaTile{}), Int<Stage>{}),
-                                  Step<_1, _2, _3>{}));// LayoutLeft{}
-```
-
-对于 K major 来说，只有4种合法的 smem layout
+除此之外 wgmma 会对 smem 的 swizzle 形式有特殊要求。以 K major 为例（MN major 也是类似的），只有4种合法的 smem swizzle layout
 
 ```c++
 Layout_K_INTER_Atom_Bits  = ComposedLayout<Swizzle<0,4,3>, smem_ptr_flag, Layout<Shape<_8, _128>,Stride< _128,_1>>>;
 Layout_K_SW32_Atom_Bits   = ComposedLayout<Swizzle<1,4,3>, smem_ptr_flag, Layout<Shape<_8, _256>,Stride< _256,_1>>>;
 Layout_K_SW64_Atom_Bits   = ComposedLayout<Swizzle<2,4,3>, smem_ptr_flag, Layout<Shape<_8, _512>,Stride< _512,_1>>>;
 Layout_K_SW128_Atom_Bits  = ComposedLayout<Swizzle<3,4,3>, smem_ptr_flag, Layout<Shape<_8,_1024>,Stride<_1024,_1>>>;
+
+// K-major layouts in units of Type
+template <class Type>
+using Layout_K_INTER_Atom = decltype(upcast<sizeof_bits<Type>::value>(Layout_K_INTER_Atom_Bits{}));
+template <class Type>
+using Layout_K_SW32_Atom  = decltype(upcast<sizeof_bits<Type>::value>(Layout_K_SW32_Atom_Bits{}));
+template <class Type>
+using Layout_K_SW64_Atom  = decltype(upcast<sizeof_bits<Type>::value>(Layout_K_SW64_Atom_Bits{}));
+template <class Type>
+using Layout_K_SW128_Atom = decltype(upcast<sizeof_bits<Type>::value>(Layout_K_SW128_Atom_Bits{}));
 ```
 
-也不是任意的 cta tile 都能找到合适的 smem layout，其必须要求 K 维度的大小必须是 multiple of 16/32/64/128 byte
+可以看到这些 layout 都是以二维的形式存在，第一个 mode 固定为 8，第二个 mode 代表了数据 bits 数量，即：其要求 K 维度的大小必须是 multiple of 16/32/64/128 bytes。我们会根据 smem K 维度的大小来选择最大的 swizzle layout。例如一块 smem 用于存储 `(M, K)` 大小的 fp16 矩阵：如果 K 个 fp16 是 128 bytes 的整数倍，那么选择 `Layout_K_SW128_Atom`；如果 K 个 fp16 是 64 bytes 的整数倍，那么选择 `Layout_K_SW64_Atom`，以此类推
 
 在 cute 当中使用 sm90 wgmma 类似于 sm80，都需要经历相同的三部曲，但是略有一些区别
 
@@ -195,34 +198,41 @@ Layout_K_SW128_Atom_Bits  = ComposedLayout<Swizzle<3,4,3>, smem_ptr_flag, Layout
    auto thr_mma = tiled_mma.get_slice(threadIdx.x);
    ```
 
-   由于 wgmma 会直接从 smem 当中获得数据，那么每一个 thread 所分配的数据其实都是一样的，可以参考 [WGMMA Fragments and Descriptors](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) 小节。所以通常我们在代码中看到的是利用 warp group id 来获得 `thr_mma`
+   由于 wgmma 会直接从 smem 当中获得数据，那么每一个 thread 所分配的数据其实都是一样的，参考 [WGMMA Fragments and Descriptors](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) 小节。所以我们会在一些代码中看到使用 warp group id 来获得 `thr_mma`
 
    ```cpp
    auto thr_mma = tiled_mma.get_slice(threadIdx.x / 128);
    ```
 
-   但是另外一个问题来了，我们会使用 warp specialization 的方式进行编程，其中 producer warp group 是不会参与 mma 计算的，那么如果 producer warp group 是 wg0，而 mma warp group 为 wg1，此时我们在 get slice 时应当选择 0 还是 1 呢？我认为应该选择 0，不过还需要验证，我认为 `tiled_mma` 对象并不会感知到其属于哪个 warp group，或者外部还有其他多少 threads / warp group，其只在乎自身所定义了多少 threads / warp group。所以我们在 `get_slice(x)` 时，其实是在对 tiled mma 内部所定义的 threads / warp group 进行切分
+   在编程中我遇到了另外一个问题：我们会使用 warp specialization 的方式进行编程，其中 producer warp group 是不会参与 mma 计算的，那么如果 producer warp group 是 wg0，而 mma warp group 为 wg1，此时我们在 get slice 时应当选择 0 还是 1 呢？**应该选择 `get_slice(0)`**。因为 `tiled_mma` 对象并不会感知到其属于哪个 warp group，或者外部还有其他多少 threads / warp group，其只在乎自身所定义了多少 threads / warp group。**所以我们在 `get_slice(x)` 时，其实是在对 tiled mma 内部所定义的 threads / warp group 进行切分**
 
 2. 构建 fragments
-
-   在构建 fragments 之前还要用 `thr_mma` 进行数据划分，这是 sm80 上所没有的
-
-   ```cpp
-   Tensor t_sA = thr_mma.partition_A(smem_A); // ((MMA_M, MMA_K), REST_M, REST_K, ...)
-   ```
 
    在 sm80 当中 `partition_fragments_A/B/C` 实际上是在构建 register 用于存储 smem 中的数据以进行 mma 计算。但是 sm90 wgmma 直接从 smem 当中获得数据，那这个 fragments 又是什么呢？同样在  [WGMMA Fragments and Descriptors](https://research.colfax-intl.com/cutlass-tutorial-wgmma-hopper/) 小节当中获得了解答，这是一个 matrix descripter，虽然其本质也是 regsiter，但并不是用于存放数据，而是用于描述数据在 smem 当中的位置，可以直接传给 wgmma 使用，而不需要进行 smem -> register 的搬运
 
    ```cpp
-   Tensor t_rA = thr_mma.partition_fragment_A(t_sA);
+   Tensor t_rA = thr_mma.partition_fragment_A(sA);	// (1, rest_m, rest_k, stages) matrix descriptor
    ```
-
-   
 
 3. 利用 `cute::gemm` 完成矩阵运算
 
    ```cpp
    gemm(tiled_mma, t_rA, t_rB, t_rC);
+   ```
+
+4. wgmma 的异步特性
+
+   对于 Hopper 来说，wgmma 是发生在 async proxy 当中的，我们需要两样东西来控制其异步特性：
+
+   1. 用于避免 wgmma 乱序执行的 fence `warpgroup_arrive()`，（从经验上看）这个 fence 必须在每一次使用 wgmma 之前使用，可认为是一个定式
+   2. commit batch & wait 机制用于控制异步流水线
+
+   ```cpp
+   warpgroup_arrive();
+   gemm(tiled_mma, t_rA(_, _, _, pipe_states.stage_idx), t_rB(_, _, _, pipe_states.stage_idx), t_rC);
+   warpgroup_commit_batch();
+   // wait for mma complete, and update empty barrier
+   warpgroup_wait<0>();
    ```
 
 ## Warp Specialization
@@ -403,7 +413,9 @@ tma_store_fence()
 
 这意味着 tma store 操作必须要在 smem write 完成之后再开始发起。而需要 fence 的本质原因是因为 tma 和 smem 是不同的硬件，他们之间的操作其实是不可见的，由于 relaxed consistency model 的原因，导致 tma store 的操作可能会提前执行，所以需要 fence 来保证不同硬件之间的操作顺序
 
-而一般 fence 的使用都是惯例性的（大家都会在固定的地方进行使用），所以我不太想花费太多内容阐述原理，而是简单的指出在哪些地方需要使用 fence
+~~而一般 fence 的使用都是惯例性的（大家都会在固定的地方进行使用），所以我不太想花费太多内容阐述原理，而是简单的指出在哪些地方需要使用 fence~~
+
+我先来看看哪些地方使用了 fence，再看是否能找到一个使用 fence 的基本规则
 
 - smem barrier fence
 
@@ -435,7 +447,7 @@ tma_store_fence()
      // use mbarrier
      ```
 
-     另外根据 PTX 的描述，在 tma load/store 完成过后会隐式地调用 fence，所以我们不需要在 tma store 完成过后使用 fence
+     另外根据 [PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy) 的描述，在 tma load/store 完成过后会隐式地调用 fence，所以我们不需要在 tma store 完成过后使用 fence
 
   2. tma store
 
@@ -460,6 +472,45 @@ tma_store_fence()
   ...
   warpgroup_fence_operand(acc);
   ```
+  
+- `warpgroup_arrive`
+
+  就是 PTX `wgmma.fence.sync.aligned`，阻止编译器把 mma 与之前的寄存器操作重排，所以用作如下
+
+  ```cpp
+  warpgroup_fence_operand(acc);
+  warpgroup_arrive();
+  ...
+  wgmma(..., acc);
+  ...
+  warpgroup_fence_operand(acc);
+  ```
+
+  > From Kimi
+  >
+  > `warpgroup_arrive` 并非“到达屏障”的计数语义，而是 **WGMMA 专用的发射前 fence**，用来保障寄存器-到-Tensor-Core 的数据可见性，是 CUTLASS Hopper 流水线正确性和性能的关键原语
+
+Order must be explicitly stated，对于 consistency model 我没有清晰的理解，但是在我的视角来看，似乎所有的操作都可能被乱序执行，我们必须要知道哪些操作可能被编译器重排，才能自信地进行编程，并正确使用屏障。以下是我总结的几条规律，虽然很可能有错误理解，但是这是我最好的尝试
+
+1. madatory constraint
+
+   - mbarrier init 之后一定要使用 fence mbarrier init
+   - wgmma 使用前一定要使用 wgmma arrive
+
+2. 在 generic proxy 和 async proxy 之间
+
+   所谓的 async proxy，在目前所接触的范围里只有 tma & wgmma 操作
+
+   1. `tma_store_fence` 确保 tma store 一定在 rmem -> smem 写入完成之后
+   2. `warpgroup_fence_operand` 确保 rmem -> smem 写入一定在 wgmma 完成之后
+
+3. wait 同步的屏障效应
+
+   例如：empty arrive 一定不会被重排到 warpgroup wait 之前
+
+   例如：wgmma 一定不会被重排到 full barrier wait 之前
+
+   例如：tma load 一定不会被重排到 empty barrier wait 之前
 
 ## Scheduler
 
@@ -482,13 +533,15 @@ swizzle = 4, cluster shape = (2, 1, 1), along N dim (row direction)，H100 当�
 
 还可参考 [blog](https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/) 当中 threadblock rasterization 小节，进行可视化理解
 
+在 deepgemm 当中还利用 scheduler 来解决了 group gemm 的问题
+
 ## Coorperative & PingPong
 
 ## GEMM 实践
 
 如何构建 producer & consumer 完成高效的 gemm
 
-multi-stage in epilogue, 这个 multi-stage 形式也在 Ampere Gemm 当中出现过，我想称之为 wait one in-flight pipeline multi-stage
+在 sm80 中我们使用 `make_tiled_copy_C` 来构建 r2s tiled copy，但由于 wgmma 能够计算的矩阵变大了，最后按照此方式得到的 tiled copy mn shape = `(128, 128)`，与此同时我们需要 `(128, 128)` 大小的 smem 来承接 r2s copy，这无疑是一笔大的开销。所以我们需要根据 copy atom 构建更合理的 tiled copy，好消息是 cute 给我们提供了一个 API `make_tiled_copy_C_atom` 
 
 ## Question
 
@@ -512,6 +565,67 @@ multi-stage in epilogue, 这个 multi-stage 形式也在 Ampere Gemm 当中出�
 
    这也解决了我对 pingpong & cooperative schedule 的疑惑：如果 pingpong 每次只有一个 warp group 在进行 mma 计算，是否会浪费算力？答案是不会的，因为一个 cta 会使用 4 个 tensor core，而一个 sm 上只有 4 个，所以算力不会被浪费。那么 cooperative 的优势又在哪里呢？根据 [Pingpong Schedule并不是万能钥匙](https://zhuanlan.zhihu.com/p/1935338652726204054)，因为 cooperative schedule 会用两个 warp group 以竞争的方式完成一个 tile 的计算，会利用对方在使用 cuda core 进行 FMA (e.g. blockwise scaling) 的时候抢占 tensor core 进行 mma 计算。 相比于 H20，H100 及更强的算力芯片中，cuda core 的 FMA 时间占比会显著增加，所以使用 cooperative gemm 能够更有效地掩藏其中的时间，即使其不能掩藏 epilogue 用时，整体上耗时也比 pingpong schedule 更少。而且由于 mainloop 的时间显著减少，epilogue 也无法很好地被掩藏，同时 cooperative 能够以更大块的数据（更少的 tma store 指令）进行 gmem 的写回所以 cooperative 的优势更加凸显
 
+   我一直不太明白为什么这里 cooperative wgmma 能够和 FMA 进行 overlap，我一直两个 warp group 会几乎同时完成计算，显然这个假设在上述事实下是不成立的：会有一个 wgmma 率先完成，而且完成的时间会非常多，这样才能真正地产生 overlap 效果。那么问题来了 `warpgroup_wait` 等待的到底是其自己的 warpgroup 还是等待了所有的 mma threads？答案也显然易见：其等待的是自己的 warp group，否则 overlap 也无法发生。那么我们是否有必要在每一次 wait 过后使用一个 sync 来进行同步呢？我带着这个问题再次看了代码，很巧的是，的确是有 sync 存在的！不过是在 epilogue 之前，而不是紧跟在 wait 之后。我之前确实遇到了类似的问题，我当时猜测如果不添加这个 sync 会导致 epilogue 当中的 tma thread 提前发起，看来这个猜想的确是正确的。同时我又查看了 sm80 当中的 gemm，在每一个 copy async wait 过后都有一个 syncthreads，也证明了 wait 命令等待的是自己的 warp/warp group，而不是所有的 threads，所以在必要时需要进行 sync。
+
 5. pingpong 会使用 scheduler 同时计算两个 tile 的 gemm，但是 producer 只有一个，shared memory 是如何管理的？
 
 6. 为什么 cutlass 不按照我的同步机制来设置呢？感觉挺直观的
+
+7. deepgemm 当中的 scheduler 是如何实现的？其完成了两个额外的功能：
+
+   1. 考虑无法被 cluster 整除的 tile
+
+   2. 完成 group gemm
+
+**补充（2026/01/23）：如何获得最小的 mn shape 的 tiled copy**
+
+对于 sm90 之后因为 mma 的 mnk 形状将会比较大，所以 size of v 通常都大于 copy atom 的 size of v。所以只需要关注 cta tile 与 mma atom 之间的整除关系是否满足即可。但是也正是由于 mma 的 mnk 形状较大，我们想要利用 `get_layoutC_TV` 构建 tiled copy 时，其 mn shape 也会较大。如果我们想要构建更小的 mn shape 的 tiled copy 可以借助于 cute 的另一个 function api `make_tiled_copy_A/B/C_atom`，该函数是直接对 tv 中的 v 进行截断，取 copy atom 的 size of v，然后再来计算截断后的 tv layouts 所对应的 tiler mn 是什么样，该 tiler 就是最小的 tiler。计算过程我觉得还挺妙的
+
+```cpp
+make_tiled_copy_C_atom(Copy_Atom<CArgs...> const& copy_atom,
+                       TiledMMA<MArgs...>  const& mma)
+{
+  // Truncate the V-layout to just the Copy_Atom, keep the V-order
+  auto layoutC_TV = mma.get_layoutC_TV();
+  auto copy_V     = Int<Copy_Atom<CArgs...>::NumValSrc>{};
+  CUTE_STATIC_ASSERT_V(copy_V <= size<1>(layoutC_TV));
+  auto layout_TV  = composition(layoutC_TV, make_layout(make_shape(size<0>(layoutC_TV), copy_V)));
+
+  // Recompute tiler and restride the TV layout for the new tiler
+
+  // Tiler -- Find the active elements in the MMA tensor and generate a tiler to extract them
+  // Convert to the awkward by-mode tiler to preserve the modes of the tiled MMA
+  auto mma_tiler = make_shape(tile_size<0>(mma),tile_size<1>(mma));
+  auto mma_zeros = repeat_like(mma_tiler, Int<0>{});
+
+  auto tiler = transform(make_seq<rank(mma_tiler)>{}, [&](auto i) {
+    return filter(composition(make_layout(mma_tiler, replace<i>(mma_zeros, Int<1>{})), layout_TV));
+  });
+
+  // Layout_TV -- Find the (tid,vid) -> tile coord transformation
+  // Apply the tiler to a reference and transform the codomain
+  // tile_coord -> mma_coord
+  auto tile2mma = composition(make_layout(mma_tiler), tiler);
+
+  // (tid,vid) -> tile_coord
+  auto layout_tv = composition(left_inverse(tile2mma), layout_TV);
+
+  return make_tiled_copy_impl(copy_atom, layout_tv, tiler);
+}
+
+```
+
+首先将 `layout_TV` 和特殊的 `mma_tiler` 进行 compose，其中 `layout_TV` 映射关系为 `(tid, vid) -> (m, n)`，而特殊 `mma_tiler` 的映射关系为 `(m, n) -> m` or `(m, n) -> n`。如果我们将二者进行 compose，就能够获得 `(tid, vid) -> m` or `(tid, vid) -> n` 的映射。然而这个映射不是一个满射，会存在一些 m or n 值没有被映射到，而这表现为他们的 shape = 1 or stride = 0，通过 filter function 我们就可以将这些 mode 进行过滤，最后剩下的映射为一个满射 `(tid, vid) -> m'` or `(tid, vid) -> n'`，这也就是我们所需要的 tiler layout。一般来说这个 tiler layout 是 compact，我们可以取其 size 来获得 tiler 大小，但是代码中直接使用了这个 layout 作为 tiler 本身也是 OK 的。我测试过直接使用如下 `tiler_simple` 去替换上述 `tiler` 也能获得正确结果
+
+```cpp
+auto tiler_simple = make_tile(size<0>(tiler), size<1>(tiler));
+```
+
+如果我自己来构建的话，可能会采用如下思路（但实际是错的）：
+
+1. 使用 `get_layoutC_TV` 获得标准的 tv -> mn 映射
+2. 使用 inverse 获得 mn -> tv 映射
+3. 对 mn 进行 zipped divide `((m1, n1), rest_m, rest_n) -> tv`，取其中一个子块获得映射 `(m1, n1) -> tv`
+4. 再次 inverse 获得 tv -> m1n1，并使用 `with_shape` 对 v 进行调整
+
+这样的方式无法保证获得的子块是符合要求的，可能这个子块立只包含了部分 threads 的数据

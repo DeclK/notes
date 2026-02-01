@@ -672,14 +672,11 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 
 构建 tiled copy 的双核心逻辑
 
-1. 对于使用 universal copy 的场景，直接使用 `make_tiled_copy` 构建所需的 mn shape，从而直接定义一个 cta block 的 copy 能力
-2. 对于 tv layouts 有特殊要求的 copy 场景（e.g. mma），此时需要考虑的是 tv layouts 与 copy atom 之间的合法性问题，即 copy atom 的整除要求（size of v 需要至少为 8）。此时一个 cta block 的 copy 能力是 mma atom mn shape 的重复，可通过 permutation mnk 参数进行调整
+1. 对于使用 universal copy 的场景，针对所需的 mn shape，计算得到 thr & val layout（二者的 layout product 即为 mn shape）。由 `make_tiled_copy` 通过 thr & val layout 自己推导得到 tv layouts & mn shape
+2. 对于 tv layouts 有特殊要求的 copy 场景（i.e. mma），通常我们都是通过 tiled mma 中的 `get_layoutA/B/C_TV` 直接获得 tv layouts & mn shape。此时需要考虑的是 tv layouts 与 copy atom 之间的合法性问题，即 copy atom 的整除要求（size of v 需要至少为 8）。此时一个 cta block 的 copy 能力是 mma atom mn shape 的重复，可通过 permutation mnk 参数进行调整
 
-   对于 sm90 之后该问题不用考虑，mma 与 copy 之间的合法性总是能够得到满足，我们无需考虑 mma atom 需要重复几次以满足 copy 要求，只需要关注 cta tile 与 mma atom 之间的整除关系是否满足即可
 
-考虑好了以上两个核心逻辑就可以清晰地计算 tiled copy 中的三个核心参数：copy atom, tiled tv layout, mn shape
-
-此时一个大的 picture 正在浮现开来：**tile centric CUDA programming**。核心问题：**What kinds of tile you want to choose to solve a cta problem?**
+考虑好了以上两个核心逻辑就可以清晰地构建 tiled copy。此时一个大的 picture 正在浮现开来：**tile centric CUDA programming**。核心问题：**What kinds of tile you want to choose to solve a cta problem?**
 
 对于 smem -> rmem 这个环节当中，我们利用 mma atom mn shape 作为基础的 building block，为了配合 copy atom 合法性，我们对其 mnk tile 进行了相应的重复，最终**构建出实际使用的 mnk tile**，cta problem 将由这个 tile 进行切分解决
 

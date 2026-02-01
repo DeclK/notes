@@ -115,7 +115,7 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
 9. `remove<R>(layout)`
 
-   把 `R` mode 从 layout 当中移除
+   把 `R` mode 从 layout 当中移除，但这个操作不能够对 swizzle composed layout 完成，我也不清楚其他的操作能不能完成。不过可以直接使用 index 来完成 remove 功能
 
 10. `replace<R>(src_layout, dst_layout)`
 
@@ -127,7 +127,7 @@ cpu 不在乎使用什么 pointer，即使用了 gpu pointer (gmem_ptr or smem_p
 
 12. `transform(layout, func)`
 
-    
+    `(t, f) => (f(t_0),f(t_1),...,f(t_n))` 应该只针对于 tuple，不能对 layout 进行操作
 
 以上操作其实都是完成 pytorch 当中的 view & permute & slice 操作。但对于 squeeze 这样的操作似乎没有特别好的方法？
 
