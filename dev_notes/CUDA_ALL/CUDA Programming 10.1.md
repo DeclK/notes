@@ -242,37 +242,30 @@ using Layout_K_SW128_Atom = decltype(upcast<sizeof_bits<Type>::value>(Layout_K_S
 1. 有效的 threadblock scheduling，以提升 L2 cache hits。这一点在 scheduler 当中体现
 2. 流水线并行，overlap copying with math computation
 
-对于流水线并行在 Ampere 架构使用的是 multi-stage 流水线，我也称之为 wati one in-flight 算法。而到了 Hopper 架构，则大力推广了 warp specialization 算法，也即 producer-consumer 算法。一部分 warp 作为 producer，向 buffer 当中输入数据；异步分 warp 作为 consumer，计算 buffer 当中的数据。二者的本质都是想要利用 compute 来掩藏 copy 的时间，我认为 producer-consumer 模型更加简洁直观，但是需要更多的同步操作以避免 racing
+对于流水线并行在 Ampere 架构使用的是 multi-stage 流水线，而到了 Hopper 架构，则大力推广了 warp specialization 算法，其本质是 producer-consumer 模型。一部分 warp 作为 producer，向 buffer 当中输入数据；一部分 warp 作为 consumer，计算 buffer 当中的数据。我认为 producer-consumer 模型更加简洁直观，但是需要更多的同步操作以避免 racing，具体的同步原理在下面的 mbarrier & pipeline 小结中介绍
 
-warp specialization 的表现形式很简单，在 CUDA 当中就是一个 if-else 分支
+warp specialization 的代码形式很简单，就是一个 if-else 分支
 
 ```c++
 if (warp_group_idx == WarpGroupCnt - 1) {
-  // producer
-  // alloc 40 register for tma load
-  cutlass::arch::warpgroup_reg_dealloc<40>();
-  // elect 1 thread issue tma load
+  // producer, elect 1 thread issue tma load
   if (warp_idx_in_group == 0 && elect_one_sync()) {
     producer(param, shared_storage, block_rank_in_cluster);
   }
 } else {
   // consumer
-  // alloc 232 register for mma compute
-  cutlass::arch::warpgroup_reg_alloc<232>();
-  ws_consumer(param, shared_storage);
+  consumer(param, shared_storage);
 }
 ```
 
-这里还体现了 tma 节省寄存器的优点，给 producer 分配了较少的 register，而给 consumer 分配更多 register
-
-之前的疑问：在之前的 SIMT 编程思想下，写 if-else 分支是效率比较低的行为。为什么在 warp specialization 就可以被允许了？
+疑问一：在之前的 SIMT 编程思想下，写 if-else 分支是效率比较低的行为。为什么在 warp specialization 就可以被允许了？
 
 > From Kimi
 >
 > 经典 SIMT 以 32 线程的 warp 为最小调度单位，同一个 warp 里的线程只要条件不同就会顺序执行 if 和 else 两段指令，造成浪费。
 > Hopper 的 warp specialization 把粒度拉大到「整个 warp-group」（通常是 128 线程甚至 4-warp-group 的 512 线程）。也就是说，只要一个 warp-group 里的所有线程都走同一条路径，就不会出现传统意义上的 divergence。
 
-之前的疑问：对于 producer 来说，只有一个 thread 在进行操作，那其他的 thread 是不是就没有工作了？在此情况下还会给他们一起分配寄存器之类的资源吗（根据 SIMT 编程原则）？
+疑问二：对于 producer 来说，只有一个 thread 在进行操作，那其他的 thread 是不是就没有工作了？在此情况下还会给他们一起分配寄存器之类的资源吗（根据 SIMT 编程原则）？
 
 > From Kimi
 >
@@ -292,7 +285,7 @@ mbarrier 将分为两类
 
   维护 shared memory 是否完成计算的状态。如果未完成计算，则对应 shared memory producer 无法运行
 
-首先我将建立一个清晰的 producer-consumer 模型，然后我再来介绍如何使用同步机制保证流水线模型的正确运行
+首先我将建立一个清晰的 producer-consumer 模型，然后我将逐步介绍其中的流水线原理，并最后引出 cutlass 当中的同步机制
 
 **我的 producer-consumer 模型**
 
@@ -399,11 +392,9 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
       }
   ```
 
-
-
 ## fence & visibility
 
-在之前的很多小节里都触及了 fence sync，并且很多文档都喜欢以 visibility 来描述 fence 的作用，visibility 表面上很具象，实际上理解起来很抽象。个人觉得还是以最本质的 fence 功能来理解：确保代码的执行顺序。一般来说使用 xx fence 意味着某个操作不能够越过 fence 进行执行，例如：
+在之前的很多小节里都触及了 fence sync，并且很多文档都喜欢以 visibility 来描述 fence 的作用，visibility 表面上很具象，实际上理解起来很抽象。个人觉得还是以最本质的 fence 功能来理解：确保代码的执行顺序。一般来说 xx fence 意味着某个操作不能够越过 fence 进行执行，例如：
 
 ```c++
 // smem write
@@ -411,9 +402,7 @@ tma_store_fence()
 // tma store
 ```
 
-这意味着 tma store 操作必须要在 smem write 完成之后再开始发起。而需要 fence 的本质原因是因为 tma 和 smem 是不同的硬件，他们之间的操作其实是不可见的，由于 relaxed consistency model 的原因，导致 tma store 的操作可能会提前执行，所以需要 fence 来保证不同硬件之间的操作顺序
-
-~~而一般 fence 的使用都是惯例性的（大家都会在固定的地方进行使用），所以我不太想花费太多内容阐述原理，而是简单的指出在哪些地方需要使用 fence~~
+这意味着 tma store 操作必须要在 smem write 完成之后再开始发起。而需要 fence 的本质原因是因为 tma 和 smem 是不同的硬件，他们之间的操作其实是不可见的，**由于 relaxed consistency model 的原因，导致 tma store 的操作可能会提前执行，所以需要 fence 来保证不同硬件之间的操作顺序**
 
 我先来看看哪些地方使用了 fence，再看是否能找到一个使用 fence 的基本规则
 
