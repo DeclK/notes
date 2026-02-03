@@ -305,3 +305,63 @@ notes when building kernels
   ```
 
   应该如何构建？
+
+## sm90 fp8 DeepGemm & Hpc-ops
+
+- 什么是 grouped gemm？
+
+  以 m grouped gemm 为例，其在 moe 的 inference 阶段被使用（在 backward path 中会使用 k grouped gemm），下面的代码展示了 group gemm 所需要的 tensor 以及对应形状
+
+  ```python
+  def generate_m_grouped_contiguous(num_groups: int, expected_m_per_group: int, n: int, k: int,
+                                    major_a: MajorTypeAB, major_b: MajorTypeAB,
+                                    use_ue8m0: bool = False, use_bf16: bool = False,
+                                    use_psum_layout: bool = False,
+                                    quant_config: Optional[QuantConfig] = None):
+      actual_ms = [int(expected_m_per_group * random.uniform(0.7, 1.3)) for _ in range(num_groups)]
+      aligned_ms = [align(actual_m, 128) for actual_m in actual_ms]
+      m = sum(aligned_ms)
+  
+      # a is activation, b is weight
+      a = torch.randn((m, k), device='cuda', dtype=torch.bfloat16)
+      b = torch.randn((num_groups, n, k), device='cuda', dtype=torch.bfloat16)
+      grouped_layout = torch.empty(m, device='cuda', dtype=torch.int32)
+      d = torch.empty((m, n), device='cuda', dtype=torch.bfloat16)
+      ref_d = torch.randn((m, n), device='cuda', dtype=torch.bfloat16)
+  
+      start = 0
+      for i, (actual_m, aligned_m) in enumerate(zip(actual_ms, aligned_ms)):
+          actual_end = start + actual_m
+          aligned_end = start + aligned_m
+          if use_psum_layout:
+              grouped_layout[i] = actual_end
+          else:
+              grouped_layout[start: actual_end] = i
+              grouped_layout[actual_end: aligned_end] = -1
+          a[actual_end: aligned_end] = 0
+          ref_d[start: aligned_end] = a[start: aligned_end] @ b[i].t()
+          start = aligned_end
+  
+      if use_bf16:
+          b = b if major_b.is_k_major() else b.mT.contiguous().mT
+          return m, a, b, grouped_layout, d, ref_d
+  
+      # quantize input
+      quant_config = QuantConfig() if quant_config is None else quant_config
+      a = cast_fp8_fp4_with_major(a, major_a, quant_config.gran_k_a, quant_config.is_fp4_a, use_ue8m0)
+      b = grouped_cast_fp8_fp4_with_major(b, major_b, quant_config.gran_k_b, quant_config.is_fp4_b, use_ue8m0, use_block_cast_for_fp8=True)    
+  
+      return m, a, b, grouped_layout, d, ref_d
+  ```
+
+  可以用图示来表示 grouped gemm，清晰地看见哪两个矩阵进行相乘，最后仍然得到输出矩阵 `(M, N)`，其稀疏性也能很轻松地理解
+
+  <img src="C:\Data\Projects\notes\dev_notes\DeepCute\image-20260203163405033.png" alt="image-20260203163405033" style="zoom:80%;" />
+
+  dense gemm 其实可以是 grouped gemm 的特殊情况（num groups 为 1），所以二者可以统一实现。我们在进行 warp persistent 编程的时候，就需要额外注意当前 m tile 到底对应了哪一个 group 的 n tile
+- 熙哥提到了 DeepGemm 节省了寄存器，这是什么原理？
+- 目前 hpc-ops 是 H20 上的 sota 实现，并且基于 cute 实现，我需要完全掌握其实现原理，这应该是我 deepcute 的最终模板。我现在看其中的代码还是感到非常吃力，不过我相信能够解决
+
+  hpc-ops 把 A 和 B 的乘法进行了交换，让 B 去乘以 A，这样构建了一个转置的效果，所以我在看代码的时候发现 `M` 和 `N` 有时候是交换的，最终通过 retile 的方式，转换成为 mn layout，可能这就是为什么其 decode 速度会这么快的原因，这里需要更进一步的分析
+
+  TODO：blockwise fp8 gemm 的计算过程 & kernel 计算逻辑
