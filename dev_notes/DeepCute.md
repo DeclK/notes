@@ -359,9 +359,28 @@ notes when building kernels
   <img src="C:\Data\Projects\notes\dev_notes\DeepCute\image-20260203163405033.png" alt="image-20260203163405033" style="zoom:80%;" />
 
   dense gemm 其实可以是 grouped gemm 的特殊情况（num groups 为 1），所以二者可以统一实现。我们在进行 warp persistent 编程的时候，就需要额外注意当前 m tile 到底对应了哪一个 group 的 n tile
+  
 - 熙哥提到了 DeepGemm 节省了寄存器，这是什么原理？
+
 - 目前 hpc-ops 是 H20 上的 sota 实现，并且基于 cute 实现，我需要完全掌握其实现原理，这应该是我 deepcute 的最终模板。我现在看其中的代码还是感到非常吃力，不过我相信能够解决
 
   hpc-ops 把 A 和 B 的乘法进行了交换，让 B 去乘以 A，这样构建了一个转置的效果，所以我在看代码的时候发现 `M` 和 `N` 有时候是交换的，最终通过 retile 的方式，转换成为 mn layout，可能这就是为什么其 decode 速度会这么快的原因，这里需要更进一步的分析
 
-  TODO：blockwise fp8 gemm 的计算过程 & kernel 计算逻辑
+  blockwise fp8 gemm 的计算过程 & kernel 计算逻辑：
+  
+  1. 对于一次 CTATile wgmma，先把对应的 A & B & Ascale & Bscale 都 load 进来，其中 A scale 为 TileM 个，而 B scale 为 1 个。显然这里的 B scale 是针对权重共享了 N dim 上的 scale，不然应该和 A scale 类似，有 TileN 个
+  2. 对于 loading B scale，tma copy box 设置为 (1, 4)，这样每一次会 copy 4 个 CTATile 的 scale，这可能是 tma copy 的限制所导致的。在进行读取的时候要注意 index
+  
+  由于其交换了 m 和 n 的乘法顺序，看代码还是不太习惯，各种变化（例如：swizzle, mma 选择），而且代码中的标记也有一些迷惑（例如 retile mn），不过最终我还是明白了 blockwise 的原理。视角需要切换到一个 CTATile 内部会更加好解释
+
+- 似乎这里使用了多个 tma，每一个 group 使用一个 tma
+
+  alignment 对于 GPU 来说非常重要。每一个 expert 接收到的 token 很大概率上不是 128 对齐的，deepgemm 通过 masked groupgemm 来完成。但是既然已经有了 tma 这样的神器，对数据的 oob 处理应该不在话下。在 hpc-ops 的解决方案中，直接使用了多个 tma 来对每个 expert 的 MK 矩阵进行搬运，不过需要再写一个 `update_grouped_tma` 计算每一个 tma 的首地址在哪里
+
+  看来我对于 tma 的理解还需要增加，tma 到底是存储在哪里，如何对其进行更新需要清楚
+
+- cub 的 block scan & block reduce 似乎是不错的小工具
+
+- hpc 没有使用任何的 multicast 但是性能依旧 SOTA，我重新测试了之前我写的 multicast 代码，把 multicast 去掉过后性能仅有 0.5us 级别的下降，下降比例约为 0.15%
+
+  如此微小的优化在后期可能就不会优先考虑了

@@ -147,6 +147,8 @@ tma_store_wait<0>();
 
 [CUTLASS Tutorial: Efficient GEMM kernel designs with Pipelining – Colfax Research](https://research.colfax-intl.com/cutlass-tutorial-design-of-a-gemm-kernel/)
 
+### 基本特点
+
 一个 warp group 是由 4 个连续的 warps 构成，i.e. 128 个连续的线程。而 wgmma 就是由一个 warp group 协作执行的 mma，其支持更大的矩阵分块计算。wgmma 有几个特点：
 
 1. 矩阵形状：基本计算形状为 `m64nNk16`，其中 N 可以是 8 的倍数，范围从 8 到 256
@@ -154,18 +156,21 @@ tma_store_wait<0>();
 3. 操作数存储：操作数矩阵 **B 必须存储在共享内存（SMEM）** 中。操作数矩阵 A 可以位于共享内存或寄存器内存（RMEM）中，而累加器矩阵 C 则始终保存在寄存器中
 4. 数据类型支持：WGMMA 支持多种数据类型，包括 FP16、BF16、TF32、FP8（E4M3 和 E5M2 格式）以及整数格式（如 U8/S8），并在 FP32 或 FP16 中进行累加。wgmma 没有 4-bit 运算单元，即：不支持 fp4/int4 的矩阵运算
 
+### 如何构建
+
 SM90 MMA atoms 在 cute 中都标记为 `SM90_MxNxK_XYZ_SS` or `SM90_MxNxK_XYZ_RS`
 
 - `X` and `Y` 是操作数的数据类型
 - `Z` 是累加器的数据类型
 - `MxNxK` 是计算 mma 的 tile 大小，M 始终是 64，N 是 8~256 的任意 8 的倍数，K 是 32 bytes 对应的数据类型的个数，例如 fp16 mma 则 K 是 16
 
-wgmma 的构建和 mma 的构建是类似的，都有 `AtomLayoutMNK` and `PermutationMNK` 
+wgmma 的构建和 mma 的构建是类似的，都有 `AtomLayoutMNK` and `PermutationMNK`
 
 ```c++
 TiledMMA tiled_mma = make_tiled_mma(
                          SM90_64x64x16_F16F16F16_SS{},
-                         Layout<Shape<_2,_1,_1>>{}
+                         Layout<Shape<_2,_1,_1>>{}	// AtomLayoutMNK, cooperatively complete a bigger mma
+    					 // PermutationMNK is barely used 
 );
 ```
 
@@ -190,7 +195,9 @@ using Layout_K_SW128_Atom = decltype(upcast<sizeof_bits<Type>::value>(Layout_K_S
 
 可以看到这些 layout 都是以二维的形式存在，第一个 mode 固定为 8，第二个 mode 代表了数据 bits 数量，即：其要求 K 维度的大小必须是 multiple of 16/32/64/128 bytes。我们会根据 smem K 维度的大小来选择最大的 swizzle layout。例如一块 smem 用于存储 `(M, K)` 大小的 fp16 矩阵：如果 K 个 fp16 是 128 bytes 的整数倍，那么选择 `Layout_K_SW128_Atom`；如果 K 个 fp16 是 64 bytes 的整数倍，那么选择 `Layout_K_SW64_Atom`，以此类推
 
-在 cute 当中使用 sm90 wgmma 类似于 sm80，都需要经历相同的三部曲，但是略有一些区别
+### 如何使用
+
+在 cute 当中使用 sm90 wgmma 类似于 sm80，都需要经历相同的三部曲：slice to thread mma + partition fragments + gemm，但是略有一些区别
 
 1. 根据 thread id 构建 `thr_mma`
 
@@ -220,9 +227,7 @@ using Layout_K_SW128_Atom = decltype(upcast<sizeof_bits<Type>::value>(Layout_K_S
    gemm(tiled_mma, t_rA, t_rB, t_rC);
    ```
 
-4. wgmma 的异步特性
-
-   对于 Hopper 来说，wgmma 是发生在 async proxy 当中的，我们需要两样东西来控制其异步特性：
+   不过由于 wgmma 的异步特性（async proxy），我们一般不会简单使用上面这一行 `cute::gemm`，而需要一些同步语句来控制：
 
    1. 用于避免 wgmma 乱序执行的 fence `warpgroup_arrive()`，（从经验上看）这个 fence 必须在每一次使用 wgmma 之前使用，可认为是一个定式
    2. commit batch & wait 机制用于控制异步流水线
@@ -287,7 +292,7 @@ mbarrier 将分为两类
 
 首先我将建立一个清晰的 producer-consumer 模型，然后我将逐步介绍其中的流水线原理，并最后引出 cutlass 当中的同步机制
 
-**我的 producer-consumer 模型**
+### producer-consumer 模型
 
 为了简单且不失一般性地构建模型，我定义在该模型中，有一个 prodcuer 和一个 consumer，并且存在有 3 个 buffer 用于存放数据（stages=3）。在更复杂的模型中，可以有更多的 producer & consumer & buffer
 
@@ -295,7 +300,7 @@ mbarrier 将分为两类
 
 <img src="CUDA Programming 10.1/image-20251110145841354.png" alt="image-20251110145841354" style="zoom: 67%;" />
 
-**我的同步机制**
+### 我的同步机制
 
 如果让我来设计一个同步机制的话，我会考虑让每一个 barrier 有 0/1 两种状态，0 代表 barrier 生效，1 代表 barrier 可通行。举个例子：对于 empty barrier 来说，0 代表 `isEmpty=0`，那么 empty barrier 生效，producer 无法写入；1 代表 `isEmpty=1`，此时 empty barrier 可通行，producer 可写入
 
@@ -308,7 +313,7 @@ mbarrier 将分为两类
 
 这样就能保证 producer 在写入时，consumer 不会读取；consumer 在计算时，producer 不会写入。我认为这样的同步机制相当直观，但是 cutlass cute 并没有使用这样的机制
 
-**cutlass cute 同步机制 1.0**
+### cute 同步机制-fake
 
 cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个 data）。每一个 barrier 将有一个计数器 `x`，作为同步标准。具体来说：对于 empty barrier 来说，当 `x=1` 时，**代表只有 data index 小于 1 的数据能够被写入**；对于 full barrier 来说，当 `x=1` 时，代表只有 data index 小于 1 的数据能够被计算
 
@@ -319,7 +324,7 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
 
 ![image-20251110145954462](CUDA Programming 10.1/image-20251110145954462.png)
 
-**cutlass cute 同步机制 2.0**
+### cute 同步机制-real
 
 而对于 cutlass 来说还进行了两个改进：
 
@@ -346,9 +351,9 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
 
 ![image-20251110150007186](CUDA Programming 10.1/image-20251110150007186.png)
 
-**cutlass cute 同步机制 3.0**
+在实际的编程的过程当中，将会按照 warp specialization 的形式进行开发，也就是说会分别开发 producer 和 consumer，**他们的 pipeline states 可以不用保持一致**，所以在一开始初始化时，可以把 producer 和 consumer 的 phase 都设置为 0，但是 **producer 和 consumer 的 pipeline states phase 分别设置为 1 和 0**，这样也能够达到上述流水线效果，只是完全不方便直观理解。但这么做的一个好处是，设置 pipeline states phase 的成本或许会比设置 mbarrier phase 的成本更低，因为一个是在 register level，一个是在 smem level
 
-在实际的编程的过程当中，将会按照 warp specialization 的形式进行开发，也就是说会分别开发 producer 和 consumer，他们的 pipeline states 可以不用保持一致，所以在一开始初始化时，可以把 producer 和 consumer 的 phase 都设置为 0，但是 producer 和 consumer 的 pipeline states phase 分别设置为 1 和 0，这样也能够达到上述流水线效果，只是完全不方便直观理解。但这么做的一个好处是，设置 pipeline states phase 的成本或许会比设置 mbarrier phase 的成本更低，因为一个是在 register level，一个是在 smem level
+### mbarrier & pipeline states 实现机制
 
 为了构建以上功能，cutlass 使用了两个对象 `mbarrier` & `pipeline_staes` 来进行管理。其中 `mbarrier` 就对应着上述的 full barrier & empty barrier，`pipeline_states` 则对应着 data index
 
@@ -392,9 +397,9 @@ cutlass 选择使用了以 data index 来作为同步机制（即等待第 x 个
       }
   ```
 
-## fence & visibility
+## Fence & Visibility
 
-在之前的很多小节里都触及了 fence sync，并且很多文档都喜欢以 visibility 来描述 fence 的作用，visibility 表面上很具象，实际上理解起来很抽象。个人觉得还是以最本质的 fence 功能来理解：确保代码的执行顺序。一般来说 xx fence 意味着某个操作不能够越过 fence 进行执行，例如：
+在之前的很多小节里都触及了 fence sync，并且很多文档都喜欢以 visibility 来描述 fence 的作用，visibility 表面上很具象，实际上理解起来很抽象。个人觉得还是以最本质的 fence 功能来理解：确保代码的执行顺序。对我来说 xx fence 意味着某个操作不能够越过 fence 进行执行**（此理解可能有误，但我还是这样写，帮助自己理解）**，例如：
 
 ```c++
 // smem write
@@ -404,94 +409,28 @@ tma_store_fence()
 
 这意味着 tma store 操作必须要在 smem write 完成之后再开始发起。而需要 fence 的本质原因是因为 tma 和 smem 是不同的硬件，他们之间的操作其实是不可见的，**由于 relaxed consistency model 的原因，导致 tma store 的操作可能会提前执行，所以需要 fence 来保证不同硬件之间的操作顺序**
 
-我先来看看哪些地方使用了 fence，再看是否能找到一个使用 fence 的基本规则
-
-- smem barrier fence
-
-  ```c++
-  // Make initialized barrier visible in async proxy
-  cutlass::arch::fence_view_async_shared();
-  cutlass::arch::fence_barrier_init();	// cluster wise
-  // sync for barrier initialization
-  (size(ClusterShape{}) > 1) ? cute::cluster_sync() : __syncthreads();
-  ```
-
-  我们希望 smem barrier 的创建、初始化都必须在 tma 操作开始之前完成，并且必须使用同步操作保证所有线程都完成
-
-- tma store fence
-
-  `tma_store_fence` 和 `fence_view_async_shared` 竟然是一样的 PTX！显然二者应该指向了同一个功能，但是用了不同的包装而已。查看 [PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy) 文档可以知道，该 fence 是作用在 async & generic proxy 对相同 memory 操作之间的
-
-  > Accessing the same memory location across multiple proxies needs a cross-proxy fence. For the *async proxy*, `fence.proxy.async` should be used to synchronize memory between *generic proxy* and the *async proxy*.
-
-  更具体的说，当我们使用 tma 对 smem 进行操作时，都需要考虑使用 fence 进行同步，因为 tma 中的 copy 操作都是在 async proxy 中完成。tma 总共有两个功能，其中都会涉及 smem 的修改
-
-  1. tma load
-
-     tma load 不仅会对 smem 进行写入，而且还修改 mbarrier 状态来进行流水线同步，而 mbarrier 也是 smem 当中的对象。所以说我们在使用 mbarrier 之前也需要使用 `fence`，来让初始化正确执行（确保在 init barrier 后）
-
-     ```cpp
-     // init mbarrier
-     fence
-     // use mbarrier
-     ```
-
-     另外根据 [PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy) 的描述，在 tma load/store 完成过后会隐式地调用 fence，所以我们不需要在 tma store 完成过后使用 fence
-
-  2. tma store
-
-     通常在 epilogue 当中，我们会把写入 smem 的数据写入到 gmem 当中，所以在使用 tma store 之前需要使用 fence 来让 tma store 正确执行（确保在 smem 写入后）
-
-     ```c++
-     // smem write
-     fence
-     // tma store
-     ```
-
-- tensor core acc fence
-
-  [[QST] What can go wrong without cute::warpgroup_fence_operand(accum) in GEMM](https://github.com/NVIDIA/cutlass/discussions/1375)
-
-  我的理解：在 wgmma launch 过后，会先进行计算（此时称为 in-flight 状态，指令还未完成）。在这个期间，编译器可能会改变其他操作的执行顺序，让其他操作在 wgmma 的计算过程中，使用这些 acc。为了保证这些 acc 不被其他操作所占用，必须使用 `warpgroup_fence_operand(acc)` 来保护这些寄存器，直到 wgmma 计算完成过后写入到其中
-
-  ```
-  warpgroup_fence_operand(acc);
-  ...
-  wgmma(..., acc);
-  ...
-  warpgroup_fence_operand(acc);
-  ```
-  
-- `warpgroup_arrive`
-
-  就是 PTX `wgmma.fence.sync.aligned`，阻止编译器把 mma 与之前的寄存器操作重排，所以用作如下
-
-  ```cpp
-  warpgroup_fence_operand(acc);
-  warpgroup_arrive();
-  ...
-  wgmma(..., acc);
-  ...
-  warpgroup_fence_operand(acc);
-  ```
-
-  > From Kimi
-  >
-  > `warpgroup_arrive` 并非“到达屏障”的计数语义，而是 **WGMMA 专用的发射前 fence**，用来保障寄存器-到-Tensor-Core 的数据可见性，是 CUTLASS Hopper 流水线正确性和性能的关键原语
-
-Order must be explicitly stated，对于 consistency model 我没有清晰的理解，但是在我的视角来看，似乎所有的操作都可能被乱序执行，我们必须要知道哪些操作可能被编译器重排，才能自信地进行编程，并正确使用屏障。以下是我总结的几条规律，虽然很可能有错误理解，但是这是我最好的尝试
-
 1. madatory constraint
 
    - mbarrier init 之后一定要使用 fence mbarrier init
-   - wgmma 使用前一定要使用 wgmma arrive
+   - wgmma 使用前一定要使用 `warpgroup_arrive`
 
 2. 在 generic proxy 和 async proxy 之间
 
    所谓的 async proxy，在目前所接触的范围里只有 tma & wgmma 操作
 
-   1. `tma_store_fence` 确保 tma store 一定在 rmem -> smem 写入完成之后
-   2. `warpgroup_fence_operand` 确保 rmem -> smem 写入一定在 wgmma 完成之后
+   1. `tma_store_fence` 确保 tma store 一定在 rmem -> smem 写入完成之后。另外根据 [PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy) 的描述，在 tma load/store 完成过后会隐式地调用 fence，所以我们不需要在 tma store 完成过后使用 fence
+   2. `warpgroup_arrive` 确保 register 的操作一定在 wgmma 完成之后
+
+      就是 PTX `wgmma.fence.sync.aligned`，阻止编译器把 mma 与之前的寄存器操作重排，所以用作如下
+
+      ```cpp
+      warpgroup_fence_operand(acc);// seems unnecessary
+      warpgroup_arrive();
+      ...
+      wgmma(..., acc);
+      ...
+      warpgroup_fence_operand(acc);// seems unnecessary
+      ```
 
 3. wait 同步的屏障效应
 
@@ -501,24 +440,33 @@ Order must be explicitly stated，对于 consistency model 我没有清晰的理
 
    例如：tma load 一定不会被重排到 empty barrier wait 之前
 
-## Scheduler
+## Persistant Warp & Scheduler
 
-persistant warp
+我将 scheduler 和 persistant warp 放在一起整理，二者有着紧密的联系。persistant warp 一般和 warp specialization 是一起出现的，
+
+解释 warp persistant，其优势
+
+为什么需要 scheduler
+
+如何实现 scheduler
 
 swizzle = 4, cluster shape = (2, 1, 1), along N dim (row direction)，H100 当中只有132个 SM，如果按照这样的 cta 安排，会有 8x16=128 个 tiles 是 aligned，另外还剩4个tiles 怎么办？我如何使用 layout algebra 来快速完成这一计算过程
 
 从 layout algebra 的角度来说非常简单，就是 permute input domain，类似于 zipped divide
 
-对于一个 (64, 128) 的 shape 来说，按照上述的描述，先用 8 对第一个 mode 进行 divide，然后再 permute
+对于一个 (64, 128) 的 shape 来说，按照上述的描述，先用 8 对第一个 mode 进行 divide，然后再 flatten & permute
 
 ```cpp
-(64, 128):(1, 64) -> ((8, 8), 128):((1, 8), 64) ->
-(8, 128, 8):(1, 64, 8)
+(64, 128):(1, 64) -> ((8, 8), 128):((1, 8), 64) -> (8, 128, 8):(1, 64, 8)
 ```
 
-此时构成了一个 iteration order -> mn 的映射，这就是 threadblock swizzle 的本质，只是代码使用了简单的代数实现
+此时构成了一个 iteration order -> mn 的映射，这就是 threadblock swizzle 的本质，只是我们在实现的时候直接用了简单的代数实现，我用 python 来表示
 
-在 [zhihu](https://zhuanlan.zhihu.com/p/1905383022901059783) 中还提到了，DeepGemm 其实还考虑了 cluster 不对齐的情况，这又是什么？
+```python
+def thread_block_swizzle_N_dim_along(iteration_idx):
+    # along N dim
+    #
+```
 
 还可参考 [blog](https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/) 当中 threadblock rasterization 小节，进行可视化理解
 
@@ -526,11 +474,22 @@ swizzle = 4, cluster shape = (2, 1, 1), along N dim (row direction)，H100 当�
 
 ## Coorperative & PingPong
 
+[关于Pingpong和Cooperative的一些感性理解 - 知乎](https://zhuanlan.zhihu.com/p/1922067252909434076)
+
+[(21 封私信) Pingpong Schedule并不是万能钥匙 - 知乎](https://zhuanlan.zhihu.com/p/1935338652726204054)
+
+Cooperative 的优势
+
+PingPong 的优势
+
 ## GEMM 实践
 
 如何构建 producer & consumer 完成高效的 gemm
 
-在 sm80 中我们使用 `make_tiled_copy_C` 来构建 r2s tiled copy，但由于 wgmma 能够计算的矩阵变大了，最后按照此方式得到的 tiled copy mn shape = `(128, 128)`，与此同时我们需要 `(128, 128)` 大小的 smem 来承接 r2s copy，这无疑是一笔大的开销。所以我们需要根据 copy atom 构建更合理的 tiled copy，好消息是 cute 给我们提供了一个 API `make_tiled_copy_C_atom` 
+1. 使用 tma 高效运输
+2. producer-consumer 流水线
+3. persistant warp
+4. Cooperative gemm
 
 ## Question
 
