@@ -276,7 +276,7 @@ if (warp_group_idx == WarpGroupCnt - 1) {
 >
 > 是的，**整个 warp group 都会进入 producer 分支**，但**真正干活的只有 warp group 里被 `elect_one_sync()` 选出来的那一个 thread**，其余 127 个 thread 在这条代码路径上就是“空转”
 
-## mbarrier & pipeline
+## Producer-Consumer & Mbarrier
 
 在 GEMM 计算中最核心的需求就是打满算力，而打满算力的核心就是高效的流水线，高效流水线的核心则是准确的同步机制。我将在这一小节里讨论如何利用 mbarrier 建立 producer-consumer 流水线模型的同步机制
 
@@ -440,56 +440,142 @@ tma_store_fence()
 
    例如：tma load 一定不会被重排到 empty barrier wait 之前
 
-## Persistant Warp & Scheduler
+## Persistant Kernel & Scheduler
 
-我将 scheduler 和 persistant warp 放在一起整理，二者有着紧密的联系。persistant warp 一般和 warp specialization 是一起出现的，
+### Persistant Kernel 概念
 
-解释 warp persistant，其优势
+我将 scheduler 和 persistant kernel 放在一起整理，二者有着紧密的联系。persistant kernel 一般和 warp specialization 是一起出现的，所以有时候也叫 persistant warp 下面由 Kimi 解释一下其概念
 
-为什么需要 scheduler
+> From Kimi K2.5
+>
+> 传统的 CUDA kernel 执行模式是：一个 thread block 处理一个任务 tile，完成后就退出。而 **Persistent Kernel** 让 kernel 常驻在 SM 上，同一个 thread block 会**连续处理多个任务 tiles**，直到所有工作完成才退出。
 
-如何实现 scheduler
+对于 gemm 来说 persistent kernel 由如下几点优势：
 
-swizzle = 4, cluster shape = (2, 1, 1), along N dim (row direction)，H100 当中只有132个 SM，如果按照这样的 cta 安排，会有 8x16=128 个 tiles 是 aligned，另外还剩4个tiles 怎么办？我如何使用 layout algebra 来快速完成这一计算过程
+1. 一个 cta 处理多个 tiles，而不是一个 cta 处理一个 tile，减少了 context switch 开销
+2. 能够提前预取下一批处理的 tile 数据，重叠计算和数据传输
+3. 可以通过 scheduler 显式地控制 cta 处理 tile 的顺序，以获得更好的 L2 cache 利用率 
 
-从 layout algebra 的角度来说非常简单，就是 permute input domain，类似于 zipped divide
+### 设计 Scheduler
 
-对于一个 (64, 128) 的 shape 来说，按照上述的描述，先用 8 对第一个 mode 进行 divide，然后再 flatten & permute
+假设我们有一个虚拟的 GPU，其有 2个 SM，在 persistant kernel 场景下，每一个 cta 会不断地计算 tiles
+
+```txt
+SM0: 0th tile, 2nd tile, 4th tile, ...
+SM1: 1st tile, 3rd tile, 5th tile, ...
+```
+
+问题来自于：第 0,1,2,3... 个 tile 他们到底对应着矩阵的哪个部分？我们当然可以简单地直接用 natural layout 的顺序（column major）来决定 `iteration_idx -> (m_idx, n_idx)` 之间的映射
+
+<img src="C:\Data\Projects\notes\dev_notes\CUDA_ALL\CUDA Programming 10.1\image-20260206153803807.png" alt="image-20260206153803807" style="zoom: 50%;" />
+
+不过正如 [Nvidia Cute 实战-WarpSpecialization Gemm for Hopper - 知乎](https://zhuanlan.zhihu.com/p/1905383022901059783) 中所说：为了L2 cache 最大化命中率，我们需要最小化 L2 cache 的访问量。其原理也在博客当中叙述得非常清晰。所以我们需要控制 `iteration_idx -> (m_idx, n_idx)` 映射，这种特定的迭代方式也被称为 thread block swizzle。以 swizzle size = 4 + N-dim along 为例，我们就先在 m-dim 上进行迭代，然后每 4 个 m blocks 就会跳转出去
+
+<img src="C:\Data\Projects\notes\dev_notes\CUDA_ALL\CUDA Programming 10.1\image-20260206154842551.png" alt="image-20260206154842551" style="zoom:50%;" />
+
+这样的从 layout algebra 的角度来说非常简单，类似于 zipped divide。按照上述的描述，先用 4 对第一个 mode 进行 divide，然后再 flatten & permute
 
 ```cpp
-(64, 128):(1, 64) -> ((8, 8), 128):((1, 8), 64) -> (8, 128, 8):(1, 64, 8)
+(8, 16):(1, 8) -> ((4,2), 16):((1,4), 8) -> (4, 16, 2):(1, 8, 4)
+
+// actual cute code
+auto mn = make_layout(make_shape(8, 16));
+auto tiler = make_tile(4);
+auto iteration2mn = logical_divide(mn, tiler);	
+auto mn = make_layout(make_shape(8, 16));
+auto tiler = make_tile(4);
+auto mn_divided = flatten(logical_divide(mn, tiler)); // (4,2,16):(_1,4,8)
+auto iter2mn = make_layout(select<0, 2, 1>(mn_divided.shape()), select<0, 2, 1>(mn_divided.stride())); // (4,16,2):(_1,8,4)
 ```
 
-此时构成了一个 iteration order -> mn 的映射，这就是 threadblock swizzle 的本质，只是我们在实现的时候直接用了简单的代数实现，我用 python 来表示
+以上是 cute 的解法，算是一个小练习吧。不过代码通常直接来计算 `(m_idx, n_idx)`，我用 python 来表示，only 6 lines of code
 
 ```python
-def thread_block_swizzle_N_dim_along(iteration_idx):
-    # along N dim
-    #
+def thread_block_swizzle_N_dim_along(iteration_idx, num_m_blocks, num_n_blocks, swizzle_size):
+    # first we calculate which box we are in, box size is (swizzle_size, num_n_blocks)
+    box_idx = iteration_idx // (swizzle_size * num_n_blocks)
+    # get actual swizzle_size, because there might not be enough blocks along m
+    swizzle_size = min(swizzle_size, num_m_blocks - box_idx * swizzle_size)
+    # get idx inside of the box
+    inside_box_idx = iteration_idx % (swizzle_size * num_n_blocks)    
+    
+    # calculate inside box m_idx, n_idx
+    m_idx = inside_box_idx % swizzl_size
+    n_idx = inside_box_idx // swizzle_size
+    
+    # modify in m_idx index to global index, we can merge it in previous step
+    # but for better understanding here, we modify it separately
+    m_idx = m_idx + box_idx * swizzle_size
+    return m_idx, n_idx
 ```
 
-还可参考 [blog](https://research.colfax-intl.com/cutlass-tutorial-persistent-kernels-and-stream-k/) 当中 threadblock rasterization 小节，进行可视化理解
+下面是剩下的 m blocks 不够的情况的可视化，对应上方代码中更新 `swizzle_size` 的部分
 
-在 deepgemm 当中还利用 scheduler 来解决了 group gemm 的问题
+<img src="C:\Data\Projects\notes\dev_notes\CUDA_ALL\CUDA Programming 10.1\image-20260206150217852.png" alt="image-20260206150217852" style="zoom: 80%;" />
 
-## Coorperative & PingPong
+## Coorperative & PingPong Schedule
+
+### 基础概念
 
 [关于Pingpong和Cooperative的一些感性理解 - 知乎](https://zhuanlan.zhihu.com/p/1922067252909434076)
 
-[(21 封私信) Pingpong Schedule并不是万能钥匙 - 知乎](https://zhuanlan.zhihu.com/p/1935338652726204054)
+[Pingpong Schedule并不是万能钥匙 - 知乎](https://zhuanlan.zhihu.com/p/1935338652726204054)
 
-Cooperative 的优势
+这两篇博客对 Cooperative 和 PingPong schedule 有一个比较详细讨论。我会先对二者的概念进行阐述，然后整理各自的优势
 
-PingPong 的优势
+1. Cooperative Schedule
+
+   利用两个 warp group 完成一个 CTATile 矩阵乘法，二者分别负责 Tile 的上下部分。其在代码中是通过 TiledMMA 构建的，非常直观
+
+   ```cpp
+   using mma_op = GMMA::MMA_64x256x16_F16F16F16_SS<GMMA::Major::K,  GMMA::Major::K>;
+   using TiledMMA = decltype(make_tiled_mma(mma_op{}, make_layout(make_shape(_2{}, _1{}, _1{}))));
+   ```
+
+   我们定义了 `MMAThrLayout` 为 `(2, 1, 1)`，将矩阵乘大小从 `64x256x16` 扩展到了 `128x256x16`。这里贴一个 Cooperative 运行的图示（该图我认为有一定争议，在下一小节 Cooperative vs PiongPong 进行解释）
+
+   <img src="C:\Data\Projects\notes\dev_notes\CUDA_ALL\CUDA Programming 10.1\v2-419a4ce821e4b9a54819abc63a84b7ad_1440w.jpg" alt="img" style="zoom:50%;" />
+
+2. PingPong Schedule
+
+   利用两个 warp group 分别完成两个 CTATile 矩阵乘法，二者交替进行来掩藏 epilogue 开销。其在代码中的控制流会相对复杂，除了 full barrier & empty barrier 之外还需要额外 pingpong barrier 以控制两个 warp group 的交替进行。同样贴一个 PingPong 运行时的图示
+
+   <img src="C:\Data\Projects\notes\dev_notes\CUDA_ALL\CUDA Programming 10.1\v2-3eb278c168ee7663e664d43b0bcda004_1440w.jpg" alt="img" style="zoom:50%;" />
+
+   需要注意的是，通常 PingPong 完成的单个 CTATile 大小相对于 Cooperative 完成 CTATile 会减半，但二者完成的 CTATile 的总大小是一致的
+
+### Cooperative vs PingPong
+
+这样看起来 PingPong 是完胜 Cooperative 的性能的，因为其能够掩藏 epilogue 的时间，但 Cooperative 不行。事实真是如此吗？在[Pingpong Schedule并不是万能钥匙 - 知乎](https://zhuanlan.zhihu.com/p/1935338652726204054) 中提到了一个事实：对于 H100 等高算力 GPU 上，Cooperative 比 PingPong 在 fp8 blocksize gemm 上更好。原因有多个：
+
+1. 在于 Cooperative 能够掩藏 mainloop 当中对 accumuator 的 CUDA Core 计算（i.e. acc = fp8 * fp32 scale），而 PingPong 则不行。该事实也挑战了上面 cooperative 图示，因为两个 warp group 并不是同时进行的，而是有一个先后顺序
+
+2. Cooperative 的 cta shape 更大，在 epilogue 当中用 tma 发送大块的数据更有效率，指令更少
+
+3. 最后我想 challenge 一点：Cooperative 真的完全无法掩藏 epilogue 的时间吗？mainloop 可以大致分为三个部分：
+
+   ```cpp
+   wgmma;
+   rmem -> smem;	// stsm
+   smem -> gmem;	// tma store
+   ```
+
+   实际上我们在 `smem -> gmem` 的过程中不需要等待其结束就可以开始下一轮的 mma 计算。**这里数据传输和 mma 计算仍然是重合的**
+
+可以看见 Cooperative 以更简洁的实现获得了更加优越的性能，所以在下面的 gemm 实践中我将优先考虑 Cooperative 方式
 
 ## GEMM 实践
 
-如何构建 producer & consumer 完成高效的 gemm
+[Nvidia Cute 实战-WarpSpecialization Gemm for Hopper - 知乎](https://zhuanlan.zhihu.com/p/1905383022901059783)
 
-1. 使用 tma 高效运输
-2. producer-consumer 流水线
-3. persistant warp
-4. Cooperative gemm
+介绍了这么多优化技巧，接下来我们就来使用他们来构建高效的 Hopper fp16 gemm kernel，最终达到 DeepGemm 水平⚡所使用的核心优化技巧：
+
+1. 使用 tma 进行高效 `smem <-> gmem` 数据传输
+2. producer-consumer 流水线，尽量打满 wgmma tensor core
+3. persistant kernel with thread block swizzle
+4. Cooperative gemm with large mma shape & partial epilogue overlap
+
+代码请移步 [DeepCute/deepcute/sm90/fp16_gemm/gemm_ws.h at master · DeclK/DeepCute](https://github.com/DeclK/DeepCute/blob/master/deepcute/sm90/fp16_gemm/gemm_ws.h) 进行查看，~300 lines of code，clean and readable！
 
 ## Question
 
