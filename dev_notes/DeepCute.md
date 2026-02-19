@@ -384,3 +384,25 @@ notes when building kernels
 - hpc 没有使用任何的 multicast 但是性能依旧 SOTA，我重新测试了之前我写的 multicast 代码，把 multicast 去掉过后性能仅有 0.5us 级别的下降，下降比例约为 0.15%
 
   如此微小的优化在后期可能就不会优先考虑了
+  
+- `make_layout` 的输入为两个 layout 时会进行类似 python 的 zip
+
+  ```cpp
+  layout3 = make_layout(layout_1, layout_2);
+  layout3.shape = (layout1.shape, layout2.shape);
+  layout3.stride = (layout1.stride, layout2.stride);
+  ```
+
+- `retile_fragment` 是针对于 hopper 硬件上的操作。原本通过 partition C 获得的 register layout 为 `((frg_v, frg_m, frg_n), restm, restn)`，通过 `retile_fragment` 可以把 m 和 n 两个方向的元素进行聚合。这里会有一个隐藏假设： `frg_v` 是沿着 n 方向在延申，因为 C 的 layout 一般是 LayoutRight，所以 N 方向是连续方向。所以 m 方向有元素 `frg_m * rest_m` 个，n 方向有元素 `(frg_v * frg_n * rest_n)` 个。通过构建 `m_layout & n_layout` 获得两个 mode 的 layout，两个 layout 传入 `make_layout` 以构建新的 layout
+
+  ```cpp
+  m_layout = (frg_m, rest_m):(stride...)
+  n_layout = (frg_v, frg_n, rest_n):(stride...)
+  mn_layout = ((frg_m, rest_m), (frg_v, frg_n, rest_n)):(stride...)
+  ```
+
+  此时我们就可以通过 mn index 对 register 进行方便操作，尤其是在计算 scale 的时候很方便
+  
+- 由于 hpc-ops 把 mn 倒过来计算了，所以计算得到的 C 是按照 nm 排布的，同时连续的维度为 n（这里感觉还是很绕，需要弄清楚），所以在选择 tma swizzle 的时候需要选择 MN major 而不是 K major
+
+- hpc-ops 让每一个 warpgroup 来完成 smem -> gmem 的功能，这样应该能够节省掉一次同步。形成一个 warpgroup parallelism，不太清楚如果不使用这样的 trick 会失效多少

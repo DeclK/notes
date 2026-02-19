@@ -487,7 +487,7 @@ ONNX 模型的编辑器，包含 python API（下面简称 ogs） ，其功能�
 
 ### nsight systems
 
-性能调试器，随 CUDA 安装或独立安装，位于 `/usr/local/cuda/bin/` 下的 nsys 和 nsys-ui，建议使用最新版，因为其不是向前兼容的
+性能调试器，随 CUDA 安装或独立安装，位于 `/usr/local/cuda/bin/` 下的 nsys 和 nsys-ui，建议使用最新版，因为其不是向前兼容的。需要注意的是，通常在 linux 系统上我们安装的是 [nsys-cli](https://docs.nvidia.com/nsight-systems/InstallationGuide/index.html#package-manager-installation)，这和 [nsys-ui](https://developer.nvidia.com/nsight-systems/get-started) 是两个软件，我们日常所说的 nsys 都是指的是 nsys-cli，即 nsys 命令行工具。最后通过 nsys-ui 来可视化 nsys 记录的结果，并且 nsys-cli 和 nsys-ui 的版本最好也是对其的
 
 nsys 也是一个命令行工具，可以用于分析运行时耗时，我们通常说的 profile a model，就是指分析一个模型的运行速度
 

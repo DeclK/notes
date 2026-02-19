@@ -420,6 +420,33 @@ https://marketplace.visualstudio.com/_apis/public/gallery/publishers/GitHub/vsex
 https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{"the_publishers"}/vsextensions/{"the_extension_name"}/{"the_version"}/vspackage
 ```
 
+### Qwen-Coder
+
+2026 年的今天，国产 AI 的成功毋庸置疑，既便宜又好用！看下怎么利用 Qwen-Coder + Continue 来平替 copilot
+
+我这里使用了 SiliconFlow 作为我的 api 代理商，接入到 continue 当中。我之前尝试过 DeepSeek 作为供应商，但是太慢了，这果然不是 DeepSeek 的主营业务🥲我们可以通过 add chat model 来快速添加 chat 模型，选择完模型并添加自己的 api-key。这一步骤的主要目的是生成一个本地的 config
+
+<img src="VSCode note/image-20260213114727604.png" alt="image-20260213114727604" style="zoom:80%;" />
+
+在之后就可以在上图右上角的 local config 里找到刚刚生成的 chat module，我们只需要添加 role 为 autocomplete 即可
+
+```yaml
+name: Local Config
+version: 1.0.0
+schema: v1
+models:
+  - name: Qwen 2.5 Coder 32b
+    provider: siliconflow
+    model: Qwen/Qwen2.5-Coder-32B-Instruct
+    apiKey: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    roles:
+      - autocomplete
+```
+
+还有其他可选的模型，我竟然没发现还有免费的，着急充钱了！😭更换模型只需要把 `model` 的字段更新为对应名字即可
+
+![image-20260213115333024](VSCode note/image-20260213115333024.png)
+
 ### Debug Python/C++
 
 现在接触的代码越来越复杂，很多时候都是 python 调用 C++ 代码。对于 python 代码的调试，我经常使用 pdb 来完成，但是对于 C++ 代码的调试变得极其困难。还好 vscode 目前对 C++ 的 debug 支持友好，并且有现成的 [python c++ debugger](https://marketplace.visualstudio.com/items?itemName=benjamin-simmonds.pythoncpp-debug) 插件，支持我们进行跨语言调试
