@@ -104,21 +104,3 @@ update 2025/07/19 From DeepSeek
 export http_proxy="http://$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):7890"
 export https_proxy="http://$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}'):7890"
 ```
-
-## Claude Code
-
-首先安装 nodejs & claude code
-
-```shell
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo apt install npm
-npm install -g @anthropic-ai/claude-code
-```
-
-然后配置 [kimi api](https://platform.moonshot.cn/docs/guide/agent-support#%E5%9C%A8-claude-code-%E4%B8%AD%E4%BD%BF%E7%94%A8-kimi-k2-%E9%9D%9E%E6%80%9D%E8%80%83%E6%A8%A1%E5%9E%8B)
-
-```shell
-export ANTHROPIC_BASE_URL="https://api.moonshot.cn/anthropic/"
-export ANTHROPIC_AUTH_TOKEN="sk-xxxxxxxxxxxxxxx"
-```

@@ -274,14 +274,62 @@ Edge-llm 自己构建了一个轻量 tensor 抽象，我觉得挺不错的
 
 EngineRunner & InferenceRunner 的功能
 
+- Attention plugin
+
+  attention plugin 当中对于 kv cache 的使用需要谨慎。其中有两个参数需要深入理解
+
+  ```python
+  def attention_plugin(
+      qkv: torch.Tensor,
+      past_key_value: torch.Tensor,
+      context_lengths: torch.Tensor,
+      rope_rotary_cos_sin: torch.Tensor,
+      kvcache_start_index: torch.Tensor,
+      num_q_heads: int,
+      num_kv_heads: int,
+      enable_tree_attention: bool,
+      head_size: int,
+      attention_mask: Optional[torch.Tensor] = None,
+      position_ids: Optional[torch.Tensor] = None,
+  ) -> Tuple[torch.Tensor, torch.Tensor]:
+      """    
+      Args:
+          qkv: Concatenated QKV tensor of shape (batch_size, seq_len, num_q_heads * head_size + 2 * num_kv_heads * head_size)
+          past_key_value: KV cache tensor of shape (batch_size, 2, num_kv_heads, past_len, head_size)
+          rope_rotary_cos_sin: RoPE tensor of shape (batch_size, seq_len, rotary_dim) containing cos and sin values
+          context_lengths: Context length tensor of shape (batch_size,) indicating current position in cache
+          kvcache_start_index: Start index of KV cache of shape (kv_cache_start_batch_size,), required
+          num_q_heads: Number of query heads
+          num_kv_heads: Number of key-value heads
+          enable_tree_attention: Whether to enable tree attention
+          head_size: Size of each attention head
+          attention_mask: Attention mask of shape (batch_size, seq_len, seq_len + past_len), optional
+          position_ids: Position IDs tensor of shape (batch_size, seq_len), optional
+          
+      Returns:
+          Tuple[torch.Tensor, torch.Tensor]: Attention output tensor and updated KV cache
+              - Attention output: shape (batch_size, seq_len, num_q_heads * head_size)
+              - Updated KV cache: shape (batch_size, 2, num_kv_heads, present_kv_cache_len, head_size) with dynamic shapes
+          
+      Raises:
+          AssertionError: If enable_tree_attention is True but required tensors are missing
+  ```
+
+  - `past_key_value` 这里就是 kv cache 本身，`past_len` 为 kv cache 的最大容量长度、
+
+  - `context_length` 这里代表了各个 batch 的 input tokens 的数量，区别于 `qkv` 其 `seq_len` 实际上是一个 padded length，代表了这个 batch 当中的 max `seq_len`
+
+    在 prefill 时 context length 就是 input tokens 数量；在 decode 时 context length = past tokens + 1。这说明了 context length 代表了 attention 在进行计算的 seq length 总长度，而不是单独的 input tokens 长度 or past seq lengths
+
+  - `kvcache_start_index` 代表存储计算好的新的 kv cache 存储位置，如果是 prefill 则为 0；decode 则为 history token 数量
+
+  在 attention 计算过程中，会根据 `kvcache_start_index` 来确定 past kv cache 在哪儿，即：在 start index 之前的 kv cache 都会被作为 history 进行 attention 计算。然后使用 input tokens 和 past kv cache 进行 attention 计算，最终写入到 `kvcache_start_index` 处
+
 ## Questions & Misc
 
 - timer system 在 llm inference example 里也有
-
 - 如果关闭 cuda graph，这样我就可以看真实的 nsys profile 了
-
 - TensorRT 在导出的时候需要配合 ONNX 设置好哪些是 input，而哪些是 output，这也需要我仔细整理
-
 - Myelin 融合节点似乎并不是万能钥匙，我测出来的 rmsnorm 比 myelin 的要快很多
-
 - 还好自己有之前 MLC-LLM 的经历，感觉这些代码都能比较快速地理解，而且这里的代码似乎比 MLC-LLM 更加轻量，确实适合作为端侧的推理框架，构建得也比较通用，应该可以扩展到除了 thor 之外的其他端侧 GPU。并且有了 TensorRT 的支持，可以直接从 ONNX Parse 出计算图，在项目初期有不错的优势
+- onnx + tensorrt 能够处理简单的 if-else 条件吗？
