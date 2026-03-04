@@ -78,6 +78,16 @@ TODO: 具体的在 Cute 当中的使用方法待整理
 
 
 
+## UMMA-2SM
+
+
+
+## TMA + 2SM
+
+2sm 也能节省数据传输时间，tma multicast 也能节省数据传输时间。二者进行结合能够极大地减少数据的传输量。这都是因为我们在完成大的 gemm 时，很多数据都是可以共享的
+
+为了配合 2sm，tma multicast 的 mask 需要有特别的控制
+
 - TMA Multicast
 
   在 Hopper 当中 Multicast 只在一个 single-dimension 当中进行，并且 cluster 最大都只能设置为2，这个限制在 [Dynamic Cluster and Scheduler for Blackwell - 知乎](https://zhuanlan.zhihu.com/p/1940858379905001339) 当中有所解释
