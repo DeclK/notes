@@ -254,11 +254,128 @@ EDGE-LLM 在对 huggingface LLM 进行 export 时进行了封装，利用 `EdgeL
 
 ## Plugin
 
+### Add a RMSNorm
+
+rmsnorm 属于一个比较简单的 kernel，我们从 flashinfer 当中加进来
+
+- 首先需要准备所需要的头文件
+
+  我们只需要准备 system lib 就行了
+
+  ```python
+  ['/usr/include/python3.12',
+   '$cuda_home/include',
+   '$cuda_home/include/cccl',
+   '/cyq/Projects/flashinfer/.venv/lib/python3.12/site-packages/tvm_ffi/include',
+   '/cyq/Projects/flashinfer/.venv/lib/python3.12/site-packages/tvm_ffi/include',
+   PosixPath('/cyq/Projects/flashinfer/include'),
+   PosixPath('/cyq/Projects/flashinfer/csrc'),
+   PosixPath('/cyq/Projects/flashinfer/3rdparty/cutlass/include'),
+   PosixPath('/cyq/Projects/flashinfer/3rdparty/cutlass/tools/util/include'),
+   PosixPath('/cyq/Projects/flashinfer/3rdparty/spdlog/include')]
+  ```
+
+- 构建好了所需要的 cmake 并编译通过
+
+  1. 寻找 flashinfer & tvm 头文件
+  2. add library
+  3. include directories
+  4. link cuda & tvm .so
+  5. 把所有的 flashinfer definition 打开
+  6. 设置 compilation args
+
+  基本是按照 flashinfer jit 编译命令比对着来的构建的
+
+- 作为 sub
+
+- plugins 会 include 所使用的 kernel launcher header
+
+- 剩下的可能就是写一些 Template
+
+
+
+- plugin 如何知晓输入和输入数据的类型的？trt 自己的 tensorview?
+
+- 如何构建一个 tensor view，这很重要！
+
+  这是 claude code kimi 给出的回答，明天需要直接在 tvm ffi 项目下 check 一下
+
+  ```cpp
+  ● Now I understand. tvm::ffi::TensorView is a non-owning view that wraps a DLTensor. 
+    You can create it from a DLTensor* pointer. Here's how to construct it from raw    
+    data:                                                                              
+                                                                                       
+    #include <tvm/ffi/container/tensor.h>                                              
+    #include <dlpack/dlpack.h>                                                         
+                                                                                       
+    using tvm::ffi::TensorView;                                                        
+                                                                                       
+    // Example: Create TensorView from raw CUDA buffer
+    TensorView create_tensor_view(
+        void* data_ptr,           // Your raw GPU buffer pointer
+        const std::vector<int64_t>& shape,  // Tensor shape
+        DLDataType dtype,         // Data type (see below)
+        int device_id = 0         // CUDA device ID
+    ) {
+        // Create DLTensor on stack (TensorView copies it internally)
+        DLTensor dl_tensor;
+        dl_tensor.data = data_ptr;
+        dl_tensor.device = DLDevice{kDLCUDA, device_id};
+        dl_tensor.dtype = dtype;
+        dl_tensor.shape = const_cast<int64_t*>(shape.data());
+        dl_tensor.ndim = static_cast<int>(shape.size());
+        dl_tensor.strides = nullptr;  // nullptr = contiguous
+        dl_tensor.byte_offset = 0;
+  
+        return TensorView(&dl_tensor);
+    }
+  
+    // Usage examples:
+    void* my_buffer = ...;  // Your allocated GPU memory
+  
+    // Float32 tensor [batch_size, seq_len, num_heads, head_dim]
+    std::vector<int64_t> shape = {32, 1024, 32, 128};
+    TensorView view = create_tensor_view(
+        my_buffer,
+        shape,
+        DLDataType{kDLFloat, 32, 1}  // float32
+    );
+  
+    Common dtype values:
+  
+    ┌──────────┬──────────────────────────────┐
+    │   Type   │          DLDataType          │
+    ├──────────┼──────────────────────────────┤
+    │ float32  │ DLDataType{kDLFloat, 32, 1}  │
+    ├──────────┼──────────────────────────────┤
+    │ float16  │ DLDataType{kDLFloat, 16, 1}  │
+    ├──────────┼──────────────────────────────┤
+    │ bfloat16 │ DLDataType{kDLBfloat, 16, 1} │
+    ├──────────┼──────────────────────────────┤
+    │ int32    │ DLDataType{kDLInt, 32, 1}    │
+    ├──────────┼──────────────────────────────┤
+    │ int64    │ DLDataType{kDLInt, 64, 1}    │
+    └──────────┴──────────────────────────────┘
+  
+    FlashInfer provides predefined constants in tvm_ffi_utils.h (line 34-50):
+    constexpr DLDataType dl_float32 = DLDataType{kDLFloat, 32, 1};
+    constexpr DLDataType dl_float16 = DLDataType{kDLFloat, 16, 1};
+    constexpr DLDataType dl_bfloat16 = DLDataType{kDLBfloat, 16, 1};
+    constexpr DLDataType dl_int32 = DLDataType{kDLInt, 32, 1};
+    constexpr DLDataType dl_int64 = DLDataType{kDLInt, 64, 1};
+  
+    Important: Ensure your shape array remains valid for the lifetime of the TensorView
+     (it stores a pointer to it). For temporary shape arrays, copy them to heap or use
+    a persistent storage.
+  ```
+
+  
+
 How to build a basic plugin, BEST PRACTICE
 
 Tricks
 
-### TensorRT Basic Usage
+## TensorRT Basic Usage
 
 trt 的 python & cpp api 都是相似的，我应该简单整理一下，这样才能在 python 里完成量化的对比
 

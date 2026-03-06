@@ -54,7 +54,7 @@ paged layout 表示，kv 的存储形式为 `(num_pages, page_size, H, C)`
 kv_len = page_size * (len(page_indices[i]) - 1) + last_page_length[i]
 ```
 
-问题在于这些 Request 的 page indices 到底是怎么计算得到的，如果来了新的 request 会发生什么？这需要我们对 paged kv cache 进行精细的管理，也是 paged attention 的精髓
+问题在于这些 Request 的 page indices 到底是怎么计算得到的，如果来了新的 request 会发生什么？这需要我们对 paged kv cache 进行管理，也是 paged attention 的精髓
 
 ## Major Api Usage
 
@@ -220,6 +220,16 @@ decode_wrapper.plan(
 
 ## Paged Attention
 
+在介绍 paged attention 之前，我想先整理下，为什么我们需要 Paged Attention。在 paged attention 之前我们会给每一个 request 分配一个固定的空间，e.g. 2048 作为一个 Request 的最大 token 容量。这样的方式有两个方面的局限：
+
+1. 内存的浪费
+
+   由于每一次都是固定的配分空间，如果我们的 seq len 比较少，就会浪费分配的显存
+
+2. 内存的碎片化
+
+   本质上是第一点的延申。被浪费的显存就以碎片化的形式存在，我们无法利用他们。另外当 Request 所需要的 token 容量大于 2048 时，也是我们无法应对的情况
+
 经过对各个 AI (Kimi, DeepSeek, GLM) 的严厉拷打，我算是整合除了一套我自己所理解的 paged attention 原理，可能和各个框架的实现有所出入，但我能以自己满意的方式理解其原理已经达到目的
 
 在以上 flashinfer api 的整理中，对 paged kv cache 管理我们始终缺少 3 个关键参数的计算：`paged_kv_indptr` & `paged_kv_indices` & `paged_kv_last_page_len`
@@ -228,40 +238,207 @@ decode_wrapper.plan(
 
 1. 一个 batch request。其中包含了 prefill & decode request
 2. 一个 `free_pages` 队列。包含了哪些 pages 目前是可用的
-3. 一个 `page_table` 张量，其形状为 `(max_requests, max_seq_len)`，其中包含的值为1维的 offset，通过这个 offset 可以直接定位到该 token 在 paged kv cache 中的位置
-4. 每一个 request 会维护自己的 page indices & last page len
+3. 每一个 request 会维护自己的 page indices & last page len
 
 有了这些条件进行 paged attention 就不难理解了：
 
-1. request 进行 prefill 时，其 page indices 和 last page len 都是没有 history 的，我们可以从 `free_pages` 当中 pop 出一些新的 pages 用于其填充。其计算也比较简单，根据 prefill seq len 我们能够很快的计算出需要多少 pages，并且 last page len 为多少也能计算得到
+1. request 进行 prefill 时，其 page indices 和 last page len 都是没有 history 的，我们可以从 `free_pages` 当中 pop 出一些新的 pages 以使用
 
+   ```python
+   neex_pages = prefill_len // page_size
+   last_page_len = prefill_len % page_size
+   ```
 
+2. request 进行 decode 时，request 当中已经有了 history，我们现在要做的就是更新 page indices & last page len
 
-### Decode
+   ```python
+   if last_seq_len == (page_size - 1):
+       page_indices.append(free_pages.pop())
+       last_seq_len = 0
+   else:
+       last_seq_len +=1 
+   ```
 
+3. 在进行 attention 计算时，我们直接把各个 request 的 `page_indices & last_page_len` 连接起来，作为一个整体，输入给 flashinfer api 即可完成一次 batched prefill / decode
 
+   ```python
+   batch_page_indices = concat(page_indices)
+   batch_page_indptr = [0] + cumsum([len(page) for page in page_indices])
+   batch_last_page_len = concat(last_page_len)
+   ```
 
-### Prefix Cache
+我认为以上就是基本的 paged attention 算法原理。对于 prefix cache 之类的算法，则需要考虑更多，例如每一个 page 需要知道自己被共享给了多少 request，并且共享单位只能以 page 为单位，多出来的 token 则需要额外的复制，下面的动图来自 [zhihu](https://zhuanlan.zhihu.com/p/638468472)
 
-prefix caching 问题
+![](Flashinfer/v2-cab043f5f4d3ed2f4e369a542617fb22_b.webp)
 
-如果匹配上了的话，需要新开一个 page，并且把最后一个 page 的 last len 内容重新写入
+## JIT
 
-## Other Hpc
+我认为现在可以走一个新的开发范式：
 
-rmsnorm
+1. 使用 cuda cpp 进行开发 kernel header file
+2. 使用 tvm ffi 标准接入到 flashinfer api 当中
+3. 使用 JIT 的方式对 kernel 进行编译，在此 debug 一些编译错误
+4. 使用 torch 直接在 python 端测试 kernel
+
+我首先需要了解 JIT 的使用方法，然后理解 tvm ffi 如何桥接 pytorch
+
+jit 的 core 代码在 `flashinfer/jit/core.py`，其中核心的 api 为 `gen_jit_spec`，通过这个 api 可以轻松配置之前在 cmake 当中配置的 include & library & flags 配置
+
+```python
+  def gen_jit_spec(                                                                  
+      name: str,               
+      sources: Sequence[Union[str, Path]],         
+      extra_cflags: Optional[List[str]] = None,
+      extra_cuda_cflags: Optional[List[str]] = None,        
+      extra_ldflags: Optional[List[str]] = None,
+      extra_include_paths: Optional[List[Union[str, Path]]] = None,
+      needs_device_linking: bool = False,
+  ) -> JitSpec:
+```
+
+下面是各个参数的详细解释，都来自 Kimi
+
+| 参数                   | 作用                                                      | 典型值                                        |
+| :--------------------- | :-------------------------------------------------------- | :-------------------------------------------- |
+| `name`                 | 模块唯一标识符，决定 .so 文件名和缓存目录名               | `"batch_decode_fp16_128_heads"`               |
+| `sources`              | 要编译的源文件路径列表（通常是 .cu 文件）                 | `[gen_dir/"kernel.cu", gen_dir/"binding.cu"]` |
+| `extra_cflags`         | 传递给 c++ 编译器的额外标志（用于 .cpp 文件）             | `["-O3", "-march=native"]`                    |
+| `extra_cuda_cflags`    | 传递给 nvcc 的额外标志（用于 .cu 文件）                   | `["-gencode=arch=compute_90a,code=sm_90a"]`   |
+| `extra_ldflags`        | 传递给链接器的额外库和搜索路径                            | `["-L/path/to/lib", "-lcublas", "-lmyLib"]`   |
+| `extra_include_paths`  | 额外的头文件搜索路径                                      | `["/usr/local/cutlass/include"]`              |
+| `needs_device_linking` | 是否需要 nvcc 进行设备代码链接（复杂的 CUDA kernel 需要） | `True / False`                                |
+
+此 api 会返回一个 `JiTSpec` 对象，我们调用该对象的 `build_and_load` 接口以实现 just in time compile
+
+```python
+# Step 1: Define (in flashinfer/jit/my_kernel.py)
+def gen_my_kernel_module(dtype):
+    uri = f"my_kernel_{dtype}"	# uniform resource identifier
+    gen_directory = jit_env.FLASHINFER_GEN_SRC_DIR / uri
+
+    # Copy sources (or render Jinja templates)
+    sources = jit_env.FLASHINFER_CSRC_DIR / "my_kernel.cu"
+
+    return gen_jit_spec(
+        name=uri,
+        sources=sources,
+        extra_cuda_cflags=[...],
+        # extra_ldflags=[...],      # if you need custom libs
+        # extra_include_paths=[...], # if you need extra includes
+    )
+
+# Step 2: Cache, Build & Load (in flashinfer/my_kernel.py)
+@functools.cache  # <-- Important: caches the compiled module in memory
+def get_my_kernel_module(dtype):
+    return gen_my_kernel_module(dtype).build_and_load()
+
+# Step 3: Call the kernel
+def my_kernel(input_tensor):
+    module = get_my_kernel_module("nvfp4")	# JIT compiles on first call
+    module.run(input_tensor)                # Calls the TVM-FFI exported function
+```
+
+其中有几点细节：
+
+1. 需要使用 `functools.cache` 对得到的 module 进行装饰。当它装饰一个函数后，函数会记住之前调用时传入的参数和对应的返回值；如果后续再次用**完全相同的参数**调用，就不会重新执行函数体，而是直接返回之前缓存的结果
+
+2. 有一些 flashinfer 会自动添加的 system include & flags & link libraries
+
+   - system include 包含系统 cuda header file, tvm ffi, flashinfer, cutlass 
+
+     ```cpp
+     // Python & TVM-FFI
+     -isystem <python-include>
+     -isystem <tvm_ffi-include>
+     -isystem <dlpack-include>
+     
+     // CUDA
+     -isystem $cuda_home/include
+     -isystem $cuda_home/include/cccl
+     
+     // FlashInfer
+     -isystem <flashinfer>/data/include        // include/flashinfer/
+     -isystem <flashinfer>/data/csrc           // csrc/
+     -isystem <flashinfer>/data/cutlass/include
+     -isystem <flashinfer>/data/cutlass/tools/util/include
+     -isystem <flashinfer>/data/spdlog/include
+     ```
+
+   - 对于 flags 不用操心太多常规的 cpp & cuda flags 都会自动生成，e.g. `-std=c++17, -use_fast_math, -gencode`
+
+   - 会自动 link cuda runtime
+
+     ```python
+     ldflags = [
+         "-shared",
+         "-L$cuda_home/lib64",
+         "-L$cuda_home/lib64/stubs",
+         "-lcudart",
+         "-lcuda",
+     ]
+     ```
+
+最后我们可以通过加 env `FLASHINFER_JIT_VERBOSE=1 FLASHINFER_JIT_DEBUG=0` 来看到完整的编译命令
 
 ## TVM FFI
 
-兜兜转转还是没走出 tvm 这个圈，tvm ffi 已经被 CuteDSL & TileLang & Flashinfer 进行了应用。这说明该方式有着足够的易用性，并且功能保障性也很强，不然短时间内这些框架没办法将 tvm ffi 进行集成
+兜兜转转还是没走出 tvm 这个圈，tvm ffi 已经被 CuteDSL & TileLang & Flashinfer 进行了应用。这说明该方式有着足够的易用性，并且功能保障性也很强，不然短时间内这些框架没办法将 tvm ffi 进行集成。tvm ffi 是 kernel launcher 和 pytorch 之间的桥梁，pytorch 传入的 torch Tensor 能够被 tvm ffi 所接收，然后传递给底层的 kernel
 
-我说为什么 tvm 没有出现在 3rd party 当中，但是却可以出现再 csrc 文件当中。因为通过 pip install 下载好了 tvm ffi 在进行编译的时候会直接从这里 include tvm ffi 的头文件
+使用 tvm ffi 集成 kernel 的方式非常直接
 
-```shell
--isystem /cyq/Projects/flashinfer/.venv/lib/python3.12/site-packages/tvm_ffi/include
+```cpp
+  // csrc/my_kernel_jit_binding.cu
+  #include "tvm_ffi_utils.h"
+
+  // 1. kernel launcher function (defined in my_kernel.cu)
+  void my_kernel_launcher(TensorView input, TensorView output, int64_t param);
+
+  // 2. export this function to name `run`
+  TVM_FFI_DLL_EXPORT_TYPED_FUNC(run, my_kernel_launcher);
 ```
 
-可以通过加 env `FLASHINFER_JIT_VERBOSE=1 FLASHINFER_JIT_DEBUG=0` 来看到编译的命令
+我们希望单独使用一个 `binding.cu` 来导出这个算子，而不是把这个 binding 放在 kernel launcher file 本身，这样保持了 kernel launcher 的单纯性，可以直接给提供给 cuda cpp 框架直接使用
+
+之后我们就可以如上一节介绍的一样，通过 jit 获得编译好的 kernel，并且通过 export 时指定的 `run` 接口运行。在 flashinfer 使用 tvm ffi 时产生了一些最佳实践：
+
+1. 设备和流管理
+
+   ```cpp
+   ffi::CUDADeviceGuard device_guard(q.device().device_id);
+   const cudaStream_t stream = get_stream(q.device());
+   ```
+
+   其中 device guard 会确保 kernel 在所给定的 device id GPU 上运行，stream 则会输入到 kernel launch 参数当中
+
+2. 数据转换
+
+   使用 `static_cast<Dtype*>` 类型转换，将 `TensorView` 当中的 DLPack datatype 转换成 kernel 接收的底层 c type or cuda type 数据类型
+
+3. 错误检查
+
+   使用 `TVM_FFI_ICHECK` 进行断言检查，输出 cuda errors
+
+   ```cpp
+   TVM_FFI_ICHECK(status == cudaSuccess) << "Failed to run persistent paged attention, error: " << cudaGetErrorString(status);
+   ```
+
+   当然还有很多 CHECK 小工具，都是 cuda 编程常用的手段，可以在 `tvm_ffi_utils.h` 当中找到
+
+4. TensorView
+
+   可以像 torch tensor 一样获得 `TensorView` 对象的常用属性
+
+   ```cpp
+   // TensorView tensor;
+   tensor.size(i)	// maybe equal with tensor.shape[i]
+   tensor.ndim()
+   tensor.dtype()
+   tensor.device()
+   ```
+
+5. 可选参数 `Optional<Dtype>`
+
+   通过 `tvm::ffi::Optional` 来控制可选参数，在 python 传入 `None` 是可以被 tvm ffi 所接收的，通过 `.has_value()` 来获知该参数是否传入，如果传入可使用 `.value()` 方法获得该值
 
 ## Questions
 
