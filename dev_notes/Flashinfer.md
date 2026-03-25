@@ -448,6 +448,71 @@ def my_kernel(input_tensor):
 
 - 如何利用 tvm ffi & ninja 完成 cuda cpp -> python 的构建，其中的 3rdparty 依赖应该如何完成设置？
 
+- lse 在 attention 当中是什么意思？
+
+  log sum exp，通常作为 backward 和数值 debug 用，可以不用返回
+
+  ```python
+  import torch
+  
+  a = torch.tensor([1.0, 2.0, 3.0])
+  result = torch.logsumexp(a, dim=0)
+  print(result)  		# Expected output: log(exp(1) + exp(2) + exp(3))
+  result_ref = torch.log(torch.exp(a).sum())
+  print(result_ref)  # Should match the previous output
+  ```
+
+  我们在进行剪枝的时候会使用到吗？
+
+- 模板参数自动推导
+
+  1. 显式指定模板参数但传入不同类型的情况：传入的实参类型必须能隐式转换为对应的参数类型（这里是指针所指类型必须匹配，即 `T*` 与实参指针类型一致或有合法的隐式转换路径），否则会导致编译错误
+
+  2. 显式指定的模板参数必须从第一个模板参数开始，依次提供，直到最后一个需要指定的参数。无法“跳过”某个参数，即使它可推导。举个例子
+
+     ```cpp
+     template <typename B, typename A, typename C>
+     void func(B b, C c)
+     
+     func<B_type, A_type>(b, c);
+     ```
+
+     要指定 **A**（第二个参数），你必须**同时指定第一个参数 B**（即使它本可以推导），构成一个从左到右连续的参数列表
+
+     所以最佳实践是：把所有不可推导的参数放在左侧，可自动推导的参数放在右侧
+
+- 在传递数据的时候，应该采取什么样的格式？`T* or void*` 在 kernel launcher 就可以这么做？还是只能在 `__global__ or __device__`
+
+  其核心原理在于任何类型的指针能够被隐式地转换成为 void 指针，而不需要进行手动的 `reinterpret_cast` or `static_cast`，这就使得该指针能够作为一个接口指针去承接各个类型的参数。然后我们可以通过模板传入真正的类型参数，在 kernel 底层实现的时候真正调用 cast 方法，获得正确的数据类型
+
+  所以选择 `T*` 还是 `void*` 其实都是可以的：
+
+  1. 当我们选择 `T*` 的时候，需要确保我们的 `T*` 是被 kernel 所接受的：例如我们传入 kernel launcher 的数据类型其实是 DLDataType，我们需要转换成为 `half_t`，使用 cutlass 中的 `half_t` 还是 cuda 中原生的 `nv_half or __half`
+  2. 当我们选择 `void*` 时，要确保我们的 dtype 通过模板参数传递给 kernel，这样才让 kernel 知道要使用什么类型，通常来说 kernel 内部会使用 `reinterpret_cast` 转换到指定类型
+
+- 在 mini-sglang 当中如何使用 flash attention 实现了 page attention 效果 var len?
+
+- cutlass device allocation 可以作为简单的 device buffer 使用 
+
+- 任何的指针，我们传入 nullptr 赋值，都是可以的
+
+- 遇到了 Tensor ambigous 问题，原因在于 cute Tensor 和 tvm Tensor 起了冲突。这是因为我在文件一开始就 include 了 tvm utils，使得全局使用了 tvm Tensor，当我再 using namespace cute 的时候就会报错。这给了一个 namespace 的教训，可以有两个解决方法：
+
+  1. include private before global
+
+     Headers that bring symbols into global scope via using should be included last
+
+  2. Try not to use namespace at global scope in header
+
+- 有没有好的方法来 dispatch 模板，一定要使用 flashinfer 的 dispatch 方法吗？
+
+- 为什么要使用这么多的 workspace，会有什么限制吗？如果我们的输入太大的话
+
+- flashinfer 对于 custom attention 的实现是如何完成的？这是 flash attention 无法做到的。个人感觉 flashinfer 对于 attention variants & kv cache 的优化已经是 next level，需要较长时间的钻研与学习
+
+- flashinfer 的 skill 在添加 kernel 的时候老是喜欢用 `x.data_ptr<Dtype>()` 的形式来构建 data pointer，实际上这是一个错误的调用方法，直接使用 static cast 来转换即可
+
 Conclusion:
 
 - 如果不是 llm serving 完全可以不用考虑 flashinfer，使用直接的算子集成。可以看到 flashinfer 主推的仍然是 Paged attention，其需要结合 scheduler 对 Page 进行复杂的管理，这种场景和 llm serving 高度的绑定
+- 今后的推理引擎的概念会消失，以后都是以 python 作为推理框架，以 serving 的形式提供推理结果。所有的 kernel 都将以 python 的形式进行调用

@@ -431,21 +431,42 @@ https://marketplace.visualstudio.com/_apis/public/gallery/publishers/{"the_publi
 在之后就可以在上图右上角的 local config 里找到刚刚生成的 chat module，我们只需要添加 role 为 autocomplete 即可
 
 ```yaml
+# reference link https://docs.continue.dev/reference#models
 name: Local Config
 version: 1.0.0
 schema: v1
 models:
-  - name: Qwen 2.5 Coder 32b
+  - name: Qwen/Qwen2.5-Coder-32B-Instruct
     provider: siliconflow
     model: Qwen/Qwen2.5-Coder-32B-Instruct
-    apiKey: sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    apiKey: sk-xxxxxxxxxxxxxx
     roles:
       - autocomplete
+    defaultCompletionOptions:
+      maxTokens: 100          # 输出 token 的最大数量
+    
+    autocompleteOptions:
+      maxPromptTokens: 1024    # 输入 prompt context 的最大 token 总量
+      debounceMs: 200          # 光标停止后等待 debounceMs 毫秒再触发补全请求
+      maxSuffixPercentage: 0.5 # 后缀文本占比上限
+      prefixPercentage: 0.5    # 前缀文本占比
+      modelTimeout: 5000       # 模型响应超时时间，超过该时间后将会取消请求
+      useCache: true
+      onlyMyCode: false
+      useImports: false
+      useRecentlyEdited: false
+      useRecentlyOpened: false
 ```
 
 还有其他可选的模型，我竟然没发现还有免费的，着急充钱了！😭更换模型只需要把 `model` 的字段更新为对应名字即可
 
 ![image-20260213115333024](VSCode note/image-20260213115333024.png)
+
+另外我发现有时候 continue 即使 request 请求成功，也不会在 vscode 当中显示出来 [Continue autocomplete suggestions not displayed in editor despite successful completion in console · Issue #8661 · continuedev/continue](https://github.com/continuedev/continue/issues/8661)
+
+把 multiline suggestion 关掉过后体验会好一点。另外要使用 FIM 而不使用 next edit
+
+<img src="VSCode note/image-20260317172333158.png" alt="image-20260317172333158" style="zoom: 80%;" />
 
 ### Debug Python/C++
 

@@ -418,13 +418,14 @@ tma_store_fence()
 
    所谓的 async proxy，在目前所接触的范围里只有 tma & wgmma 操作
 
-   1. `tma_store_fence` 确保 tma store 一定在 rmem -> smem 写入完成之后。另外根据 [PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy) 的描述，在 tma load/store 完成过后会隐式地调用 fence，所以我们不需要在 tma store 完成过后使用 fence
-   2. `warpgroup_arrive` 确保 register 的操作一定在 wgmma 完成之后
+   1. `tma_store_fence` 确保 tma store 一定在 rmem -> smem 写入完成之后。换句话说，我们一定不会把 tma store 重排到 rmem -> smem 写入完成之前。另外根据 [PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/#async-proxy) 的描述，在 tma load/store 完成过后会隐式地调用 fence，所以我们不需要在 tma store 完成过后使用 fence
+   2. `warpgroup_arrive` 确保 register 的操作一定在 wgmma 完成之前
 
-      就是 PTX `wgmma.fence.sync.aligned`，阻止编译器把 mma 与之前的寄存器操作重排，所以用作如下
+      就是 PTX `wgmma.fence.sync.aligned`，阻止编译器把 mma 与之前的寄存器操作重排，如果把这些操作排到 wgmma 之后就会造成错误
 
       ```cpp
       warpgroup_fence_operand(acc);// seems unnecessary
+      // some manipulations to acc, which needed by wgmma
       warpgroup_arrive();
       ...
       wgmma(..., acc);

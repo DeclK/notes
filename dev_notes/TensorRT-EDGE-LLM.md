@@ -286,16 +286,6 @@ rmsnorm 属于一个比较简单的 kernel，我们从 flashinfer 当中加进�
 
   基本是按照 flashinfer jit 编译命令比对着来的构建的
 
-- 作为 sub
-
-- plugins 会 include 所使用的 kernel launcher header
-
-- 剩下的可能就是写一些 Template
-
-
-
-- plugin 如何知晓输入和输入数据的类型的？trt 自己的 tensorview?
-
 - 如何构建一个 tensor view，这很重要！
 
   这是 claude code kimi 给出的回答，明天需要直接在 tvm ffi 项目下 check 一下
@@ -369,13 +359,452 @@ rmsnorm 属于一个比较简单的 kernel，我们从 flashinfer 当中加进�
     a persistent storage.
   ```
 
-  
 
-How to build a basic plugin, BEST PRACTICE
+### Create Plugin Skill
 
-Tricks
+我以 `Int4GroupwiseGemmPlugin & AttentionPlugin` 为例子来整理整个 plugin 流程
 
-## TensorRT Basic Usage
+0. Create python symbolic，对于 plugin 的 dtype，in & out 说明都需要在这个 python 文件中表达清楚。这个 python plugin file 的功能包含：1. 定义 onnx symbolic; 2. 定义 pytorch symbolic; 3. 定义 register function，该 function 在 export onnx 之前需要被调用
+
+   ```python
+   """
+   Dummy Attention Plugin for TensorRT Integration
+   
+   This module provides a custom TensorRT operation for attention computation that can be
+   exported to ONNX format. It includes RoPE (Rotary Position Embedding) application,
+   KV cache management, and attention computation in a single fused operation.
+   
+   The module contains:
+   - attention_plugin: Dummy TensorRT operation for attention computation, this is not used in the actual inference.
+   - ONNX export utilities for the custom operation
+   """
+   
+   from typing import Optional, Tuple
+   
+   import torch
+   from torch.onnx import register_custom_op_symbolic, symbolic_helper
+   from torch.onnx.symbolic_helper import _get_tensor_sizes
+   
+   from ...common import ONNX_OPSET_VERSION
+   
+   # Define ONNX OpSchema for AttentionPlugin
+   
+   
+   @symbolic_helper.parse_args("v", "v", "v", "v", "v", "i", "i", "b", "i", "v",
+                               "v")
+   def symbolic_attention_plugin(
+       g: torch.onnx._internal.torchscript_exporter.jit_utils.GraphContext,
+       qkv: torch._C.Value,
+       past_key_value: torch._C.Value,
+       context_lengths: torch._C.Value,
+       rope_rotary_cos_sin: torch._C.Value,
+       kvcache_start_index: torch._C.Value,
+       num_q_heads: torch._C.Value,
+       num_kv_heads: torch._C.Value,
+       enable_tree_attention: torch._C.Value,
+       head_size: torch._C.Value,
+       attention_mask: Optional[torch._C.Value] = None,
+       position_ids: Optional[torch._C.Value] = None,
+   ):
+       """Custom attention plugin operation for ONNX export."""
+   
+       # Build inputs list - kvcache_start_index is now always required
+       inputs = [
+           qkv, past_key_value, context_lengths, rope_rotary_cos_sin,
+           kvcache_start_index
+       ]
+       if enable_tree_attention:
+           assert attention_mask is not None and attention_mask.type().kind(
+           ) != 'NoneType', "attention_mask should be provided for tree attention"
+           assert position_ids is not None and position_ids.type().kind(
+           ) != 'NoneType', "position_ids should be provided for tree attention"
+           inputs.append(attention_mask)
+           inputs.append(position_ids)
+   
+       qkv_type = qkv.type()
+       past_key_value_type = past_key_value.type()
+       attn_output, present_key_value = g.op(
+           "trt::AttentionPlugin",
+           *inputs,
+           num_q_heads_i=num_q_heads,
+           num_kv_heads_i=num_kv_heads,
+           head_size_i=head_size,
+           enable_tree_attention_i=1 if enable_tree_attention else 0,
+           outputs=2)
+   
+       qkv_sizes = _get_tensor_sizes(qkv)
+       attn_output_sizes = qkv_sizes[:-1] + [num_q_heads, head_size]
+       attn_output.setType(qkv_type.with_sizes(attn_output_sizes))
+   
+       # KV Cache output has the same shape as input past_key_value except for dimension 3 (sequence length)
+       # Shape: [batch_size, 2, num_kv_heads, present_kv_cache_len (dynamic), head_size]
+       past_kv_sizes = _get_tensor_sizes(past_key_value)
+       present_key_value.setType(past_key_value_type.with_sizes(past_kv_sizes))
+   
+       return attn_output, present_key_value
+   
+   
+   @torch.library.custom_op("trt::attention_plugin", mutates_args=())
+   def attention_plugin(
+       qkv: torch.Tensor,
+       past_key_value: torch.Tensor,
+       context_lengths: torch.Tensor,
+       rope_rotary_cos_sin: torch.Tensor,
+       kvcache_start_index: torch.Tensor,
+       num_q_heads: int,
+       num_kv_heads: int,
+       enable_tree_attention: bool,
+       head_size: int,
+       attention_mask: Optional[torch.Tensor] = None,
+       position_ids: Optional[torch.Tensor] = None,
+   ) -> Tuple[torch.Tensor, torch.Tensor]:
+       """
+       Dummy TensorRT operation for attention computation, this is not used in the actual inference.
+       
+       This operation wraps the logic after v_proj and before o_proj into a single 
+       AttentionPlugin operation during ONNX export. It handles RoPE application,
+       KV cache management, and attention computation in a fused manner.
+       
+       Args:
+           qkv: Concatenated QKV tensor of shape (batch_size, seq_len, num_q_heads * head_size + 2 * num_kv_heads * head_size)
+           past_key_value: KV cache tensor of shape (batch_size, 2, num_kv_heads, past_len, head_size)
+           rope_rotary_cos_sin: RoPE tensor of shape (batch_size, seq_len, rotary_dim) containing cos and sin values
+           context_lengths: Context length tensor of shape (batch_size,) indicating current position in cache
+           kvcache_start_index: Start index of KV cache of shape (kv_cache_start_batch_size,), required
+           num_q_heads: Number of query heads
+           num_kv_heads: Number of key-value heads
+           enable_tree_attention: Whether to enable tree attention
+           head_size: Size of each attention head
+           attention_mask: Attention mask of shape (batch_size, seq_len, seq_len + past_len), optional
+           position_ids: Position IDs tensor of shape (batch_size, seq_len), optional
+           
+       Returns:
+           Tuple[torch.Tensor, torch.Tensor]: Attention output tensor and updated KV cache
+               - Attention output: shape (batch_size, seq_len, num_q_heads * head_size)
+               - Updated KV cache: shape (batch_size, 2, num_kv_heads, present_kv_cache_len, head_size) with dynamic shapes
+           
+       Raises:
+           AssertionError: If enable_tree_attention is True but required tensors are missing
+       """
+       if enable_tree_attention:
+           assert attention_mask is not None, "attention_mask should be provided for tree attention"
+           assert position_ids is not None, "position_ids should be provided for tree attention"
+   
+       batch_size, seq_len, qkv_size = qkv.shape
+       assert head_size * (
+           num_q_heads + 2 * num_kv_heads
+       ) == qkv_size, f"qkv_size {qkv_size} should be equal to head_size * (num_q_heads + 2 * num_kv_heads) {head_size * (num_q_heads + 2 * num_kv_heads)}"
+       assert past_key_value.shape[
+           0] == batch_size, f"batch_size of kv_cache {past_key_value.shape[0]} should be equal to batch_size of qkv {batch_size}"
+       assert past_key_value.shape[
+           1] == 2, f"kv_cache {past_key_value.shape[1]} should have 2 tensors"
+       assert past_key_value.shape[
+           2] == num_kv_heads, f"num_kv_heads of kv_cache {past_key_value.shape[2]} should be equal to num_kv_heads of qkv {num_kv_heads}"
+       assert past_key_value.shape[
+           4] == head_size, f"head_size of kv_cache {past_key_value.shape[4]} should be equal to head_size of qkv {head_size}"
+   
+       assert qkv.dtype == torch.float16, f"qkv {qkv.dtype} should be in float16"
+       assert past_key_value.dtype == torch.float16, f"past_key_value {past_key_value.dtype} should be in float16"
+   
+       # Dummy implementation for ONNX export, this is not used in the actual inference
+       attn_output = torch.zeros(batch_size,
+                                 seq_len,
+                                 num_q_heads,
+                                 head_size,
+                                 dtype=qkv.dtype,
+                                 device=qkv.device)
+   
+       return attn_output, past_key_value.clone()
+   
+   
+   def register_attention_plugin_onnx_symbolic_functions() -> None:
+       """Register symbolic functions for ONNX export."""
+   
+       # Register our custom symbolic functions
+       register_custom_op_symbolic("trt::attention_plugin",
+                                   symbolic_attention_plugin, ONNX_OPSET_VERSION)
+   
+       print("Registered ONNX symbolic functions for custom attention plugin")
+   
+   ```
+
+   
+
+1. 固定开头，plugin version + plugin name + static fileds init + register
+
+   ```cpp 
+   namespace
+   {
+   constexpr char const* kINT4_GEMM_PLUGIN_VERSION{"1"};
+   constexpr char const* kINT4_GEMM_PLUGIN_NAME{"Int4GroupwiseGemmPlugin"};
+   
+   } // namespace
+   
+   // Static class fields initialization
+   PluginFieldCollection Int4GroupwiseGemmPluginCreator::mFieldCollection{};
+   std::vector<PluginField> Int4GroupwiseGemmPluginCreator::mPluginAttributes;
+   REGISTER_TENSORRT_PLUGIN(Int4GroupwiseGemmPluginCreator);
+   ```
+
+2. (Optional, but recommended) 为了更好的可读性，可以创建一些 constexpr or enum，来告知第 i 个 input & output 对应哪些含义 
+
+3. 构建 plugin constructor
+
+   有两个 constructor，一个 constructor 直接接收参数，另一个 constructor 接收 serialize data，给 member 进行赋值
+
+   ```cpp
+   Int4GroupwiseGemmPlugin::Int4GroupwiseGemmPlugin(std::string const& name, int32_t N, int32_t K, int32_t groupSize)
+       : mLayerName(name)
+       , mGemmN(N)
+       , mGemmK(K)
+       , mGroupSize(groupSize)
+   {
+   }
+   
+   Int4GroupwiseGemmPlugin::Int4GroupwiseGemmPlugin(std::string const& name, void const* data, size_t length)
+       : mLayerName(name)
+   {
+       deserializeValue(&data, &length, &mGemmN);
+       deserializeValue(&data, &length, &mGemmK);
+       deserializeValue(&data, &length, &mGroupSize);
+   }
+   ```
+
+3. 定义 number of outputs, output datatype, output dimensions
+
+   可以根据所定义的 python 文件来写
+
+   ```cpp
+   int32_t AttentionPlugin::getNbOutputs() const noexcept { return 1;}
+   DataType Int4GroupwiseGemmPlugin::getOutputDataType([[maybe_unused]] int32_t index,
+       [[maybe_unused]] nvinfer1::DataType const* inputTypes, [[maybe_unused]] int32_t nbInputs) const noexcept
+   {
+       return DataType::kHALF;
+   }
+   
+   DimsExprs Int4GroupwiseGemmPlugin::getOutputDimensions([[maybe_unused]] int32_t outputIndex,
+       nvinfer1::DimsExprs const* inputs, [[maybe_unused]] int32_t nbInputs, nvinfer1::IExprBuilder& exprBuilder) noexcept
+   {
+       // Output[0] is attention result, has shape [B, S. Hq, D]. Refers to QKV shape [B, S, Hq+Hk+Hv,D]
+       DimsExprs output;
+   
+       output.nbDims = 3;
+       output.d[0] = inputs[0].d[0];
+       output.d[1] = inputs[0].d[1];
+       output.d[2] = exprBuilder.constant(mGemmN);
+       return output;
+   }
+   
+   ```
+
+   需要注意的是，如果有多个 Output 且各个 output 的 datatype 不一样，需要根据 index 逐个确认
+
+4. supportformatCombination
+
+   针对于 input & output tensor 的 data format  作一些检查，包含 tensor 的 data type & dimension & layout，顺带检查一下 input & output 的数量是否与 python plugin 定义对齐。为了更好的可读性，可以把 case 中的数字换成 enum
+
+   ```cpp
+   bool Int4GroupwiseGemmPlugin::supportsFormatCombination(
+       int32_t pos, nvinfer1::PluginTensorDesc const* inOut, int32_t nbInputs, int32_t nbOutputs) noexcept
+   {
+       // input 0: Fp16 activation tensor, input 1: packed int4 weights in type int8, input2: Fp16 scale values.
+       // output 0: Fp16 computed result of the int4-woq gemm
+       try
+       {
+           assert(nbInputs == 3 && nbOutputs == 1);
+           assert(pos < (nbInputs + nbOutputs));
+           auto const& tensorDesc = inOut[pos];
+           bool status{true};
+   
+           switch (pos)
+           {
+           case 0:
+           {
+               status &= tensorDesc.type == DataType::kHALF;
+               status &= tensorDesc.format == TensorFormat::kLINEAR;
+               status &= tensorDesc.dims.nbDims == 3;
+               status &= tensorDesc.dims.d[2] == mGemmK;
+               break;
+           }
+           case 1:
+           {
+               // The int4 weights are packed and swizzled into a special layout with int16 [N/4, K].
+               // Since TensorRT doesn't have Int16 datatype, we use int8 datatype to store the weights.
+               // Therefore the type should be [N/2, K] in int8.
+               status &= tensorDesc.type == DataType::kINT8;
+               status &= tensorDesc.format == TensorFormat::kLINEAR;
+               status &= tensorDesc.dims.nbDims == 2;
+               status &= tensorDesc.dims.d[0] == mGemmN / 2;
+               status &= tensorDesc.dims.d[1] == mGemmK;
+               break;
+           }
+           case 2:
+           {
+               // The accepted scale for the kernel should be fp16 with [K/group_size,N]
+               status &= tensorDesc.type == DataType::kHALF;
+               status &= tensorDesc.format == TensorFormat::kLINEAR;
+               status &= tensorDesc.dims.nbDims == 2;
+               status &= tensorDesc.dims.d[0] == mGemmK / mGroupSize;
+               status &= tensorDesc.dims.d[1] == mGemmN;
+               break;
+           }
+           case 3:
+           {
+               status &= tensorDesc.type == DataType::kHALF;
+               status &= tensorDesc.format == TensorFormat::kLINEAR;
+               status &= tensorDesc.dims.nbDims == 3;
+               status &= tensorDesc.dims.d[2] == mGemmN;
+               break;
+           }
+           default: break;
+           }
+           return status;
+       }
+       catch (std::exception const& e)
+       {
+       }
+       return false;
+   }
+   ```
+
+5. enqueue
+
+   核心的发起函数，调用 kernel launcher。根据 input & output tensor 的信息，把 kernel launcher 所需的数据传递进去
+
+   ```cpp
+   int32_t Int4GroupwiseGemmPlugin::enqueue(nvinfer1::PluginTensorDesc const* inputDesc,
+       [[maybe_unused]] nvinfer1::PluginTensorDesc const* outputDesc, void const* const* inputs, void* const* outputs,
+       [[maybe_unused]] void* workspace, cudaStream_t stream) noexcept
+   {
+       auto const& inputDesc0 = inputDesc[0];
+       int32_t const M = inputDesc0.dims.d[0] * inputDesc0.dims.d[1];
+   
+       half* gemmInPtr = reinterpret_cast<half*>(const_cast<void*>(inputs[0]));
+       int8_t* weightsInPtr = reinterpret_cast<int8_t*>(const_cast<void*>(inputs[1]));
+       half* ScaleInPtr = reinterpret_cast<half*>(const_cast<void*>(inputs[2]));
+       half* gemmOutDevicePtr = reinterpret_cast<half*>(outputs[0]);
+   
+       if (M <= 6)
+       {
+           trt_edgellm::kernel::gemv_forward_cuda_new(
+               gemmInPtr, weightsInPtr, ScaleInPtr, gemmOutDevicePtr, M, mGemmN, mGemmK, mGroupSize, stream);
+       }
+       else
+       {
+           trt_edgellm::kernel::gemm_forward_cuda_new(
+               gemmInPtr, weightsInPtr, ScaleInPtr, gemmOutDevicePtr, M, mGemmN, mGemmK, mGroupSize, stream);
+       }
+       return 0;
+   }
+   ```
+
+   由于我们使用的是 tvm tensor view，所以我们需要把 tensor 重新进行包装，转换成为 tvm ffi tensor，这样 flashinfer kernel 才能接受
+
+6. 针对 member 的序列化和反序列化
+
+   ```cpp
+   size_t Int4GroupwiseGemmPlugin::getSerializationSize() const noexcept
+   {
+       return sizeof(mGemmN) + sizeof(mGemmK) + sizeof(mGroupSize);
+   }
+   
+   void Int4GroupwiseGemmPlugin::serialize(void* buffer) const noexcept
+   {
+       serializeValue(&buffer, mGemmN);
+       serializeValue(&buffer, mGemmK);
+       serializeValue(&buffer, mGroupSize);
+   }
+   ```
+
+7. 一些模板方法，几乎不需要改动
+
+   - deconstructor
+   - clone
+   - get plugin type
+   - get plugin namespace
+   - set plugin namespace
+   - set plugin version
+   - initialize
+   - terminate
+   - destroy
+   - configure plugin
+   - get workspace, return 0
+
+8. 构建 plugin creator constructor & create plugin 方法
+
+   把 python 当中以 `_i` 作为参数的输入，就是 plugin 的 attribute
+
+   ```cpp
+   Int4GroupwiseGemmPluginCreator::Int4GroupwiseGemmPluginCreator()
+   {
+       static std::mutex sMutex;
+       std::lock_guard<std::mutex> lock(sMutex);
+   
+       mPluginAttributes.clear();
+       mPluginAttributes.emplace_back(PluginField("gemm_n", nullptr, PluginFieldType::kINT32, 1));
+       mPluginAttributes.emplace_back(PluginField("gemm_k", nullptr, PluginFieldType::kINT32, 1));
+       mPluginAttributes.emplace_back(PluginField("group_size", nullptr, PluginFieldType::kINT32, 1));
+   
+       mFieldCollection.nbFields = mPluginAttributes.size();
+       mFieldCollection.fields = mPluginAttributes.data();
+   }
+   ```
+
+   其中 PluginFiled 参数中的 1，代表着这个 filed 只传入了一个值，可能超过了1个值代表传入是一个 list？目前来看只看到了 length = 1 的情况
+
+   之后就可以用这些 attribute 来实例化 plugin
+
+   ```cpp
+   nvinfer1::IPluginV2* Int4GroupwiseGemmPluginCreator::createPlugin(
+       char const* name, nvinfer1::PluginFieldCollection const* fc) noexcept
+   {
+       try
+       {
+           // Read N, K attributes for the plugin.
+           std::optional<int32_t> gemmN = parsePluginScalarField<int32_t>("gemm_n", fc);
+           std::optional<int32_t> gemmK = parsePluginScalarField<int32_t>("gemm_k", fc);
+           std::optional<int32_t> groupSize = parsePluginScalarField<int32_t>("group_size", fc);
+   
+           bool checkRequiredFields = gemmN.has_value() && gemmK.has_value() && groupSize.has_value();
+           if (!checkRequiredFields)
+           {
+               return nullptr;
+           }
+   
+           Int4GroupwiseGemmPlugin* plugin
+               = new Int4GroupwiseGemmPlugin(std::string(name), gemmN.value(), gemmK.value(), groupSize.value());
+           return plugin;
+       }
+       catch (std::exception const& e)
+       {
+       }
+       return nullptr;
+   }
+   ```
+
+9. 剩余的 creator 的方法也是几乎不用改动
+
+   - get plugin name
+   - get fileds name
+   - set plugin names
+   - get plugin version
+   - deserialze
+
+### Transfer from flashinfer
+
+通常我会将算子在 flashinfer 当中测试精度，此使算子已经集成到了 flashinfer 当中。不过由于 TensorRT 对 cuda stream 有要求，而 flashinfer 的 stream 直接使用默认流，所以我们在迁移的过程中只需要加入 cuda stream 参数，并把其默认设置的 stream 代码删除即可
+
+```cpp
+void CustomFMHACutlassSM100Run(TensorView q, TensorView k, TensorView v, TensorView o,
+                               Optional<TensorView> maybe_lse, int64_t causal, cudaStream_t stream) {
+    /* comment this line */
+    // const cudaStream_t stream = get_stream(o.device());
+}
+```
+
+另外，tensorrt plugin 都是需要输出的。不能设置 number of output = 0，如果想要做到 inplace 的效果，例如 (kv cache inplace write)，则需要把 kv cache 作为输出，我们在 set tensor address 的时候进行控制
+
+## TensorRT 
 
 trt 的 python & cpp api 都是相似的，我应该简单整理一下，这样才能在 python 里完成量化的对比
 
