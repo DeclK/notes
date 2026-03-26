@@ -675,19 +675,25 @@ struct Copy_Traits<SM75_U32x4_LDSM_N>
 1. 对于使用 universal copy 的场景，针对所需的 mn shape，计算得到 thr & val layout（二者的 layout product 即为 mn shape）。由 `make_tiled_copy` 通过 thr & val layout 自己推导得到 tv layouts & mn shape
 2. 对于 tv layouts 有特殊要求的 copy 场景（i.e. mma），通常我们都是通过 tiled mma 中的 `get_layoutA/B/C_TV` 直接获得 tv layouts & mn shape，而不是通过 copy atom 去自行推导这个 tv layouts & mn shape。此时需要考虑的是 tv layouts 与 copy atom 之间的合法性问题，即 copy atom 的整除要求（size of v 需要至少为 8）。此时一个 cta block 的 copy 能力是 mma atom mn shape 的重复，可通过 permutation mnk 参数进行调整
 
-考虑好了以上两个核心逻辑就可以清晰地构建 tiled copy。此时一个大的 picture 正在浮现开来：**tile centric CUDA programming**。核心问题：
-
-1. **Is this CopyAtom legal?** 
-2. **What kinds of mn tile (copy) should you choose to solve a cta problem?**
-
-**CopyAtom 本身并不包含对 MN Tiler 的描述，其只描述了 src & dst tv 之间的映射关系。真正包含 Tiler shape 信息的 atom 是 MMA Atom，CopyAtom 服务于 MMA Atom，帮助其完成 Tile 数据的搬运。而 TiledCopy 恰好是必须要 MN shape 信息的，这就会和我们理解 CopyAtom 造成违和感，但理解这一点是至关重要的**。另外一个重要的经验结论：(在 s2r or r2s 场景下) TiledCopy 要么是完整的 mma mn shape，要么是 mma mn shape 的一个子区域，二者的区别是使用了不同的 tiled copy create function
+**CopyAtom 本身并不包含对 MN Tiler 的描述，其只描述了 src & dst tv 之间的映射关系。真正包含 Tiler shape 信息的 atom 是 MMA Atom，CopyAtom 服务于 MMA Atom，帮助其完成 Tile 数据的搬运。而 TiledCopy 恰好是必须要 MN shape 信息的 (which is shared by src & dst tv mapping)，这就会和我们理解 CopyAtom 造成违和感，但理解这一点是至关重要的**。另外一个重要的经验结论：(在 s2r or r2s 场景下) TiledCopy 要么是完整的 mma mn shape，要么是 mma mn shape 的一个子区域，二者的区别是使用了不同的 tiled copy create function
 
 ```cpp 
 using R2STiledCopy = decltype(make_tiled_copy_C(r2s_copy_atom{}, TiledMMA{}));	// complete mn shape
-using R2STiledCopy = decltype(make_tiled_copy_C_atom(r2s_copy_atom{}, TiledMMA{}));	// sub mn shape, deduced internally
+using R2STiledCopy = decltype(make_tiled_copy_C_atom(r2s_copy_atom{}, TiledMMA{}));	// atom mn shape, deduced internally
+// atom mn shape meaning the mn shape under 1 copy atom operation
 ```
 
 对于 smem -> rmem 这个环节当中，我们利用 mma atom mn shape 作为基础的 building block，为了配合 copy atom 合法性，我们对其 mnk tile 进行了相应的重复，最终**构建出实际使用的 mnk tile**，cta problem 将由这个 tile 进行切分解决
+
+此时一个大的 picture 正在浮现开来：**tile centric CUDA programming**。核心问题：
+
+1. **Is this CopyAtom legal?** 
+
+   参考重要补充材料-Copy 连续性要求 
+
+2. **What's your mn tile to partition a cta problem?**
+
+   一旦 CopyAtom 合法，根据 dst tv -> mn 映射，我们可以通过 `make_tiled_copy_C_atom` 计算得到一个 atom mn shape，作为 copy 的基本单位去解决 cta problem shape 层面的 copy。当然我们也可以不从 atom mn shape 粒度出发，从更大的粒度出发也是可行的 `i.e. make_tiled_copy_C`。而在 tma copy 中，这个 atom mn shape 的定义变得更加简单，可以很自由且方便地去定义一个 copy box 作为我们的基本 copy 单位
 
 ### 重要补充材料
 
