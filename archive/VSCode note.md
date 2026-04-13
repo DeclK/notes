@@ -552,5 +552,90 @@ update 2026/03/31
 /plugin install planning-with-files@planning-with-files
 ```
 
+## 完整 Config
 
+这些设置都可以直接使用一个 config 文件配置完成，对于新电脑的配置非常方便
+
+```json
+{
+    "editor.fontFamily": "'JetBrains Mono', 'MiSans', 'Courier New', monospace",
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": "comment",
+                "settings": {
+                    "fontStyle": "italic",
+                    "foreground": "#7f8c8d"
+                }
+            },
+            {
+                "scope": "storage.type.class.doxygen.cpp",
+                "settings": {
+                    "foreground": "#7f8c8d",
+                    "fontStyle": "bold"
+                }
+            },
+            {
+                "scope": "variable.parameter.cpp",
+                "settings": {
+                    "foreground": "#7f8c8d",
+                    "fontStyle": "underline"
+                }
+            }
+        ]
+    },
+    "editor.semanticTokenColorCustomizations": {
+        "[Default Dark Modern]": {
+            "enabled": true,
+            "rules": {
+                "parameter": {
+                    "bold": false,
+                    "fontStyle": "",
+                    "foreground": "#8CDCFC"
+                },
+            }
+        }
+    },
+    "editor.fontSize": 16,
+    "terminal.integrated.enableMultiLinePasteWarning": "never",
+    "terminal.integrated.scrollback": 100000,
+    "workbench.colorTheme": "Dark Modern",
+    "update.mode": "none",
+}
+```
+
+keyboard 快捷键设置
+
+```json
+[
+    {
+        "key": "ctrl+shift+oem_5",
+        "command": "editor.action.insertLineBefore",
+        "when": "editorTextFocus && !editorReadonly"
+    },
+    {
+        "key": "ctrl+shift+enter",
+        "command": "editor.action.insertLineAfter",
+        "when": "editorTextFocus && !editorReadonly"
+    },
+    {
+        "key": "ctrl+shift+f",
+        "command": "workbench.files.action.collapseExplorerFolders"
+    },
+    {
+        "key": "ctrl+enter",
+        "command": "python.execInTerminal"
+    },
+    {
+        "key": "ctrl+enter",
+        "command": "notebook.cell.execute",
+        "when": "notebookCellListFocused && notebookMissingKernelExtension && !notebookCellExecuting && notebookCellType == 'code' || notebookCellListFocused && !notebookCellExecuting && notebookCellType == 'code' && notebookKernelCount > 0 || notebookCellListFocused && !notebookCellExecuting && notebookCellType == 'code' && notebookKernelSourceCount > 0"
+    },
+    {
+        "key": "ctrl+alt+p",
+        "command": "workbench.action.closePanel",
+        "when": "panelVisible"
+    }
+]
+```
 
