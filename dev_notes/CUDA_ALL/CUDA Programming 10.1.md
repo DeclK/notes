@@ -26,7 +26,7 @@ TMA 其实是 Hopper 架构中新引入的硬件单元，其功能是在 global 
 
 ### tma descriptor
 
-也叫做 `CUtensorMap`。如前面所述，tma 的功能是 global mem 和 shared mem 之间的数据传输。从 global mem -> shared mem 的传输就是 tma load；反之就是 tma store。不管是 tma load or tma store，都是由 tma descriptor 发起 
+也叫做 `CUtensorMap`，其本质都是一个大小为128字节的描述信息，这些信息是在 global mem 和 shared mem 之间进行数据传输的必要信息。从 global mem -> shared mem 的传输就是 tma load；反之就是 tma store。不管是 tma load or tma store，都是由 tma descriptor 发起 
 
 在 cute 中使用 `make_tma_copy` 的方式来构建 tma descriptor（实际上是一个 tiled copy 对象），其中有5个重要参数
 

@@ -286,10 +286,15 @@ notes when building kernels
 
 - DeepGemm 当中的 1d1d & 1d2d 分别代表什么？
 
-  应该是代表了 scaling factors 的维度：
+  1d1d 和 1d2d 代表的是 scaling factor (缩放因子) 的粒度 (granularity) 布局
 
   - 1d1d，A & B 的 scaling factor 都是 1d
   - 1d2d，A 的 scaling factor 是 1d，B 的 scaling factor 是 2d，应该是对应了 blockwise scaling
+
+  | 类型 | Recipe | SFA 粒度 | SFB 粒度 | 说明 |
+  |------|--------|----------|----------|------|
+  | **1d1d** | `(1, 1, 128)` | per-token (1x128) | per-token (1x128) | 两个矩阵都用细粒度 scaling |
+  | **1d2d** | `(1, 128, 128)` | per-token (1x128) | per-block (128x128) | 矩阵 B 用粗粒度 (128列共享) scaling |
 
   最初的 DeepGemm 实现的是 1d2d，1d1d 更多是为 Blackwell 架构实现的
 
