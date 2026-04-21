@@ -240,6 +240,12 @@ with open(licence_file, 'w') as f:
 print("Done!")
 ```
 
+激活完成后关闭激活弹窗。首先定位文件：进入 Typora 安装目录，找到 `resources\page-dist\license.html`。然后修改代码：用文本编辑器打开 license.html，将 `</body></html>` 替换为以下代码：
+
+```html
+</body><script>window.onload=function(){setTimeout(()=>{window.close();},5);};</script></html>
+```
+
 Typora custom css，请确保下载了 JetBrains Mono 和 MiSans 字体
 
 ```css
