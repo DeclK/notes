@@ -305,6 +305,10 @@ BlockScan(temp_storage).ExclusiveSum(tiles, tiles, block_aggregate);
 - `n` 是输出维度（output_dim），对所有 group 相同
 - 只有 `num_seq` 变化（`seqlens_ptr[igroup]`）
 
+**`update_tma_gtensor` 的作用** 
+
+该 device function 是更新 tma descriptor 的核心。会从 gmem tensor 中提取 shape & stride & gmem ptr，然后把这些信息更新到 TMA descriptor 中。我一开始还有疑问：为什么一定要用 shared memory 创建 cuTensorMap？虽然我之前了解到 tma 存储的信息都是放在 smem 当中的，但是我们仍然可以把这些信息放到寄存器当中，然后修改，最后再存回 gmem 当中呀。后来 agent 了解到 `tma_descriptor_replace_shapes_in_shared_mem` 该 PTX 要求操作源必须在 shared memory 当中，所以必须使用 smem
+
 **`tma_desc_commit_group` 的作用**
 
 ```cpp
@@ -319,6 +323,8 @@ if (cute::elect_one_sync()) {
 - 线程 1 更新 `smem_tma_desc[1]` (Y)
 
 这时候需要用 `tma_desc_commit_group` 来确保 warp 中所有线程对 TMA descriptor 的修改都完成并且可见。这里的 PTX 和 `tma_store_fence` 是一样的，我们之前使用 `tma_store_fence` 是为了确保 tma store 操作必须要在 smem 写入完成之后。在这里起到同样的作用，因为我们之后要把修改好的 smem 内容写回到 gmem 中存储的 cuTensorMap 当中，必须要保证所有的 smem 写入完成才发起该操作。
+
+补充 20260427：我们在之前进行了 `update_tma_tensor` 的操作，其实这是一个在 async proxy 发起的对 smem 上的修改。所以我们必须要保证整个修改的完成，才能在之后进行 `tma_descriptor_cp_fence_release`，将 smem 当中的 descriptor copy 到 gmem 当中。此时就需要一个 fence 来保证顺序，而 commit & wait 就是不错的选择。这里仅使用了一个 thread 来进行 commit & wait，实际上由于每一个 CTA 只有一个 warp，这里单个 thread wait，其他 thread 并不能够偷跑到下一个代码进行整形，而是也在空转等待
 
 **`tma_descriptor_cp_fence_release` 的作用**
 
@@ -339,10 +345,6 @@ Consumer（主 kernel）:
 tma_descriptor_fence_acquire(td_xy + i);
 // "Acquire": 保证之后的读操作能看到完整的 descriptor
 ```
-
-**`update_tma_gtensor` 的作用** 
-
-该 device function 是更新 tma descriptor 的核心。会从 gmem tensor 中提取 shape & stride & gmem ptr，然后把这些信息更新到 TMA descriptor 中。我一开始还有疑问：为什么一定要用 shared memory 创建 cuTensorMap？虽然我之前了解到 tma 存储的信息都是放在 smem 当中的，但是我们仍然可以把这些信息放到寄存器当中，然后修改，最后再存回 gmem 当中呀。后来 agent 了解到 `tma_descriptor_replace_shapes_in_shared_mem` 该 PTX 要求操作源必须在 shared memory 当中，所以必须使用 smem
 
 
 ### 在 Group Gemm 中使用 TMA
@@ -843,8 +845,11 @@ for (int itile_k = 0; itile_k < ntile_k; ++itile_k) {
 ## Questions
 
 1. hpc-ops 并没有使用 multicast 功能。由于该原因，hpc-ops 在 H100 上的性能就不如 DeepGemm。这在 [issue](https://github.com/Tencent/hpc-ops/issues/28) 当中有提到：For the H100, which has higher compute throughput but lower memory bandwidth, the pipeline places more emphasis on memory access patterns. 这说明在 roofline model 当中，H100 需要更大的 GEMM 计算来达到 compute bound，否则很容易就变得 memory bound。在 Thor 上更是如此，估计其 fp16 算力为 250TFLOPS，而其带宽只有 275GB/s，此使需要计算强度超过 930+ Flops/Byte 才能达到 compute bound。对于端侧来说，几乎大部分的 gemm 都达不到这个计算强度，i.e. 都是 memory bound kernel。而对于 H20 来说，其算力低，带宽大，计算强度拐点 37 Flops/Byte = (148 TFlops / 4000 GB/s) 几乎所有的算子都是 compute bound，所以打不打开 multicast 对性能没那么大影响
+
 2. tma copy 时 smem layout 和 gmem layout (在 swizlle 之前) layout 应当保持一致 (都为 MN-major or K-major)，否则将不符合要求。这是由 copy atom 的连续性要求决定的（128 bit 连续）。另外一个补充结论：swizzle 只处理二维的情况，因为 shared memory 就是二维的，在决定好一个最小的读取模式后（要求填满一整行 bank，否则不会产生 bank conflict）使用 tile_to_shape 进行 product，tile_to_shape 默认 col major product
+
 3. 我们在让 AI 进行整理的过程中，一定要给 AI 列好提纲，按照自己的思路来，否则 agent 自行生成的整理，看似尽然有序，实则无法触及原理核心，并且冗长的 AI 叙述会增加我们的负担。所以与 agent 合作来写笔记算是以失败告终吧，可以让 agent 负责一些解释性工作
+
 4. DeepGemm 当中的 1d1d & 1d2d 分别代表什么？
    1d1d 和 1d2d 代表的是 scaling factor (缩放因子) 的粒度 (granularity) 布局
 
@@ -857,3 +862,40 @@ for (int itile_k = 0; itile_k < ntile_k; ++itile_k) {
     | **1d2d** | `(1, 128, 128)` | per-token (1x128) | per-block (128x128) | 矩阵 B 用粗粒度 (128列共享) scaling |
 
     最初的 DeepGemm 实现的是 1d2d，我们在本文中讨论的也是 1d2d 的情况。而 1d1d 更多是为 Blackwell 架构实现的，因为其在硬件上直接原生支持了 blockwise scaling gemm，即：我们不需要再在 CUDA core 上进行 dequantize 的计算，tensor core 直接帮我们算完了
+
+5. 为什么在 producer 时，不使用 commit & wait 方式的同步方式，而是一定要使用 mbarrier？
+
+   因为我们需要跨 cta 进行同步，cluster 内可能需要进行 tma broadcast 进行 smem 的数据共享。普通的 commit & wait 方式无法满足同步要求
+
+6. 如果 cta 只有一个 warp，那么其中的 syncwarp 还是有必要的吗？在 SIMT 的意义下，不都是以一个 warp 为单位进行知道吗？
+
+   这里仍然设计内存屏障和可见性的问题，以下回答来自 DeepSeek V4
+
+   > 没有 syncwarp 的代码如下
+   >
+   > ```cpp
+   > __global__ void warp_bug(int *out) {
+   >     __shared__ int smem[32];
+   >     int tid = threadIdx.x;
+   > 
+   >     // 只有 tid < 16 的线程进行写入
+   >     if (tid < 16) {
+   >         smem[tid] = tid;            // (A) 写共享内存
+   >     }
+   > 
+   >     // 所有线程读取
+   >     int val = smem[tid];            // (B) 读共享内存
+   >     out[tid] = val;
+   > }
+   > ```
+   >
+   > 编译器可能分析出：线程的写操作 `smem[tid]` 与读操作 `val = smem[tid]` 之间**没有显式的依赖或屏障**。如果它认为共享内存延迟较大，它可能把某些线程的 Load 提前到 Store 之前，比如优化成：
+   >
+   > ```cpp
+   > int val = smem[tid];   // Load 提前了
+   > if (tid < 16) smem[tid] = tid;
+   > ```
+   >
+   > 这显然会读到错误值。即使编译器没有做跨线程的激进重排，**在分支结构下，编译器也可能将后续的 Load 移动到分支内部或之前**，产生完全不符合你直觉的指令顺序。
+
+   这就说明了 `__syncwarp` 是带有内存屏障的同步指令，即使在 warp 数量为 1 的情况下，仍然需要他来保障分支的正确性
