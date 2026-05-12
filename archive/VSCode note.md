@@ -524,15 +524,7 @@ sudo apt install -y nodejs
 npm install -g @anthropic-ai/claude-code
 ```
 
-然后可以配置国产模型 API，现在各大厂商应该都有自己的适配。我一开始用的 Kimi，实在是太贵了，找了火山方舟的 coding plan，而现在 DeepSeekV4 横空出世，把 token 价格降下来了
-
-update 2026/03/31
-
-由于 Kimi 的 api 价格实在是太贵了，我目前的方案是火山引擎的 [方舟Coding-Plan](https://www.volcengine.com/activity/codingplan)，既能够使用开源模型包含 Kimi GLM DeepSeek 等等，又能够使用字节本身的模型，相比于直接使用 Kimi 会便宜 80%
-
-update 2026/05/12
-
-DeepSeekV4-pro 的价格太香了，比 coding plan 还要便宜！
+然后可以配置国产模型 API，现在各大厂商应该都有自己的适配。我一开始用的 Kimi，实在是太贵了，找了火山方舟的 coding plan，而现在 DeepSeekV4 横空出世，把 token 价格变得跟自来水一样，所以成为了我的选择
 
 现在对于 claude code 的一些技巧也需要进行整理。目前比较火的是 skill，我实际用起来还是很不错的，只要给够准确的 context，agent 都能够比较满意地执行任务。目前我使用的比较多的 skill 是 [planning-with-files](https://github.com/OthmanAdi/planning-with-files)
 
