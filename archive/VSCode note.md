@@ -524,23 +524,15 @@ sudo apt install -y nodejs
 npm install -g @anthropic-ai/claude-code
 ```
 
-然后配置 [kimi api](https://platform.moonshot.cn/docs/guide/agent-support#%E5%9C%A8-claude-code-%E4%B8%AD%E4%BD%BF%E7%94%A8-kimi-k2-%E9%9D%9E%E6%80%9D%E8%80%83%E6%A8%A1%E5%9E%8B)
-
-```shell
-export ANTHROPIC_BASE_URL="https://api.moonshot.cn/anthropic/"
-export ANTHROPIC_AUTH_TOKEN="sk-xxxxxxxxxxxxxxx"
-
-# configure model
-export ANTHROPIC_MODEL=kimi-k2.5
-export ANTHROPIC_DEFAULT_OPUS_MODEL=kimi-k2.5
-export ANTHROPIC_DEFAULT_SONNET_MODEL=kimi-k2.5
-export ANTHROPIC_DEFAULT_HAIKU_MODEL=kimi-k2.5
-export CLAUDE_CODE_SUBAGENT_MODEL=kimi-k2.5
-```
+然后可以配置国产模型 API，现在各大厂商应该都有自己的适配。我一开始用的 Kimi，实在是太贵了，找了火山方舟的 coding plan，而现在 DeepSeekV4 横空出世，把 token 价格降下来了
 
 update 2026/03/31
 
 由于 Kimi 的 api 价格实在是太贵了，我目前的方案是火山引擎的 [方舟Coding-Plan](https://www.volcengine.com/activity/codingplan)，既能够使用开源模型包含 Kimi GLM DeepSeek 等等，又能够使用字节本身的模型，相比于直接使用 Kimi 会便宜 80%
+
+update 2026/05/12
+
+DeepSeekV4-pro 的价格太香了，比 coding plan 还要便宜！
 
 现在对于 claude code 的一些技巧也需要进行整理。目前比较火的是 skill，我实际用起来还是很不错的，只要给够准确的 context，agent 都能够比较满意地执行任务。目前我使用的比较多的 skill 是 [planning-with-files](https://github.com/OthmanAdi/planning-with-files)
 
