@@ -521,7 +521,7 @@ models:
 ```shell
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
-npm install -g @anthropic-ai/claude-code
+sudo npm install -g @anthropic-ai/claude-code
 ```
 
 然后可以配置国产模型 API，现在各大厂商应该都有自己的适配。我一开始用的 Kimi，实在是太贵了，找了火山方舟的 coding plan，而现在 DeepSeekV4 横空出世，把 token 价格变得跟自来水一样，所以成为了我的选择

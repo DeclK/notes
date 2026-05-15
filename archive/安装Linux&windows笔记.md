@@ -194,57 +194,46 @@ date: 2021-07-12 14:36:42
 
 🤔🤨🧐
 
-```python
-from pathlib import Path
-import os
-import re
+把这段话传给你的 ai agent 他应该就能够帮你解决 Typora hacking 的问题
 
-licence_dir = '/usr/share/typora/resources/page-dist/static/js'
-licence_dir = Path(licence_dir)
-
-# check if the directory exists
-if not licence_dir.exists():
-    raise Exception('cannot find the directory')
-
-# change the permission
-print(f"Doing sudo chmod 777 -R for {str(licence_dir)}, might need to enter password")
-os.system('sudo chmod 777 -R ' + licence_dir)
-
-prefix = 'LicenseIndex'
-
-licence_dir = Path(licence_dir).iterdir()
-
-licence_file = None
-for file in licence_dir:
-    if file.name.startswith(prefix):
-        licence_file = file
-
-print(f"Found the licence file: {licence_file.name}")
-if licence_file is None:
-    raise Exception('cannot find licence file')
-
-print("Overwriting the licence file...")
-# read file content
-with open(licence_file, 'r') as f:
-    content = f.read()
-
-# replace the pattern
-target = 'e.hasActivated="true"==e.hasActivated'
-replacement = 'e.hasActivated="true"=="true"'
-content = re.sub(target, replacement, content)
-
-# write the content to original file
-with open(licence_file, 'w') as f:
-    f.write(content)
-
-print("Done!")
-```
-
-激活完成后关闭激活弹窗。首先定位文件：进入 Typora 安装目录，找到 `resources\page-dist\license.html`。然后修改代码：用文本编辑器打开 license.html，将 `</body></html>` 替换为以下代码：
-
-```html
-</body><script>window.onload=function(){setTimeout(()=>{window.close();},5);};</script></html>
-```
+> - 修改 `page-dist\static\js\LicenseIndex.*.chunk.js`
+>
+>   原代码：
+>   ```javascript
+>   e.hasActivated="true"==e.hasActivated
+>   ```
+>
+>   改为：
+>   ```javascript
+>   e.hasActivated="true"=="true"
+>   ```
+>
+>   许可证页面永远显示"Typora 已激活"。
+>
+> 2. 修改 `page-dist\license.html`
+>
+>    将 `</body></html>` 替换为：
+>    ```html
+>    </body><script>window.onload=function(){setTimeout(function(){window.close();},10);};</script></html>
+>    ```
+>
+>    页面加载完成后 10ms 自动关闭许可证弹窗。
+>
+> 3. 修改 `appsrc\window\frame.js`
+>
+>    原代码：
+>    ```javascript
+>    c.newWindow=function(){JSBridge.invoke("document.newWindow")}
+>    ```
+>
+>    改为：
+>    ```javascript
+>    c.newWindow=function(){var e=window.reqnode("child_process"),n=window.reqnode("path"),t=window.reqnode("os"),a="typora_win_"+Date.now(),r=n.join(t.tmpdir(),a);try{window.reqnode("fs").mkdirSync(r,{recursive:!0})}catch(c){}e.spawn(process.execPath,["--user-data-dir="+r],{detached:!0,stdio:"ignore"}).unref()}
+>    ```
+>
+>    Ctrl+Shift+N 直接 spawn 独立 Typora 进程，通过 `--user-data-dir` 绕过单实例锁。
+>
+> 4. 核心原理：主进程（`main.node`，原生 DLL）未激活时所有创建窗口的 IPC 都被重定向到许可证窗口。改为用 `child_process.spawn()` 启动完全独立的 Typora 进程，每个进程通过不同 `--user-data-dir` 拥有独立 Electron 会话，各自获得正常工作的编辑器窗口。
 
 Typora custom css，请确保下载了 JetBrains Mono 和 MiSans 字体
 

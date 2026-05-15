@@ -473,9 +473,6 @@ tma_descriptor_fence_acquire(td_xy + i);
 // "Acquire": 保证之后的读操作能看到完整的 descriptor
 ```
 
-
-### 
-
 ## Transposed MMA
 
 ### Why Transpose？
