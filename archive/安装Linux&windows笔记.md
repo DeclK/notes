@@ -235,6 +235,8 @@ date: 2021-07-12 14:36:42
 >
 > 4. 核心原理：主进程（`main.node`，原生 DLL）未激活时所有创建窗口的 IPC 都被重定向到许可证窗口。改为用 `child_process.spawn()` 启动完全独立的 Typora 进程，每个进程通过不同 `--user-data-dir` 拥有独立 Electron 会话，各自获得正常工作的编辑器窗口。
 
+我使用了一段时间过后，偶尔会出现又无法打开多个窗口的情况。可以尝试以下路径：1. 关闭所有的 typora 窗口；2. 打开新的 typora empty 窗口；3. 使用 Ctrl + Shift + N 打开多个窗口；4. 点击开始试用。我也不太清楚什么情况，反正就是莫名奇妙地能打开多个窗口了。可能重启也有效果🤔
+
 Typora custom css，请确保下载了 JetBrains Mono 和 MiSans 字体
 
 ```css
