@@ -73,9 +73,18 @@ fully_shard(module, mesh=fsdp_mesh, mp_policy=mp_policy, reshard_after_forward=T
 
 `mp_policy.param_dtype` 控制前向的**计算精度**：参数 all-gather 后 cast 到此类型，forward 和 backward 都在此精度下计算。`mp_policy.reduce_dtype` 仅控制梯度 **reduce-scatter 通信**的精度，不影响 backward 计算。
 
-<img src="FSDP & VeOmni/image-20260629114216800.png" alt="image-20260629114216800" style="zoom: 50%;" />
+<img src="FSDP & VeOmni/image-20260707163511019.png" alt="image-20260707163511019" style="zoom: 33%;" />
 
 `mesh` 为 1D 时做 FSDP（参数沿 mesh 全分片）；为 2D `(dp_replicate, dp_shard_sp)` 时做 HSDP——最后一个维度做参数分片（all-gather / reduce-scatter），其余维度做副本复制（梯度 all-reduce）。一般推理框架通过 `dp_replicate_size` / `dp_shard_size` 自动构造对应的 1D 或 2D `fsdp_mesh`，无需手动配置 mesh 维度。
+
+对于混合精度来说显存需要保存的内容如下：
+
+1. 低精度（bf16）的模型权重、梯度分片，4 bytes x 参数量
+2. 高精度（fp32）的模型权重、Adam 需要的一阶矩估计和二阶矩估计，12 bytes x 参数量
+
+总共是 16 bytes x 参数量，当然还有 activation 也需要保存，这里我们不做计算。在 [[LLM]大模型显存计算公式与优化](https://zhuanlan.zhihu.com/p/687226668) 当中也有一张图描述 mix precision training 更清晰
+
+<img src="https://pic1.zhimg.com/v2-d89526c99a1e81cf06c7eff1706efae4_1440w.jpg" alt="img" style="zoom:80%;" />
 
 ### 自底向上 & 嵌套运行
 
